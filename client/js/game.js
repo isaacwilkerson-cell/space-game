@@ -1096,6 +1096,10 @@ loadModel('assets/sniper.glb', 40, model => {
     if (!c.isMesh || !c.material) return;
     const mats = Array.isArray(c.material) ? c.material : [c.material];
     mats.forEach(m => {
+      m.emissive = new THREE.Color(0x303030);
+      m.emissiveIntensity = 1;
+      if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.4);
+      if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.6);
     });
   });
   _sniperMesh = model;
@@ -1103,7 +1107,7 @@ loadModel('assets/sniper.glb', 40, model => {
   scene.add(_sniperMesh);
 
   // Dedicated side light that always illuminates the sniper
-  _sniperLight = new THREE.PointLight(0xffffff, 2.5, 80);
+  _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
   scene.add(_sniperLight);
 
   // Store for icon rendering when equipped
@@ -1309,7 +1313,7 @@ function _updateSniperShots() {
     } else if (_sniperLight) {
       _sniperLight.intensity = 0;
     }
-    if (_sniperLight) _sniperLight.intensity = show ? 2.5 : 0;
+    if (_sniperLight) _sniperLight.intensity = show ? 9 : 0;
   }
 
   // Scope zoom
