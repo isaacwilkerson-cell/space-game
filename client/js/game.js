@@ -395,13 +395,16 @@ function exitLobby() {
 }
 // ── Shooting Range scene — standalone THREE.Scene so space station never shows ─
 const shootingRangeScene = new THREE.Scene();
-const _rangeAmbient = new THREE.AmbientLight(0xffffff, 3.5);
+const _rangeAmbient = new THREE.AmbientLight(0xffffff, 0.6);
 shootingRangeScene.add(_rangeAmbient);
-const _rangeDirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-_rangeDirLight.position.set(1, 2, 1).normalize();
+const _rangeDirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+_rangeDirLight.position.set(1, 2, 0.5).normalize();
 shootingRangeScene.add(_rangeDirLight);
-const _rangeLight = new THREE.PointLight(0xffffff, 6.0, 1000);
-_rangeLight.position.set(0, 150, 0);
+const _rangeDirLight2 = new THREE.DirectionalLight(0xaaccff, 0.8);
+_rangeDirLight2.position.set(-1, 1, -1).normalize();
+shootingRangeScene.add(_rangeDirLight2);
+const _rangeLight = new THREE.PointLight(0xffffff, 2.5, 800);
+_rangeLight.position.set(55, 120, -120);
 shootingRangeScene.add(_rangeLight);
 
 let _rangeCollidables = [];
@@ -2036,6 +2039,11 @@ function updateFP() {
     const PAD = 2.5;
     fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
     fpPos.z = Math.max(_activeBBox.min.z + PAD, Math.min(_activeBBox.max.z - PAD, fpPos.z));
+  }
+  // Shooting range hard boundary — can't walk past the target line
+  if (gameMode === 'range') {
+    if (fpPos.x > 192) fpPos.x = 192;
+    if (fpPos.z > -88) fpPos.z = -88;
   }
   const moving = fpVel.lengthSq() > 0.01;
   const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : 2;
