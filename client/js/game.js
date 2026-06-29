@@ -1100,7 +1100,10 @@ loadModel('assets/sniper.glb', 40, model => {
       m.emissiveIntensity = 1;
       if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.4);
       if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.6);
+      // Viewmodel trick — never depth-occluded by walls/floor, so it can't phase through them
+      m.depthTest = false;
     });
+    c.renderOrder = 999;
   });
   _sniperMesh = model;
   _sniperMesh.visible = false;
@@ -1209,7 +1212,7 @@ function _updateImpacts() {
 }
 
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected') || !pointerLocked) return;
   if (_sniperCooldown > 0) return;
   _sniperCooldown = SNIPER_COOLDOWN;
   _sniperRecoil = 12; // frames of recoil
@@ -1276,7 +1279,7 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby') && pointerLocked && !_heldCrate;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected') && pointerLocked && !_heldCrate;
     _sniperMesh.visible = show;
     if (show) {
       // Move sniper to the correct active scene
@@ -1333,14 +1336,14 @@ function _updateSniperShots() {
 
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
 document.addEventListener('mousedown', e => {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'ejected') || !pointerLocked) return;
   if (e.button === 0) _fireSniper();
   if (e.button === 2) { e.preventDefault(); _sniperScoped = true; }
 });
 document.addEventListener('mouseup', e => {
   if (e.button === 2) _sniperScoped = false;
 });
-document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected')) e.preventDefault(); });
 
 // Drop scope if player leaves planet
 // (handled naturally — _sniperScoped gets ignored outside planet_walk)
