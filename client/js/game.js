@@ -275,6 +275,9 @@ interiorScene.add(_iDirLight);
 const _iLight = new THREE.PointLight(0x6688aa, 2.0, 400);
 _iLight.position.set(0, 40, 0);
 interiorScene.add(_iLight);
+const _iOverhead = new THREE.PointLight(0xffffff, 3.0, 300);
+_iOverhead.position.set(0, 80, 0);
+interiorScene.add(_iOverhead);
 
 // Collision meshes collected after room loads
 let _roomCollidables = [];
@@ -1093,8 +1096,6 @@ loadModel('assets/sniper.glb', 40, model => {
     if (!c.isMesh || !c.material) return;
     const mats = Array.isArray(c.material) ? c.material : [c.material];
     mats.forEach(m => {
-      m.emissive = new THREE.Color(0x888888);
-      m.emissiveIntensity = 0.5;
     });
   });
   _sniperMesh = model;
