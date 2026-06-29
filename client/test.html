@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head><style>body{background:#000;color:#0ff;font-family:monospace;padding:20px;font-size:16px;}</style></head>
+<body>
+<div id="status">Loading...</div>
+<canvas id="c" width="600" height="400" style="border:1px solid #0ff;display:block;margin-top:20px;"></canvas>
+<script src="js/three.min.js"></script>
+<script src="js/GLTFLoader.js"></script>
+<script>
+const log = msg => { document.getElementById('status').innerHTML += '<br>' + msg; };
+
+log('THREE: ' + (typeof THREE));
+log('GLTFLoader: ' + (typeof THREE.GLTFLoader));
+
+fetch('assets/ships/spaceship.glb')
+  .then(r => { log('fetch status: ' + r.status); return r.arrayBuffer(); })
+  .then(buf => {
+    log('buffer size: ' + buf.byteLength + ' bytes');
+    const loader = new THREE.GLTFLoader();
+    loader.parse(buf, '', gltf => {
+      log('GLTF parsed OK — scene children: ' + gltf.scene.children.length);
+      // Render it
+      const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c') });
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(60, 600/400, 0.1, 1000);
+      scene.add(new THREE.AmbientLight(0xffffff, 1));
+      scene.add(new THREE.DirectionalLight(0xffffff, 1));
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      log('model size: ' + JSON.stringify({x:size.x.toFixed(2),y:size.y.toFixed(2),z:size.z.toFixed(2)}));
+      const maxDim = Math.max(size.x, size.y, size.z);
+      model.scale.setScalar(5 / maxDim);
+      scene.add(model);
+      cam.position.set(0, 2, 8);
+      cam.lookAt(0, 0, 0);
+      renderer.render(scene, cam);
+      log('RENDERED — if canvas above is black the model has no visible geometry');
+    }, err => log('parse ERROR: ' + err));
+  })
+  .catch(e => log('fetch ERROR: ' + e));
+</script>
+</body>
+</html>

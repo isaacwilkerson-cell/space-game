@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #0ff; cursor: none; }
+    #canvas-container { width: 100vw; height: 100vh; }
+    #hud {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10;
+    }
+    #status {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(0,0,0,0.6); border: 1px solid #0ff;
+      padding: 10px 14px; border-radius: 6px; font-size: 13px; line-height: 1.7;
+    }
+    #zone-indicator {
+      position: absolute; top: 16px; right: 16px;
+      padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold;
+      border: 1px solid currentColor; transition: color 0.3s, border-color 0.3s;
+    }
+    #zone-indicator.safe    { color: #0f0; }
+    #zone-indicator.pvp     { color: #f00; }
+    #zone-indicator.caution { color: #ffaa00; animation: pulse 0.8s ease-in-out infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.4; } }
+    #controls {
+      position: absolute; bottom: 16px; left: 16px;
+      background: rgba(0,0,0,0.6); border: 1px solid #444;
+      padding: 10px 14px; border-radius: 6px; font-size: 12px; color: #aaa; line-height: 1.8;
+    }
+    #player-count {
+      position: absolute; bottom: 16px; right: 16px;
+      background: rgba(0,0,0,0.6); border: 1px solid #444;
+      padding: 8px 14px; border-radius: 6px; font-size: 13px;
+    }
+    #click-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55); cursor: pointer;
+    }
+    #click-overlay .msg {
+      border: 2px solid #0ff; padding: 28px 48px; border-radius: 10px;
+      font-size: 22px; color: #0ff; text-align: center; letter-spacing: 2px;
+      background: rgba(0,0,10,0.8);
+    }
+    #click-overlay .msg span { display: block; font-size: 13px; color: #888; margin-top: 8px; letter-spacing: 1px; }
+    #click-overlay.hidden { display: none; }
+
+    /* ── Galaxy Map ─────────────────────────────────── */
+    #galaxy-map {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,10,0.92);
+      flex-direction: column; align-items: center; justify-content: center;
+    }
+    #galaxy-map.open { display: flex; }
+    #galaxy-map h2 {
+      color: #0ff; font-size: 18px; letter-spacing: 4px;
+      margin-bottom: 10px; text-transform: uppercase;
+    }
+    #galaxy-map .hint {
+      color: #556; font-size: 12px; margin-bottom: 14px; letter-spacing: 1px;
+    }
+    #map-canvas {
+      border: 1px solid #0ff4; border-radius: 4px; cursor: crosshair;
+      background: transparent;
+    }
+    #map-info {
+      margin-top: 12px; color: #0ff; font-size: 13px; letter-spacing: 1px;
+      min-height: 20px;
+    }
+    #map-close-hint {
+      margin-top: 10px; color: #445; font-size: 11px; letter-spacing: 1px;
+    }
+
+    /* ── Chat ─────────────────────────────────────────────────────── */
+    #chat-wrap {
+      position: fixed; bottom: 60px; left: 16px; width: 320px; z-index: 50;
+      pointer-events: none;
+    }
+    #chat-log {
+      max-height: 160px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 3px; margin-bottom: 6px; padding-right: 4px;
+    }
+    #chat-log::-webkit-scrollbar { width: 4px; }
+    #chat-log::-webkit-scrollbar-thumb { background: #0ff4; border-radius: 2px; }
+    .chat-msg {
+      background: rgba(0,0,0,0.55); border-radius: 4px;
+      padding: 3px 8px; font-family: 'Courier New', monospace;
+      font-size: 12px; color: #ccc; word-break: break-word;
+      opacity: 1; transition: opacity 1s;
+    }
+    .chat-msg .chat-name { color: #0ff; font-weight: bold; margin-right: 4px; }
+    .chat-msg.fading { opacity: 0; }
+    #chat-input-row {
+      display: none; pointer-events: all;
+      background: rgba(0,0,10,0.85); border: 1px solid #0ff6;
+      border-radius: 5px; overflow: hidden;
+    }
+    #chat-input-row.open { display: flex; }
+    #chat-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: #0ff; font-family: 'Courier New', monospace; font-size: 13px;
+      padding: 6px 10px; caret-color: #0ff;
+    }
+    #chat-send {
+      background: transparent; border: none; border-left: 1px solid #0ff4;
+      color: #0ff; font-family: 'Courier New', monospace; font-size: 12px;
+      padding: 6px 10px; cursor: pointer; letter-spacing: 1px;
+    }
+    #chat-send:hover { background: rgba(0,255,255,0.1); }
+    #chat-hint {
+      color: #334; font-size: 11px; font-family: 'Courier New', monospace;
+      margin-top: 4px; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Nuke all service workers and caches so the latest game.js always loads
+    (async function() {
+      let nuked = false;
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) { await r.unregister(); nuked = true; }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) { await caches.delete(k); nuked = true; }
+      }
+      if (nuked) location.reload(true);
+    })();
+  </script>
+  <div id="galaxy-map">
+    <h2>Galaxy Map</h2>
+    <div class="hint">Click a planet to toggle its marker &nbsp;|&nbsp; Selected planets show a diamond in space</div>
+    <canvas id="map-canvas" width="700" height="700"></canvas>
+    <div id="map-info"></div>
+    <div id="map-close-hint">Press M or ESC to close</div>
+  </div>
+
+  <div id="click-overlay">
+    <div class="msg">CLICK TO PLAY<span>Mouse will be captured — press ESC to release</span></div>
+  </div>
+  <div id="chat-wrap">
+    <div id="chat-log"></div>
+    <div id="chat-input-row">
+      <input id="chat-input" type="text" maxlength="120" placeholder="Say something..." autocomplete="off" />
+      <button id="chat-send">SEND</button>
+    </div>
+    <div id="chat-hint">T — chat</div>
+  </div>
+
+  <div id="canvas-container"></div>
+  <div id="hud">
+    <div id="status">
+      <div>PILOT: <span id="pilot-name">—</span></div>
+      <div>POS: <span id="pos">0, 0, 0</span></div>
+      <div>SPD: <span id="speed">0</span> u/s</div>
+      <div>HEALTH: <span id="health">100</span></div>
+    </div>
+    <div id="zone-indicator" class="safe">SAFE ZONE</div>
+    <div id="controls">
+      W — Thrust &nbsp; S — Brake<br>
+      A/D or Q/E — Roll<br>
+      Shift — Boost<br>
+      Space — Full brake<br>
+      Mouse — Aim<br>
+      J — Eject<br>
+      M — Galaxy Map
+    </div>
+    <div id="player-count">PILOTS: <span id="pcount">1</span></div>
+  </div>
+
+  <script src="js/three.min.js"></script>
+  <script src="js/GLTFLoader.js?v=2"></script>
+  <script src="js/socket.io.min.js"></script>
+  <script>
+    fetch('assets/ships/spaceship.glb')
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const loader = new THREE.GLTFLoader();
+        loader.load(url, gltf => {
+          URL.revokeObjectURL(url);
+          const model = gltf.scene;
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 0) {
+            const s = 20 / maxDim;
+            model.scale.setScalar(s);
+            const c = box.getCenter(new THREE.Vector3());
+            model.position.set(-c.x * s, -c.y * s, -c.z * s);
+          }
+          window.PRELOADED_SHIP = model;
+        }, undefined, () => { URL.revokeObjectURL(url); window.PRELOADED_SHIP = false; });
+      }).catch(e => { _shipDbg('fetch ERROR: ' + e); window.PRELOADED_SHIP = false; });
+  </script>
+  <script>document.write('<scr'+'ipt src="js/game.js?v=' + Date.now() + '"><\/scr'+'ipt>')</script>
+</body>
+</html>
