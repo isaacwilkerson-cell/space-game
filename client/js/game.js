@@ -1054,9 +1054,17 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked') && pointerLocked && !_heldCrate;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby') && pointerLocked && !_heldCrate;
     _sniperMesh.visible = show;
     if (show) {
+      // Move sniper to the correct active scene
+      const targetScene = gameMode === 'docked' ? interiorScene
+                        : gameMode === 'lobby'   ? lobbyScene
+                        : scene;
+      if (_sniperMesh.parent !== targetScene) {
+        if (_sniperMesh.parent) _sniperMesh.parent.remove(_sniperMesh);
+        targetScene.add(_sniperMesh);
+      }
       const dir   = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const right = new THREE.Vector3(1, 0,  0).applyQuaternion(camera.quaternion);
       const up    = new THREE.Vector3(0, 1,  0).applyQuaternion(camera.quaternion);
@@ -1065,8 +1073,8 @@ function _updateSniperShots() {
         .addScaledVector(right,  8)
         .addScaledVector(up,    -6);
       _sniperMesh.quaternion.copy(camera.quaternion);
-      _sniperMesh.rotateY(Math.PI); // flip to face forward
-      _sniperMesh.rotateX(-0.1);   // tilt barrel slightly up for natural hold
+      _sniperMesh.rotateY(Math.PI);
+      _sniperMesh.rotateX(-0.1);
     }
   }
 
@@ -2392,7 +2400,7 @@ function _updateRemoteFPMeshes(p) {
 
   rp.mesh.visible    = !fpMode;
   rp.lobbyMesh.visible = fpMode === 'lobby';
-  rp.roomMesh.visible  = fpMode === 'docked';
+  rp.roomMesh.visible  = false; // room is private — never show other players there
 
   if (fpMode && p.fpPos) {
     const target = fpMode === 'lobby' ? rp.lobbyMesh : rp.roomMesh;
