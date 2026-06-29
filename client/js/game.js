@@ -1018,28 +1018,113 @@ shopEl.querySelector('#shop-sniper-btn').addEventListener('click', () => {
   btn.style.color = '#0f4';
 });
 
+// Recoil state
+let _sniperRecoil = 0; // 0 = resting, counts down after shot
+
+// Muzzle flash light (reused)
+const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
+scene.add(_muzzleFlash);
+
+// Impact sparks pool
+const _impacts = [];
+const _impactGeo = new THREE.SphereGeometry(1.2, 4, 4);
+const _impactMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+
+function _spawnImpact(pos, activeScene) {
+  const light = new THREE.PointLight(0xffaa00, 60, 80);
+  light.position.copy(pos);
+  activeScene.add(light);
+
+  // Spark meshes
+  const sparks = [];
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(_impactGeo, _impactMat);
+    m.position.copy(pos);
+    m.scale.setScalar(0.4 + Math.random() * 0.6);
+    activeScene.add(m);
+    sparks.push({
+      mesh: m,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * 4,
+        Math.random() * 5,
+        (Math.random() - 0.5) * 4
+      )
+    });
+  }
+  _impacts.push({ light, sparks, life: 20, scene: activeScene });
+}
+
+function _updateImpacts() {
+  for (let i = _impacts.length - 1; i >= 0; i--) {
+    const imp = _impacts[i];
+    imp.life--;
+    imp.light.intensity = 60 * (imp.life / 20);
+    imp.sparks.forEach(s => {
+      s.mesh.position.add(s.vel);
+      s.vel.y -= 0.4; // gravity
+      s.mesh.scale.multiplyScalar(0.85);
+    });
+    if (imp.life <= 0) {
+      imp.scene.remove(imp.light);
+      imp.sparks.forEach(s => imp.scene.remove(s.mesh));
+      _impacts.splice(i, 1);
+    }
+  }
+}
+
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby') || !pointerLocked) return;
   if (_sniperCooldown > 0) return;
   _sniperCooldown = SNIPER_COOLDOWN;
+  _sniperRecoil = 12; // frames of recoil
+
+  const activeScene = gameMode === 'docked' ? interiorScene
+                    : gameMode === 'lobby'   ? lobbyScene
+                    : scene;
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
 
+  // Bullet tracer
   const mesh = new THREE.Mesh(_sniperGeo, _sniperMat);
   mesh.position.copy(camera.position).addScaledVector(dir, 8);
   mesh.quaternion.copy(camera.quaternion);
-  scene.add(mesh);
+  activeScene.add(mesh);
 
   const glow = new THREE.PointLight(0x00ffaa, 40, 300);
   glow.position.copy(mesh.position);
-  scene.add(glow);
+  activeScene.add(glow);
 
-  _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME });
+  // Muzzle flash — bright burst at gun tip
+  const muzzlePos = camera.position.clone()
+    .addScaledVector(dir, 20)
+    .addScaledVector(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion), 8)
+    .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), -6);
+  if (_muzzleFlash.parent !== activeScene) {
+    if (_muzzleFlash.parent) _muzzleFlash.parent.remove(_muzzleFlash);
+    activeScene.add(_muzzleFlash);
+  }
+  _muzzleFlash.position.copy(muzzlePos);
+  _muzzleFlash.intensity = 120;
+
+  // Raycast for bullet impact
+  const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
+  const collidables = gameMode === 'lobby' ? _lobbyCollidables
+                    : gameMode === 'docked' ? _roomCollidables
+                    : [];
+  const hits = raycaster.intersectObjects(collidables, true);
+  if (hits.length > 0) {
+    _spawnImpact(hits[0].point, activeScene);
+  }
+
+  _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
 }
 
 function _updateSniperShots() {
   if (_sniperCooldown > 0) _sniperCooldown--;
+  if (_muzzleFlash.intensity > 0) _muzzleFlash.intensity *= 0.5; // fade flash fast
+  _updateImpacts();
+
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
     const s = _sniperShots[i];
     s.mesh.position.add(s.vel);
@@ -1047,7 +1132,7 @@ function _updateSniperShots() {
     s.life--;
     s.glow.intensity = 40 * (s.life / SNIPER_LIFETIME);
     if (s.life <= 0) {
-      scene.remove(s.mesh); scene.remove(s.glow);
+      s.scene.remove(s.mesh); s.scene.remove(s.glow);
       _sniperShots.splice(i, 1);
     }
   }
@@ -1068,13 +1153,18 @@ function _updateSniperShots() {
       const dir   = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const right = new THREE.Vector3(1, 0,  0).applyQuaternion(camera.quaternion);
       const up    = new THREE.Vector3(0, 1,  0).applyQuaternion(camera.quaternion);
+      // Recoil — kick gun back and up, then recover
+      if (_sniperRecoil > 0) _sniperRecoil--;
+      const recoilT = _sniperRecoil / 12;
+      const recoilBack = recoilT * 5;
+      const recoilUp   = recoilT * 2;
       _sniperMesh.position.copy(camera.position)
-        .addScaledVector(dir,   14)
+        .addScaledVector(dir,   14 - recoilBack)
         .addScaledVector(right,  8)
-        .addScaledVector(up,    -6);
+        .addScaledVector(up,    -6 + recoilUp);
       _sniperMesh.quaternion.copy(camera.quaternion);
       _sniperMesh.rotateY(Math.PI);
-      _sniperMesh.rotateX(-0.1);
+      _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
     }
   }
 
