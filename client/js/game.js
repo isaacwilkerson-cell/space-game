@@ -5,7 +5,9 @@ document.title = 'Space Game v209';
 // Socket is optional — game runs offline if server isn't up
 let socket = null;
 try {
-  socket = io({ timeout: 3000, reconnectionAttempts: 3 });
+  const _serverURL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? '' : 'https://space-game-production-1d20.up.railway.app';
+  socket = io(_serverURL, { timeout: 3000, reconnectionAttempts: 3 });
   socket.on('connect_error', () => { socket = null; });
 } catch(e) { socket = null; }
 
