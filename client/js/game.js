@@ -1104,10 +1104,13 @@ loadModel('assets/sniper.glb', 40, model => {
   });
   _sniperMesh = model;
   _sniperMesh.visible = false;
+  _sniperMesh.layers.enable(10);
+  _sniperMesh.traverse(c => c.layers.enable(10));
   scene.add(_sniperMesh);
 
-  // Dedicated side light that always illuminates the sniper
+  // Dedicated side light that ONLY illuminates the sniper (layer 10), nothing else
   _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
+  _sniperLight.layers.set(10);
   scene.add(_sniperLight);
 
   // Store for icon rendering when equipped
@@ -1307,7 +1310,7 @@ function _updateSniperShots() {
           targetScene.add(_sniperLight);
         }
         _sniperLight.position.copy(camera.position)
-          .addScaledVector(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion), 20)
+          .addScaledVector(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion), 20)
           .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), 10);
       }
     } else if (_sniperLight) {
