@@ -1303,7 +1303,7 @@ function _updateSniperShots() {
           targetScene.add(_sniperLight);
         }
         _sniperLight.position.copy(camera.position)
-          .addScaledVector(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion), 20)
+          .addScaledVector(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion), 20)
           .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), 10);
       }
     } else if (_sniperLight) {
