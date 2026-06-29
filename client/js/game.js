@@ -431,7 +431,7 @@ function enterShootingRange() {
   shootingRangeScene.visible = true;
   _rangeAmbient.intensity = 1.5;
   _rangeLight.intensity = 3.0;
-  fpPos.set(0, 2, 0);
+  fpPos.set(55, 2, -155);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
   camera.position.copy(fpPos);
@@ -2897,7 +2897,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', e => {
   if (!pointerLocked) return;
-  if (gameMode === 'docked' || gameMode === 'lobby') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range') {
     const cap = 40;
     _fpMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
