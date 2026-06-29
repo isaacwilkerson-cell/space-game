@@ -341,7 +341,7 @@ function _inHangarZone() {
 
 const _lobbyRoomPrompt = document.createElement('div');
 _lobbyRoomPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
-_lobbyRoomPrompt.textContent = '[ E ]  RETURN TO YOUR ROOM';
+_lobbyRoomPrompt.textContent = '[ E ]  SHOOTING RANGE';
 document.body.appendChild(_lobbyRoomPrompt);
 
 function _inRoomZone() {
@@ -393,6 +393,65 @@ function exitLobby() {
     setTimeout(() => { setRoomLights(true); }, 350);
   }, 50);
 }
+// ── Shooting Range scene ──────────────────────────────────────────────────────
+const shootingRangeScene = new THREE.Group();
+scene.add(shootingRangeScene);
+shootingRangeScene.visible = false;
+const _rangeAmbient = new THREE.AmbientLight(0xffffff, 1.5);
+shootingRangeScene.add(_rangeAmbient);
+const _rangeLight = new THREE.PointLight(0xffffff, 3.0, 600);
+_rangeLight.position.set(0, 80, 0);
+shootingRangeScene.add(_rangeLight);
+
+let _rangeCollidables = [];
+let _rangeBBox = null;
+
+loadModel('assets/shooting_range.glb', 400, model => {
+  if (!model) { console.warn('Shooting range GLB failed'); return; }
+  model.traverse(c => {
+    if (c.isMesh) {
+      _rangeCollidables.push(c);
+    }
+  });
+  shootingRangeScene.add(model);
+  _rangeBBox = new THREE.Box3().setFromObject(model);
+  console.log('[shooting_range] loaded, bbox:', _rangeBBox);
+});
+
+const _rangeExitPrompt = document.createElement('div');
+_rangeExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
+_rangeExitPrompt.textContent = '[ E ]  EXIT SHOOTING RANGE';
+document.body.appendChild(_rangeExitPrompt);
+
+function enterShootingRange() {
+  gameMode = 'range';
+  _killAllExteriorLights();
+  lobbyScene.visible = false;
+  interiorScene.visible = false;
+  shootingRangeScene.visible = true;
+  _rangeAmbient.intensity = 1.5;
+  _rangeLight.intensity = 3.0;
+  fpPos.set(0, 2, 0);
+  fpVel.set(0, 0, 0);
+  fpYaw = 0; fpPitch = 0;
+  camera.position.copy(fpPos);
+  renderer.toneMappingExposure = 0.18;
+}
+
+function exitShootingRange() {
+  gameMode = 'lobby';
+  shootingRangeScene.visible = false;
+  lobbyScene.visible = true;
+  _rangeExitPrompt.style.display = 'none';
+  fpPos.set(40, -7.5, 50);
+  fpVel.set(0, 0, 0);
+  fpYaw = Math.PI; fpPitch = 0;
+  camera.position.copy(fpPos);
+  _lobbyAmbient.intensity = 1.2;
+  _lobbyLight.intensity = 1.0;
+  renderer.toneMappingExposure = 0.18;
+}
+
 // ── Hangar scene ──────────────────────────────────────────────────────────────
 const hangarScene = new THREE.Group();
 scene.add(hangarScene);
@@ -1207,13 +1266,14 @@ function _updateImpacts() {
 }
 
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
   if (_sniperCooldown > 0) return;
   _sniperCooldown = SNIPER_COOLDOWN;
   _sniperRecoil = 12; // frames of recoil
 
   const activeScene = gameMode === 'docked' ? interiorScene
                     : gameMode === 'lobby'   ? lobbyScene
+                    : gameMode === 'range'   ? shootingRangeScene
                     : scene;
 
   const dir = new THREE.Vector3();
@@ -1243,8 +1303,9 @@ function _fireSniper() {
 
   // Raycast for bullet impact
   const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
-  const collidables = gameMode === 'lobby' ? _lobbyCollidables
+  const collidables = gameMode === 'lobby'  ? _lobbyCollidables
                     : gameMode === 'docked' ? _roomCollidables
+                    : gameMode === 'range'  ? _rangeCollidables
                     : [];
   const hits = raycaster.intersectObjects(collidables, true);
   if (hits.length > 0) {
@@ -1274,7 +1335,7 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected') && pointerLocked && !_heldCrate;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate;
     _sniperMesh.visible = show;
     if (show) {
       // Sniper always lives in _viewmodelScene — no reparenting needed
@@ -1319,14 +1380,14 @@ function _updateSniperShots() {
 
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
 document.addEventListener('mousedown', e => {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'ejected') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
   if (e.button === 0) _fireSniper();
   if (e.button === 2) { e.preventDefault(); _sniperScoped = true; }
 });
 document.addEventListener('mouseup', e => {
   if (e.button === 2) _sniperScoped = false;
 });
-document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
 
 // Drop scope if player leaves planet
 // (handled naturally — _sniperScoped gets ignored outside planet_walk)
@@ -1855,8 +1916,7 @@ document.addEventListener('keydown', e => {
       if (_inHangarZone()) { enterHangar(); return; }
       if (_inRoomZone()) {
         _lobbyRoomPrompt.style.display = 'none';
-        exitLobby();
-        fpPos.set(-9.6, 2, 53); camera.position.copy(fpPos);
+        enterShootingRange();
         return;
       }
       if (fpPos.distanceTo(_lobbyExitPos) < 40) {
@@ -1866,6 +1926,7 @@ document.addEventListener('keydown', e => {
       }
     }
     if (gameMode === 'hangar') { exitHangar(); return; }
+    if (gameMode === 'range') { exitShootingRange(); return; }
   }
   if (e.key === 'f' || e.key === 'F') {
     if (gameMode === 'landed_ship') { startTakeoff(); return; }
@@ -1926,7 +1987,7 @@ function updateFP() {
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls
-  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : _roomCollidables;
+  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : _roomCollidables;
   if (_activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = 2.5;
     const origin = fpPos.clone();
@@ -1966,18 +2027,21 @@ function updateFP() {
     _lobbyExitPrompt.style.display = fpPos.distanceTo(_lobbyExitPos) < 40 ? 'block' : 'none';
     _hangarPrompt.style.display = _inHangarZone() ? 'block' : 'none';
     _lobbyRoomPrompt.style.display = _inRoomZone() ? 'block' : 'none';
+    _rangeExitPrompt.style.display = 'none';
+  } else if (gameMode === 'range') {
+    _rangeExitPrompt.style.display = 'block';
   }
 
   fpPos.add(fpVel);
   // Clamp to active scene bounding box
-  const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : _roomBBox;
+  const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : _roomBBox;
   if (_activeBBox) {
     const PAD = 2.5;
     fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
     fpPos.z = Math.max(_activeBBox.min.z + PAD, Math.min(_activeBBox.max.z - PAD, fpPos.z));
   }
   const moving = fpVel.lengthSq() > 0.01;
-  const _fpFloor = gameMode === 'lobby' ? -7.5 : 2;
+  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   const _fpSprinting2 = gameMode === 'lobby' && keys['shift'];
   // Bob: faster + bigger in lobby to feel like real footsteps
@@ -2723,7 +2787,7 @@ function drawReticle() {
     });
   }
 
-  if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
+  if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'range' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
 
   // Outer boundary ring
   rCtx.beginPath();
@@ -3462,7 +3526,7 @@ if (socket) {
 // ── Main loop ─────────────────────────────────────────────────────────────────
 function animate(t) {
   requestAnimationFrame(animate);
-  if (gameMode === 'docked' || gameMode === 'lobby') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range') {
     updateFP();
     elPos.textContent = `${fpPos.x.toFixed(1)}, ${fpPos.z.toFixed(1)} (fp)`;
   } else if (gameMode === 'ejected') {
@@ -3570,8 +3634,8 @@ function animate(t) {
     }
   }
 
-  // Stars update every frame except when docked
-  if (gameMode !== 'docked' && window._updateStars) {
+  // Stars update every frame except when docked or in shooting range
+  if (gameMode !== 'docked' && gameMode !== 'range' && window._updateStars) {
     if (window._setStarsVisible) window._setStarsVisible(true);
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
