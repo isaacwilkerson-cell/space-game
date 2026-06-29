@@ -393,14 +393,15 @@ function exitLobby() {
     setTimeout(() => { setRoomLights(true); }, 350);
   }, 50);
 }
-// ── Shooting Range scene ──────────────────────────────────────────────────────
-const shootingRangeScene = new THREE.Group();
-scene.add(shootingRangeScene);
-shootingRangeScene.visible = false;
-const _rangeAmbient = new THREE.AmbientLight(0xffffff, 1.5);
+// ── Shooting Range scene — standalone THREE.Scene so space station never shows ─
+const shootingRangeScene = new THREE.Scene();
+const _rangeAmbient = new THREE.AmbientLight(0xffffff, 3.5);
 shootingRangeScene.add(_rangeAmbient);
-const _rangeLight = new THREE.PointLight(0xffffff, 3.0, 600);
-_rangeLight.position.set(0, 80, 0);
+const _rangeDirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+_rangeDirLight.position.set(1, 2, 1).normalize();
+shootingRangeScene.add(_rangeDirLight);
+const _rangeLight = new THREE.PointLight(0xffffff, 6.0, 1000);
+_rangeLight.position.set(0, 150, 0);
 shootingRangeScene.add(_rangeLight);
 
 let _rangeCollidables = [];
@@ -428,19 +429,15 @@ function enterShootingRange() {
   _killAllExteriorLights();
   lobbyScene.visible = false;
   interiorScene.visible = false;
-  shootingRangeScene.visible = true;
-  _rangeAmbient.intensity = 1.5;
-  _rangeLight.intensity = 3.0;
   fpPos.set(55, 2, -155);
   fpVel.set(0, 0, 0);
-  fpYaw = 0; fpPitch = 0;
+  fpYaw = Math.PI; fpPitch = 0;
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 0.18;
 }
 
 function exitShootingRange() {
   gameMode = 'lobby';
-  shootingRangeScene.visible = false;
   lobbyScene.visible = true;
   _rangeExitPrompt.style.display = 'none';
   fpPos.set(40, -7.5, 50);
@@ -3640,7 +3637,11 @@ function animate(t) {
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
   }
-  renderer.render(scene, camera);
+  if (gameMode === 'range') {
+    renderer.render(shootingRangeScene, camera);
+  } else {
+    renderer.render(scene, camera);
+  }
   // Second pass: render gun on top with fresh depth so it never clips into walls
   if (_sniperMesh && _sniperMesh.visible) {
     renderer.clearDepth();
