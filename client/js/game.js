@@ -481,29 +481,85 @@ _hangarTabStyle.textContent = `
 document.head.appendChild(_hangarTabStyle);
 
 // ── Inventory bar ─────────────────────────────────────────────────────────────
+// ── Inventory system ──────────────────────────────────────────────────────────
+const INVENTORY_SIZE = 8;
+const _inventory = Array(INVENTORY_SIZE).fill(null); // null = empty
+let _activeSlot = 0;
+
 const _inventoryBar = document.createElement('div');
 _inventoryBar.id = 'inventory-bar';
 _inventoryBar.style.cssText = `
   position:fixed; bottom:12px; left:50%; transform:translateX(-50%);
   display:flex; gap:6px; pointer-events:none; z-index:100;
 `;
-for (let i = 0; i < 8; i++) {
+
+const _invSlotEls = [];
+for (let i = 0; i < INVENTORY_SIZE; i++) {
   const slot = document.createElement('div');
   slot.style.cssText = `
     width:52px; height:52px;
     background:rgba(0,0,0,0.6);
-    border:1px solid rgba(0,255,255,0.35);
+    border:2px solid rgba(0,255,255,0.25);
     box-shadow:0 0 6px rgba(0,255,255,0.1) inset;
     border-radius:3px;
-    display:flex; align-items:center; justify-content:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; transition:border-color 0.1s;
   `;
-  const label = document.createElement('span');
-  label.style.cssText = 'color:rgba(0,255,255,0.25);font-family:"Courier New",monospace;font-size:10px;';
-  label.textContent = i + 1;
-  slot.appendChild(label);
+  const num = document.createElement('span');
+  num.style.cssText = 'position:absolute;bottom:2px;right:4px;color:rgba(0,255,255,0.3);font-family:"Courier New",monospace;font-size:9px;';
+  num.textContent = i + 1;
+  const icon = document.createElement('div');
+  icon.style.cssText = 'font-size:22px;line-height:1;';
+  slot.appendChild(icon);
+  slot.appendChild(num);
   _inventoryBar.appendChild(slot);
+  _invSlotEls.push({ el: slot, icon });
 }
 document.body.appendChild(_inventoryBar);
+
+// Item definitions
+const _itemDefs = {
+  sniper: { icon: '🔫', name: 'Sniper Rifle' },
+};
+
+function _invSetActive(idx) {
+  _activeSlot = (idx + INVENTORY_SIZE) % INVENTORY_SIZE;
+  _invSlotEls.forEach((s, i) => {
+    s.el.style.borderColor = i === _activeSlot ? '#0ff' : 'rgba(0,255,255,0.25)';
+    s.el.style.boxShadow   = i === _activeSlot
+      ? '0 0 12px rgba(0,255,255,0.5) inset, 0 0 8px rgba(0,255,255,0.4)'
+      : '0 0 6px rgba(0,255,255,0.1) inset';
+    s.el.style.transform   = i === _activeSlot ? 'translateY(-4px)' : 'none';
+  });
+  // Show sniper only if active slot has it
+  _hasSniper = _inventory[_activeSlot] === 'sniper';
+}
+
+function _invAddItem(itemId) {
+  // Put in first empty slot
+  const emptyIdx = _inventory.indexOf(null);
+  if (emptyIdx === -1) return; // full
+  _inventory[emptyIdx] = itemId;
+  const def = _itemDefs[itemId];
+  _invSlotEls[emptyIdx].icon.textContent = def ? def.icon : '?';
+  _invSetActive(emptyIdx); // auto-select the new item
+}
+
+// Switch slots with 1-8 keys
+window.addEventListener('keydown', e => {
+  const n = parseInt(e.key);
+  if (n >= 1 && n <= 8) { _invSetActive(n - 1); }
+});
+
+// Switch slots with scroll wheel
+window.addEventListener('wheel', e => {
+  if (document.pointerLockElement) {
+    _invSetActive(_activeSlot + (e.deltaY > 0 ? 1 : -1));
+  }
+}, { passive: true });
+
+// Init — highlight slot 1
+_invSetActive(0);
 
 // Tab switching
 _hangarUI.querySelectorAll('.h-tab').forEach(btn => {
@@ -1010,7 +1066,8 @@ loadModel('assets/sniper.glb', 40, model => {
 
 // Shop equip button
 shopEl.querySelector('#shop-sniper-btn').addEventListener('click', () => {
-  _hasSniper = true;
+  if (_inventory.includes('sniper')) return;
+  _invAddItem('sniper');
   const btn = shopEl.querySelector('#shop-sniper-btn');
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
