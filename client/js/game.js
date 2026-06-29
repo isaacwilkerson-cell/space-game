@@ -1102,6 +1102,10 @@ loadModel('assets/sniper.glb', 40, model => {
   _sniperMesh.visible = false;
   scene.add(_sniperMesh);
 
+  // Dedicated side light that always illuminates the sniper
+  _sniperLight = new THREE.PointLight(0xffffff, 2.5, 80);
+  scene.add(_sniperLight);
+
   // Store for icon rendering when equipped
   window._sniperModelRef = model;
 });
@@ -1120,7 +1124,8 @@ shopEl.querySelector('#shop-sniper-btn').addEventListener('click', () => {
 });
 
 // Recoil state
-let _sniperRecoil = 0; // 0 = resting, counts down after shot
+let _sniperRecoil = 0;
+let _sniperLight  = null;
 
 // Muzzle flash light (reused)
 const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
@@ -1290,7 +1295,21 @@ function _updateSniperShots() {
       _sniperMesh.quaternion.copy(camera.quaternion);
       _sniperMesh.rotateY(Math.PI);
       _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
+
+      // Move side light to correct scene and position it to the left of camera
+      if (_sniperLight) {
+        if (_sniperLight.parent !== targetScene) {
+          if (_sniperLight.parent) _sniperLight.parent.remove(_sniperLight);
+          targetScene.add(_sniperLight);
+        }
+        _sniperLight.position.copy(camera.position)
+          .addScaledVector(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion), 20)
+          .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), 10);
+      }
+    } else if (_sniperLight) {
+      _sniperLight.intensity = 0;
     }
+    if (_sniperLight) _sniperLight.intensity = show ? 2.5 : 0;
   }
 
   // Scope zoom
