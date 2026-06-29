@@ -1037,10 +1037,7 @@ const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
 
 function _spawnImpact(pos, normal, activeScene) {
-  // Flash light
-  const light = new THREE.PointLight(0xffaa00, 60, 80);
-  light.position.copy(pos);
-  activeScene.add(light);
+  const light = null;
 
   // Sparks — more of them, live longer
   const sparks = [];
@@ -1059,7 +1056,7 @@ function _spawnImpact(pos, normal, activeScene) {
       life: 60 + Math.random() * 60 // 1–2 seconds each
     });
   }
-  _impacts.push({ light, sparks, life: 90, maxLife: 90, scene: activeScene });
+  _impacts.push({ sparks, life: 90, maxLife: 90, scene: activeScene });
 
   // Bullet hole decal — aligned to surface normal
   const hole = new THREE.Mesh(_holeGeo, _holeMat.clone());
@@ -1082,7 +1079,6 @@ function _updateImpacts() {
   for (let i = _impacts.length - 1; i >= 0; i--) {
     const imp = _impacts[i];
     imp.life--;
-    imp.light.intensity = 60 * (imp.life / imp.maxLife);
 
     for (let j = imp.sparks.length - 1; j >= 0; j--) {
       const s = imp.sparks[j];
@@ -1094,7 +1090,6 @@ function _updateImpacts() {
     }
 
     if (imp.life <= 0 && imp.sparks.length === 0) {
-      imp.scene.remove(imp.light);
       _impacts.splice(i, 1);
     }
   }
@@ -1151,7 +1146,7 @@ function _fireSniper() {
 
 function _updateSniperShots() {
   if (_sniperCooldown > 0) _sniperCooldown--;
-  if (_muzzleFlash.intensity > 0) _muzzleFlash.intensity *= 0.25; // fast fade
+  _muzzleFlash.intensity = 0; // instant off
   _updateImpacts();
 
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
