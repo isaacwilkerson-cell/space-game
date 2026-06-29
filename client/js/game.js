@@ -1030,43 +1030,71 @@ const _impacts = [];
 const _impactGeo = new THREE.SphereGeometry(1.2, 4, 4);
 const _impactMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
 
-function _spawnImpact(pos, activeScene) {
+// Bullet hole decal geo (flat circle)
+const _holeGeo = new THREE.CircleGeometry(1.5, 8);
+const _holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, depthWrite: false, transparent: true, opacity: 1 });
+const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
+const _bulletHoles = [];
+
+function _spawnImpact(pos, normal, activeScene) {
+  // Flash light
   const light = new THREE.PointLight(0xffaa00, 60, 80);
   light.position.copy(pos);
   activeScene.add(light);
 
-  // Spark meshes
+  // Sparks — more of them, live longer
   const sparks = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     const m = new THREE.Mesh(_impactGeo, _impactMat);
     m.position.copy(pos);
-    m.scale.setScalar(0.4 + Math.random() * 0.6);
+    m.scale.setScalar(0.4 + Math.random() * 0.8);
     activeScene.add(m);
     sparks.push({
       mesh: m,
       vel: new THREE.Vector3(
-        (Math.random() - 0.5) * 4,
-        Math.random() * 5,
-        (Math.random() - 0.5) * 4
-      )
+        (Math.random() - 0.5) * 6,
+        Math.random() * 7,
+        (Math.random() - 0.5) * 6
+      ),
+      life: 60 + Math.random() * 60 // 1–2 seconds each
     });
   }
-  _impacts.push({ light, sparks, life: 20, scene: activeScene });
+  _impacts.push({ light, sparks, life: 90, maxLife: 90, scene: activeScene });
+
+  // Bullet hole decal — aligned to surface normal
+  const hole = new THREE.Mesh(_holeGeo, _holeMat.clone());
+  hole.position.copy(pos).addScaledVector(normal, 0.3); // offset slightly off surface
+  hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  activeScene.add(hole);
+  _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
 }
 
 function _updateImpacts() {
+  // Update bullet holes
+  for (let i = _bulletHoles.length - 1; i >= 0; i--) {
+    const h = _bulletHoles[i];
+    h.life--;
+    // Fade out in last 5 seconds
+    if (h.life < 300) h.mesh.material.opacity = h.life / 300;
+    if (h.life <= 0) { h.scene.remove(h.mesh); _bulletHoles.splice(i, 1); }
+  }
+
   for (let i = _impacts.length - 1; i >= 0; i--) {
     const imp = _impacts[i];
     imp.life--;
-    imp.light.intensity = 60 * (imp.life / 20);
-    imp.sparks.forEach(s => {
+    imp.light.intensity = 60 * (imp.life / imp.maxLife);
+
+    for (let j = imp.sparks.length - 1; j >= 0; j--) {
+      const s = imp.sparks[j];
       s.mesh.position.add(s.vel);
-      s.vel.y -= 0.4; // gravity
-      s.mesh.scale.multiplyScalar(0.85);
-    });
-    if (imp.life <= 0) {
+      s.vel.y -= 0.3;
+      s.vel.multiplyScalar(0.96); // drag
+      s.life--;
+      if (s.life <= 0) { imp.scene.remove(s.mesh); imp.sparks.splice(j, 1); }
+    }
+
+    if (imp.life <= 0 && imp.sparks.length === 0) {
       imp.scene.remove(imp.light);
-      imp.sparks.forEach(s => imp.scene.remove(s.mesh));
       _impacts.splice(i, 1);
     }
   }
@@ -1114,7 +1142,8 @@ function _fireSniper() {
                     : [];
   const hits = raycaster.intersectObjects(collidables, true);
   if (hits.length > 0) {
-    _spawnImpact(hits[0].point, activeScene);
+    const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
+    _spawnImpact(hits[0].point, normal, activeScene);
   }
 
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
@@ -1122,7 +1151,7 @@ function _fireSniper() {
 
 function _updateSniperShots() {
   if (_sniperCooldown > 0) _sniperCooldown--;
-  if (_muzzleFlash.intensity > 0) _muzzleFlash.intensity *= 0.5; // fade flash fast
+  if (_muzzleFlash.intensity > 0) _muzzleFlash.intensity *= 0.25; // fast fade
   _updateImpacts();
 
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
