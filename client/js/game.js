@@ -481,6 +481,8 @@ _hangarTabStyle.textContent = `
 document.head.appendChild(_hangarTabStyle);
 
 // ── Inventory bar ─────────────────────────────────────────────────────────────
+let _hasSniper = false;
+
 // ── Inventory system ──────────────────────────────────────────────────────────
 const INVENTORY_SIZE = 8;
 const _inventory = Array(INVENTORY_SIZE).fill(null); // null = empty
@@ -1020,7 +1022,7 @@ shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
 document.addEventListener('keydown', e => { if (shopOpen  && e.key === 'Escape') { closeShop(); e.stopPropagation(); } });
 
 // ── Sniper System ─────────────────────────────────────────────────────────────
-let _hasSniper      = false;
+// _hasSniper declared earlier near inventory system
 let _sniperMesh     = null; // loaded GLB scene, attached to camera each frame
 let _sniperScoped   = false;
 let _sniperCooldown = 0;
