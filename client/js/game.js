@@ -521,7 +521,7 @@ document.body.appendChild(_inventoryBar);
 
 // Item definitions
 const _itemDefs = {
-  sniper: { icon: '🔫', name: 'Sniper Rifle' },
+  sniper: { name: 'Sniper Rifle' },
 };
 
 function _invSetActive(idx) {
@@ -1053,23 +1053,64 @@ const _scopeEl = (() => {
   return el;
 })();
 
+// Small offscreen renderer for inventory icons
+const _iconRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+_iconRenderer.setSize(48, 48);
+_iconRenderer.setClearColor(0x000000, 0);
+const _iconScene  = new THREE.Scene();
+const _iconCamera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+_iconCamera.position.set(0, 10, 40);
+_iconCamera.lookAt(0, 0, 0);
+_iconScene.add(new THREE.AmbientLight(0xffffff, 1.5));
+const _iconDirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+_iconDirLight.position.set(1, 2, 2);
+_iconScene.add(_iconDirLight);
+
+function _renderIconToSlot(model, slotIdx) {
+  // Clone model into icon scene
+  const clone = model.clone(true);
+  // Center it
+  const box = new THREE.Box3().setFromObject(clone);
+  const center = box.getCenter(new THREE.Vector3());
+  clone.position.sub(center);
+  clone.rotation.set(0.2, -0.5, 0);
+  _iconScene.add(clone);
+  _iconRenderer.render(_iconScene, _iconCamera);
+  _iconScene.remove(clone);
+
+  const dataURL = _iconRenderer.domElement.toDataURL();
+  const img = document.createElement('img');
+  img.src = dataURL;
+  img.style.cssText = 'width:44px;height:44px;object-fit:contain;';
+  _invSlotEls[slotIdx].icon.textContent = '';
+  _invSlotEls[slotIdx].icon.appendChild(img);
+}
+
 // Load the sniper model (done once; shown/hidden based on equip state)
 loadModel('assets/sniper.glb', 40, model => {
   if (!model) return;
   model.traverse(c => {
     if (!c.isMesh || !c.material) return;
-    const old = Array.isArray(c.material) ? c.material[0] : c.material;
-    c.material = new THREE.MeshBasicMaterial({ map: old.map || null, color: 0xffffff });
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    mats.forEach(m => {
+      m.emissive = new THREE.Color(0x888888);
+      m.emissiveIntensity = 0.5;
+    });
   });
   _sniperMesh = model;
   _sniperMesh.visible = false;
   scene.add(_sniperMesh);
+
+  // Store for icon rendering when equipped
+  window._sniperModelRef = model;
 });
 
 // Shop equip button
 shopEl.querySelector('#shop-sniper-btn').addEventListener('click', () => {
   if (_inventory.includes('sniper')) return;
+  const slotIdx = _inventory.indexOf(null);
   _invAddItem('sniper');
+  if (window._sniperModelRef) _renderIconToSlot(window._sniperModelRef, slotIdx);
   const btn = shopEl.querySelector('#shop-sniper-btn');
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
