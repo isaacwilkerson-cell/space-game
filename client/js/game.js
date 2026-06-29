@@ -264,6 +264,7 @@ const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _fpQuat  = new THREE.Quaternion();
 
+const _viewmodelScene = new THREE.Scene();
 const interiorScene = new THREE.Group();
 scene.add(interiorScene);
 interiorScene.visible = false;
@@ -1100,21 +1101,15 @@ loadModel('assets/sniper.glb', 40, model => {
       m.emissiveIntensity = 1;
       if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.4);
       if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.6);
-      // Viewmodel trick — never depth-occluded by walls/floor, so it can't phase through them
-      m.depthTest = false;
     });
-    c.renderOrder = 999;
   });
   _sniperMesh = model;
   _sniperMesh.visible = false;
-  _sniperMesh.layers.enable(10);
-  _sniperMesh.traverse(c => c.layers.enable(10));
-  scene.add(_sniperMesh);
+  _viewmodelScene.add(_sniperMesh);
 
-  // Dedicated side light that ONLY illuminates the sniper (layer 10), nothing else
+  // Dedicated side light — lives in viewmodel scene so it only ever lights the gun
   _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
-  _sniperLight.layers.set(10);
-  scene.add(_sniperLight);
+  _viewmodelScene.add(_sniperLight);
 
   // Store for icon rendering when equipped
   window._sniperModelRef = model;
@@ -1282,14 +1277,7 @@ function _updateSniperShots() {
     const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected') && pointerLocked && !_heldCrate;
     _sniperMesh.visible = show;
     if (show) {
-      // Move sniper to the correct active scene
-      const targetScene = gameMode === 'docked' ? interiorScene
-                        : gameMode === 'lobby'   ? lobbyScene
-                        : scene;
-      if (_sniperMesh.parent !== targetScene) {
-        if (_sniperMesh.parent) _sniperMesh.parent.remove(_sniperMesh);
-        targetScene.add(_sniperMesh);
-      }
+      // Sniper always lives in _viewmodelScene — no reparenting needed
       const dir   = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const right = new THREE.Vector3(1, 0,  0).applyQuaternion(camera.quaternion);
       const up    = new THREE.Vector3(0, 1,  0).applyQuaternion(camera.quaternion);
@@ -1306,12 +1294,7 @@ function _updateSniperShots() {
       _sniperMesh.rotateY(Math.PI);
       _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
 
-      // Move side light to correct scene and position it to the left of camera
       if (_sniperLight) {
-        if (_sniperLight.parent !== targetScene) {
-          if (_sniperLight.parent) _sniperLight.parent.remove(_sniperLight);
-          targetScene.add(_sniperLight);
-        }
         _sniperLight.position.copy(camera.position)
           .addScaledVector(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion), 20)
           .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), 10);
@@ -3594,6 +3577,13 @@ function animate(t) {
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
   }
   renderer.render(scene, camera);
+  // Second pass: render gun on top with fresh depth so it never clips into walls
+  if (_sniperMesh && _sniperMesh.visible) {
+    renderer.clearDepth();
+    renderer.autoClear = false;
+    renderer.render(_viewmodelScene, camera);
+    renderer.autoClear = true;
+  }
   drawReticle();
 }
 enterStation();
