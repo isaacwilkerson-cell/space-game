@@ -2836,7 +2836,7 @@ const MM_RANGE = 3000; // world units visible from center
 
 function _drawMinimap() {
   if (!_mmCtx) return;
-  const inSpace = gameMode === 'flight' || gameMode === 'ejected';
+  const inSpace = gameMode === 'flight';
   _minimapCanvas.style.display = inSpace ? 'block' : 'none';
   if (!inSpace) return;
 
