@@ -526,10 +526,9 @@ loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
   if (!model) return;
   _surfTerrainMesh = model;
   _planetSurfScene.add(_surfTerrainMesh);
-  // Raycast to find top surface, shift so surface is at y=0
-  _surfRaycaster.set(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
-  const hits = _surfRaycaster.intersectObject(_surfTerrainMesh, true);
-  if (hits.length > 0) model.position.y -= hits[0].point.y;
+  // Shift so the highest point sits at y=0 — player spawns above at y=50
+  const box = new THREE.Box3().setFromObject(model);
+  model.position.y -= box.max.y;
   _surfTerrainReady = true;
 });
 
