@@ -509,6 +509,12 @@ let _surfCurrentPlanet = null;
 let _surfShipWorldPos = null;
 const _surfRaycaster = new THREE.Raycaster();
 
+// Landing animation state
+let _surfLanding = false;
+let _surfLandT = 0;          // 0→1 progress
+const SURF_LAND_DUR = 180;   // frames (~3s)
+let _surfLandShip = null;    // ship clone in surface scene
+
 const _surfBoardPrompt = document.createElement('div');
 _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
   'color:#0ff;font-family:monospace;font-size:16px;letter-spacing:2px;text-shadow:0 0 8px #000;' +
@@ -558,24 +564,32 @@ function _enterPlanetSurface(planet) {
   // Hide flat ground if terrain model is ready, otherwise show it
   _surfGround.visible = !(isPhoenix && _surfTerrainReady);
 
-  // Spawn player just above terrain surface
   _surfShipWorldPos = new THREE.Vector3(0, 0, 0);
-  _surfPos.set(0, 50, 20);
   _surfVel.set(0, 0, 0);
   _surfVertVel = 0;
-  _surfYaw = 0;
-  _surfPitch = 0;
+  _surfYaw = Math.PI; // face forward
+  _surfPitch = -0.18;
 
   renderer.setClearColor(0x000000, 0);
   renderer.toneMappingExposure = 1.0;
 
-  // Hide ship and landing menu in surface mode
   selfMesh.visible = false;
   if (_landedMenu) _landedMenu.style.display = 'none';
   elHud.style.display = 'none';
 
   gameMode = 'planet_surface';
-  if (_surfHudEl) _surfHudEl.style.display = 'block';
+  if (_surfHudEl) _surfHudEl.style.display = 'none'; // hidden during landing
+
+  // Start landing animation — clone ship into surface scene
+  _surfLanding = true;
+  _surfLandT = 0;
+  if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
+  loadModel('assets/ships/spaceship.glb', 60, m => {
+    if (!m) return;
+    _surfLandShip = m;
+    _surfLandShip.position.set(0, 800, 0);
+    _planetSurfScene.add(_surfLandShip);
+  });
 }
 
 function _exitPlanetSurface() {
@@ -587,6 +601,42 @@ function _exitPlanetSurface() {
 }
 
 function _updatePlanetSurface() {
+  // ── Landing animation ──────────────────────────────────
+  if (_surfLanding) {
+    if (_surfLandShip) {
+      _surfLandT = Math.min(1, _surfLandT + 1 / SURF_LAND_DUR);
+      const ease = 1 - Math.pow(1 - _surfLandT, 3); // ease-out cubic
+      const shipY = 800 * (1 - ease);
+      _surfLandShip.position.set(0, Math.max(shipY, 2), 0);
+
+      // Camera follows from behind/above the ship
+      const camDist = 160, camHeight = 60;
+      camera.position.set(0, shipY + camHeight, camDist);
+      camera.lookAt(0, shipY, 0);
+
+      if (_surfLandT >= 1) {
+        // Ship landed — brief pause then eject player
+        _surfLanding = false;
+        _surfLandT = 0;
+
+        // Fade to black briefly then spawn player
+        _setFog(undefined, 1);
+        setTimeout(() => {
+          if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
+          _surfPos.set(0, 50, 30);
+          _surfVel.set(0, 0, 0);
+          _surfVertVel = 0;
+          _surfYaw = Math.PI;
+          _surfPitch = 0;
+          if (_surfHudEl) _surfHudEl.style.display = 'block';
+          _setFog(undefined, 0);
+        }, 600);
+      }
+    }
+    _pwMouseDX = 0; _pwMouseDY = 0;
+    return; // no player controls during landing
+  }
+
   // Mouse look
   _surfYaw   -= (_pwMouseDX || 0) * 0.0028;
   _surfPitch -= (_pwMouseDY || 0) * 0.0028;
