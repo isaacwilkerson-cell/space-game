@@ -464,7 +464,7 @@ function exitShootingRange() {
 const _planetSurfScene = new THREE.Scene();
 // no fog on planet surface
 
-const _surfAmbient = new THREE.AmbientLight(0xffffff, 0.7);
+const _surfAmbient = new THREE.AmbientLight(0xffffff, 2.5);
 _planetSurfScene.add(_surfAmbient);
 const _surfDirLight = new THREE.DirectionalLight(0xfff4e0, 1.4);
 _surfDirLight.position.set(1, 2, 0.5).normalize();
@@ -522,20 +522,6 @@ let _surfTerrainReady = false;
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
   if (!model) return;
-  // Convert to unlit so it looks exactly like the original asset
-  model.traverse(c => {
-    if (!c.isMesh || !c.material) return;
-    const mats = Array.isArray(c.material) ? c.material : [c.material];
-    mats.forEach((m, i) => {
-      const basic = new THREE.MeshBasicMaterial({
-        map:        m.map        || null,
-        color:      m.color      || new THREE.Color(1,1,1),
-        vertexColors: m.vertexColors,
-      });
-      if (Array.isArray(c.material)) c.material[i] = basic;
-      else c.material = basic;
-    });
-  });
   _surfTerrainMesh = model;
   _planetSurfScene.add(_surfTerrainMesh);
   const box = new THREE.Box3().setFromObject(model);
@@ -560,7 +546,8 @@ function _enterPlanetSurface(planet) {
   }
 
   const isPhoenix = planet.userData.mapName === 'Phoenix';
-  _surfGround.visible = !isPhoenix;
+  // Hide flat ground if terrain model is ready, otherwise show it
+  _surfGround.visible = !(isPhoenix && _surfTerrainReady);
 
   // Spawn player just above terrain surface
   _surfShipWorldPos = new THREE.Vector3(0, 0, 0);
