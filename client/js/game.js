@@ -502,7 +502,7 @@ const _surfPos = new THREE.Vector3(0, 1.8, 0);
 const _surfVel = new THREE.Vector3();
 let _surfYaw = 0, _surfPitch = 0;
 let _surfVertVel = 0;
-const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 2.5, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
+const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 0.65, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
 const SURF_JUMP_V = 0.5, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
@@ -518,6 +518,7 @@ document.body.appendChild(_surfBoardPrompt);
 
 let _surfTerrainMesh = null;
 let _surfTerrainReady = false;
+let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/maadim_valles_outflow_mars.glb', 3000, model => {
@@ -539,6 +540,9 @@ loadModel('assets/maadim_valles_outflow_mars.glb', 3000, model => {
   _planetSurfScene.remove(_surfGround);
   const box = new THREE.Box3().setFromObject(model);
   model.position.y -= box.max.y;
+  // Store XZ half-extents so the border matches terrain edges
+  _surfTerrainHalfX = (box.max.x - box.min.x) / 2 * 0.92;
+  _surfTerrainHalfZ = (box.max.z - box.min.z) / 2 * 0.92;
   _surfTerrainReady = true;
 });
 
@@ -619,16 +623,11 @@ function _updatePlanetSurface() {
   _surfPos.y += _surfVertVel;
   if (_surfPos.y < _groundY) { _surfPos.y = _groundY; _surfVertVel = 0; }
 
-  // World border — clamp to terrain bounds
-  const SURF_BORDER = 1400;
-  const _dx = _surfPos.x, _dz = _surfPos.z;
-  const _distFromCenter = Math.sqrt(_dx * _dx + _dz * _dz);
-  if (_distFromCenter > SURF_BORDER) {
-    const _ratio = SURF_BORDER / _distFromCenter;
-    _surfPos.x = _dx * _ratio;
-    _surfPos.z = _dz * _ratio;
-    _surfVel.x = 0; _surfVel.z = 0;
-  }
+  // World border — clamp to terrain edges
+  if (_surfPos.x >  _surfTerrainHalfX) { _surfPos.x =  _surfTerrainHalfX; _surfVel.x = 0; }
+  if (_surfPos.x < -_surfTerrainHalfX) { _surfPos.x = -_surfTerrainHalfX; _surfVel.x = 0; }
+  if (_surfPos.z >  _surfTerrainHalfZ) { _surfPos.z =  _surfTerrainHalfZ; _surfVel.z = 0; }
+  if (_surfPos.z < -_surfTerrainHalfZ) { _surfPos.z = -_surfTerrainHalfZ; _surfVel.z = 0; }
 
   // Camera
   const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch);
