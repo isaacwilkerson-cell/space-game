@@ -522,8 +522,20 @@ let _surfTerrainReady = false;
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
   if (!model) return;
+  // Fix texture encoding so colors look correct under Three.js tone mapping
+  model.traverse(c => {
+    if (!c.isMesh || !c.material) return;
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    mats.forEach(m => {
+      if (m.map)          m.map.encoding          = THREE.sRGBEncoding;
+      if (m.emissiveMap)  m.emissiveMap.encoding   = THREE.sRGBEncoding;
+      m.needsUpdate = true;
+    });
+  });
   _surfTerrainMesh = model;
   _planetSurfScene.add(_surfTerrainMesh);
+  // Remove flat ground completely — terrain replaces it
+  _planetSurfScene.remove(_surfGround);
   const box = new THREE.Box3().setFromObject(model);
   model.position.y -= box.max.y;
   _surfTerrainReady = true;
@@ -558,6 +570,7 @@ function _enterPlanetSurface(planet) {
   _surfPitch = 0;
 
   renderer.setClearColor(0x000000, 0);
+  renderer.toneMappingExposure = 1.0;
 
   // Hide ship and landing menu in surface mode
   selfMesh.visible = false;
