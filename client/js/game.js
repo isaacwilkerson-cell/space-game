@@ -1758,6 +1758,13 @@ function landOnPlanet(planet) {
   _nearPlanet   = null;
   landPrompt.style.display = 'none';
   self.velocity.set(0, 0, 0);
+  // Skip landing animation — teleport straight to surface
+  _shipLocalPos.copy(planet.worldToLocal(selfMesh.position.clone()));
+  _shipLocalQuat.copy(selfMesh.quaternion).premultiply(planet.quaternion.clone().invert());
+  elHud.style.display = 'none';
+  if (!document.pointerLockElement) document.body.requestPointerLock();
+  _enterPlanetSurface(planet);
+  return;
 
   const r = planet.userData.collisionRadius || 700;
   const away = selfMesh.position.clone().sub(planet.position).normalize();
