@@ -1568,18 +1568,20 @@ const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
 
 function _sampleHitColor(hit) {
-  // Try UV texture sampling first
-  if (_rangeTexReady && hit.uv && hit.object && hit.object.userData.hasTargetTex) {
-    const u = hit.uv.x, v = 1 - hit.uv.y;
-    const px = Math.floor(u * _rangeTexCanvas.width);
-    const py = Math.floor(v * _rangeTexCanvas.height);
-    try {
-      const d = _rangeTexCtx.getImageData(px, py, 1, 1).data;
-      if (d[0] > 150 && d[1] < 80 && d[2] < 80) return 'red';   // red zone
-      if (d[0] < 60  && d[1] < 60  && d[2] < 60)  return 'black'; // black zone
-    } catch(e) {}
+  // Use world-space XY position to detect red bullseye zones on the target
+  const x = hit.point.x, y = hit.point.y;
+  // Red circles: [centerX, centerY, radius]
+  const redZones = [
+    [57, 38,  9],   // head bullseye
+    [35, 15,  8],   // left shoulder
+    [80, 15,  8],   // right shoulder
+    [57, -7, 13],   // center chest X
+  ];
+  for (const [cx, cy, r] of redZones) {
+    const dx = x - cx, dy = y - cy;
+    if (dx*dx + dy*dy < r*r) return 'red';
   }
-  return 'black'; // default
+  return 'black';
 }
 
 function _spawnImpact(pos, normal, activeScene, hitColor) {
