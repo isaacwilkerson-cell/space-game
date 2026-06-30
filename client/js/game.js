@@ -617,20 +617,16 @@ function _updatePlanetSurface() {
       camera.lookAt(0, shipY, 0);
 
       if (_surfLandT >= 1) {
-        // Remove ship immediately, fade to black, then hand control to player
-        if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
-        _setFog(undefined, 1);
-        setTimeout(() => {
-          _surfLanding = false;
-          _surfLandT = 0;
-          _surfPos.set(0, 50, 30);
-          _surfVel.set(0, 0, 0);
-          _surfVertVel = 0;
-          _surfYaw = Math.PI;
-          _surfPitch = 0;
-          if (_surfHudEl) _surfHudEl.style.display = 'block';
-          _setFog(undefined, 0);
-        }, 700);
+        // Ship stays on terrain — just hand control to player standing next to it
+        _surfLanding = false;
+        _surfLandT = 0;
+        // Spawn player just to the side of the ship
+        _surfPos.set(60, 50, 0);
+        _surfVel.set(0, 0, 0);
+        _surfVertVel = 0;
+        _surfYaw = Math.PI / 2; // facing away from ship
+        _surfPitch = 0;
+        if (_surfHudEl) _surfHudEl.style.display = 'block';
       }
     }
     _pwMouseDX = 0; _pwMouseDY = 0;
