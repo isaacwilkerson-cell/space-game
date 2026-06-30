@@ -2704,6 +2704,10 @@ function addRemotePlayer(data) {
     while (mesh.children.length) mesh.remove(mesh.children[0]);
     mesh.add(model);
   });
+  const shipTag = _makeNameTag(data.name || 'Pilot');
+  shipTag.scale.set(20, 5, 1);
+  shipTag.position.set(0, 18, 0);
+  mesh.add(shipTag);
 
   // FP mesh for lobby (astronaut in lobbyScene)
   const lobbyMesh = new THREE.Group();
