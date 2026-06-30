@@ -1568,19 +1568,18 @@ const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
 
 function _sampleHitColor(hit) {
-  // Use world-space XY position to detect red bullseye zones on the target
-  const x = hit.point.x, y = hit.point.y;
-  // Red circles: [centerX, centerY, radius]
-  const redZones = [
-    [57, 38,  9],   // head bullseye
-    [35, 15,  8],   // left shoulder
-    [80, 15,  8],   // right shoulder
-    [57, -7, 13],   // center chest X
-  ];
-  for (const [cx, cy, r] of redZones) {
-    const dx = x - cx, dy = y - cy;
-    if (dx*dx + dy*dy < r*r) return 'red';
+  // First check: is the hit mesh itself red-colored? (works if red circles are separate meshes)
+  const mat = hit.object && (Array.isArray(hit.object.material) ? hit.object.material[0] : hit.object.material);
+  if (mat && mat.color) {
+    const c = mat.color;
+    if (c.r > 0.55 && c.g < 0.35 && c.b < 0.35) return 'red';
+    if (c.r < 0.25 && c.g < 0.25 && c.b < 0.25) return 'black';
   }
+  // Fallback: Y-position ranges derived from observed coordinates
+  // Head bullseye ~Y43-58, body X ~Y-15 to 0, shoulders ~Y10-35
+  const y = hit.point.y;
+  if (y > 43 && y < 58) return 'red';   // head bullseye
+  if (y > -15 && y < 2) return 'red';   // body X center
   return 'black';
 }
 
