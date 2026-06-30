@@ -2677,12 +2677,18 @@ function addRemotePlayer(data) {
   shootingRangeScene.add(rangeMesh);
   rangeMesh.visible = false;
 
+  // FP mesh for planet walk (world space — lives in main scene)
+  const planetMesh = new THREE.Group();
+  scene.add(planetMesh);
+  planetMesh.visible = false;
+
   // Add astronaut clone to each FP mesh (or placeholder if not loaded yet)
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
   rangeMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
 
-  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, data, fpMode: null };
+  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, data, fpMode: null };
 }
 
 function removeRemotePlayer(id) {
@@ -2692,6 +2698,7 @@ function removeRemotePlayer(id) {
   lobbyScene.remove(rp.lobbyMesh);
   interiorScene.remove(rp.roomMesh);
   shootingRangeScene.remove(rp.rangeMesh);
+  scene.remove(rp.planetMesh);
   delete remotePlayers[id];
 }
 
@@ -2701,22 +2708,22 @@ function _updateRemoteFPMeshes(p) {
   const fpMode = p.fpMode; // 'lobby' | 'docked' | 'range' | null
   rp.fpMode = fpMode;
 
-  rp.mesh.visible      = !fpMode;
-  rp.lobbyMesh.visible = fpMode === 'lobby';
-  rp.roomMesh.visible  = false; // room is private
-  rp.rangeMesh.visible = fpMode === 'range';
+  rp.mesh.visible        = !fpMode;
+  rp.lobbyMesh.visible   = fpMode === 'lobby';
+  rp.roomMesh.visible    = false; // room is private
+  rp.rangeMesh.visible   = fpMode === 'range';
+  rp.planetMesh.visible  = fpMode === 'planet_walk';
 
   if (fpMode && p.fpPos) {
-    const target = fpMode === 'lobby' ? rp.lobbyMesh
-                 : fpMode === 'range'  ? rp.rangeMesh
+    const target = fpMode === 'lobby'       ? rp.lobbyMesh
+                 : fpMode === 'range'        ? rp.rangeMesh
+                 : fpMode === 'planet_walk'  ? rp.planetMesh
                  : rp.roomMesh;
     target.position.set(p.fpPos.x, p.fpPos.y, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
 
     if (target.children.length === 0) {
-      const tmpl = fpMode === 'range' ? _astronautLobbyTemplate
-                 : fpMode === 'lobby' ? _astronautLobbyTemplate
-                 : _astronautRoomTemplate;
+      const tmpl = fpMode === 'docked' ? _astronautRoomTemplate : _astronautLobbyTemplate;
       if (tmpl) target.add(_cloneAstronaut(tmpl));
     }
   }
@@ -3527,14 +3534,18 @@ if (socket) {
 
   setInterval(() => {
     if (!self.id) return;
-    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range';
+    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk';
+    const _fpBroadcastPos = gameMode === 'planet_walk'
+      ? { x: camera.position.x, y: camera.position.y, z: camera.position.z }
+      : { x: fpPos.x, y: fpPos.y, z: fpPos.z };
+    const _fpBroadcastYaw = gameMode === 'planet_walk' ? _pwYaw : fpYaw;
     socket.emit('player_update', {
       position: { x: self.position.x, y: self.position.y, z: self.position.z },
       rotation: { x: selfMesh.rotation.x, y: selfMesh.rotation.y, z: selfMesh.rotation.z },
       velocity: { x: self.velocity.x, y: self.velocity.y, z: self.velocity.z },
       fpMode: inFP ? gameMode : null,
-      fpPos:  inFP ? { x: fpPos.x, y: fpPos.y, z: fpPos.z } : null,
-      fpYaw:  inFP ? fpYaw : null,
+      fpPos:  inFP ? _fpBroadcastPos : null,
+      fpYaw:  inFP ? _fpBroadcastYaw : null,
     });
   }, 50);
 }
