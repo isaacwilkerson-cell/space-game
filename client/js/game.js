@@ -418,16 +418,29 @@ shootingRangeScene.add(_rangeLight);
 let _rangeCollidables = [];
 let _rangeBBox = null;
 
+// Offscreen canvas for sampling target texture colors
+const _rangeTexCanvas = document.createElement('canvas');
+const _rangeTexCtx = _rangeTexCanvas.getContext('2d');
+let _rangeTexReady = false;
+
 loadModel('assets/shooting_range.glb', 400, model => {
   if (!model) { console.warn('Shooting range GLB failed'); return; }
   model.traverse(c => {
     if (c.isMesh) {
       _rangeCollidables.push(c);
+      // Find target mesh with a texture map and bake it to canvas for UV sampling
+      if (!_rangeTexReady && c.material && c.material.map && c.material.map.image) {
+        const img = c.material.map.image;
+        _rangeTexCanvas.width  = img.width  || img.videoWidth  || 512;
+        _rangeTexCanvas.height = img.height || img.videoHeight || 512;
+        _rangeTexCtx.drawImage(img, 0, 0);
+        _rangeTexReady = true;
+        c.userData.hasTargetTex = true;
+      }
     }
   });
   shootingRangeScene.add(model);
   _rangeBBox = new THREE.Box3().setFromObject(model);
-  console.log('[shooting_range] loaded, bbox:', _rangeBBox);
 });
 
 const _rangeExitPrompt = document.createElement('div');
@@ -1531,7 +1544,22 @@ const _holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, depthWrite: fals
 const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
 
-function _spawnImpact(pos, normal, activeScene) {
+function _sampleHitColor(hit) {
+  // Try UV texture sampling first
+  if (_rangeTexReady && hit.uv && hit.object && hit.object.userData.hasTargetTex) {
+    const u = hit.uv.x, v = 1 - hit.uv.y;
+    const px = Math.floor(u * _rangeTexCanvas.width);
+    const py = Math.floor(v * _rangeTexCanvas.height);
+    try {
+      const d = _rangeTexCtx.getImageData(px, py, 1, 1).data;
+      if (d[0] > 150 && d[1] < 80 && d[2] < 80) return 'red';   // red zone
+      if (d[0] < 60  && d[1] < 60  && d[2] < 60)  return 'black'; // black zone
+    } catch(e) {}
+  }
+  return 'black'; // default
+}
+
+function _spawnImpact(pos, normal, activeScene, hitColor) {
   const light = null;
 
   // Sparks — more of them, live longer
@@ -1553,9 +1581,12 @@ function _spawnImpact(pos, normal, activeScene) {
   }
   _impacts.push({ sparks, life: 90, maxLife: 90, scene: activeScene });
 
-  // Bullet hole decal — aligned to surface normal
-  const hole = new THREE.Mesh(_holeGeo, _holeMat.clone());
-  hole.position.copy(pos).addScaledVector(normal, 0.3); // offset slightly off surface
+  // Bullet hole decal — color depends on zone hit (red zone → red mark, black zone → white mark)
+  const holeColor = hitColor === 'red' ? 0xff2222 : 0xffffff;
+  const holeMat = _holeMat.clone();
+  holeMat.color.set(holeColor);
+  const hole = new THREE.Mesh(_holeGeo, holeMat);
+  hole.position.copy(pos).addScaledVector(normal, 0.3);
   hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
   activeScene.add(hole);
   _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
@@ -1635,7 +1666,8 @@ function _fireSniper() {
   const hits = raycaster.intersectObjects(collidables, true);
   if (hits.length > 0) {
     const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
-    _spawnImpact(hits[0].point, normal, activeScene);
+    const hitColor = _sampleHitColor(hits[0]);
+    _spawnImpact(hits[0].point, normal, activeScene, hitColor);
   }
 
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
