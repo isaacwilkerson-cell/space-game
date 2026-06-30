@@ -4078,12 +4078,5 @@ function animate(t) {
   drawReticle();
   _drawMinimap();
 }
-// TEMP: spawn on Phoenix terrain instead of station
-const _phoenixPlanet = planets.find(p => p.userData.mapName === 'Phoenix');
-if (_phoenixPlanet) {
-  _landedPlanet = _phoenixPlanet;
-  _enterPlanetSurface(_phoenixPlanet);
-} else {
-  enterStation();
-}
+enterStation();
 requestAnimationFrame(animate);
