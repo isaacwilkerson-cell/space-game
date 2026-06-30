@@ -428,8 +428,12 @@ loadModel('assets/shooting_range.glb', 400, model => {
   model.traverse(c => {
     if (c.isMesh) {
       _rangeCollidables.push(c);
-      console.log('[range mesh]', c.name, 'mat:', c.material && c.material.name, 'hasMap:', !!(c.material && c.material.map));
-      if (c.material && c.material.map) c.userData.isTarget = true;
+      // Targets are thin flat objects — smallest dimension < 4 units, not huge overall
+      const _b = new THREE.Box3().setFromObject(c);
+      const _s = _b.getSize(new THREE.Vector3());
+      const minDim = Math.min(_s.x, _s.y, _s.z);
+      const maxDim = Math.max(_s.x, _s.y, _s.z);
+      if (minDim < 4 && maxDim < 120) c.userData.isTarget = true;
     }
   });
   shootingRangeScene.add(model);
