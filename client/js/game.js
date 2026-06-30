@@ -2320,8 +2320,8 @@ function updateFP() {
   const _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1);
   const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1);
   if (window._adminMode) {
-    if (keys[' '])       fpVel.y += _fpAccel;
-    if (keys['control']) fpVel.y -= _fpAccel;
+    if (keys[' '])   fpVel.y += _fpAccel;
+    if (keys['alt']) fpVel.y -= _fpAccel;
     fpVel.y *= 0.85;
   }
   if (keys['w']) fpVel.addScaledVector(_fpFwd,    _fpAccel);
@@ -3316,6 +3316,19 @@ function drawReticle() {
       c.mesh.getWorldPosition(crateWP);
       drawWaypoint(crateWP, 0, 'rgba(255,180,50,A)', 'CRATE');
     });
+  }
+
+  // Admin noclip dot — always centered when admin mode is on
+  if (window._adminMode && pointerLocked) {
+    rCtx.beginPath();
+    rCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+    rCtx.fillStyle = 'rgba(255,80,80,0.95)';
+    rCtx.fill();
+    rCtx.beginPath();
+    rCtx.arc(cx, cy, 7, 0, Math.PI * 2);
+    rCtx.strokeStyle = 'rgba(255,80,80,0.5)';
+    rCtx.lineWidth = 1.5;
+    rCtx.stroke();
   }
 
   if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'range' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
