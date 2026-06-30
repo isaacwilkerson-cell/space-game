@@ -599,9 +599,9 @@ const ICY_NAMES = new Set([
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e },
-  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff },
+  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0 },
+  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0 },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.55 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -618,11 +618,16 @@ function _loadSurfTerrain(key, assetPath) {
     const entry = _surfTerrains[key];
     model.traverse(c => {
       if (!c.isMesh || !c.material) return;
+      c.castShadow = false;
+      c.receiveShadow = false;
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => {
         const col = m.color;
         const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
         if (isWhite && !m.map) m.color.set(entry.tint);
+        if (entry.dim !== 1.0) m.color.multiplyScalar(entry.dim);
+        // Avoid rendering both faces of every triangle — halves fill cost on heavy terrain
+        m.side = THREE.FrontSide;
         m.needsUpdate = true;
       });
     });
