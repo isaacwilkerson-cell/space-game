@@ -2644,7 +2644,7 @@ selfMesh.add(camera);
 // ── Remote players ────────────────────────────────────────────────────────────
 const remotePlayers = {};
 
-function _makeNameTag(name) {
+function _makeNameTag(name, sizeAttenuation = true) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
   const ctx = canvas.getContext('2d');
@@ -2658,7 +2658,7 @@ function _makeNameTag(name) {
   ctx.fillStyle = '#00ffff';
   ctx.fillText(name, 128, 33);
   const tex = new THREE.CanvasTexture(canvas);
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, sizeAttenuation });
   const sprite = new THREE.Sprite(mat);
   sprite.renderOrder = 10;
   return sprite;
@@ -2699,15 +2699,15 @@ function addRemotePlayer(data) {
   // Flight mesh (in main scene)
   const mesh = createShipMesh(0xff6600);
   scene.add(mesh);
-  const shipTag = _makeNameTag(data.name || 'Pilot');
-  shipTag.scale.set(120, 30, 1);
+  const shipTag = _makeNameTag(data.name || 'Pilot', false); // sizeAttenuation off = fixed screen size
+  shipTag.scale.set(0.12, 0.03, 1);
   shipTag.position.set(0, 30, 0);
   mesh.add(shipTag);
   loadModel(ASSETS.enemyShip, 20, model => {
     if (!model || !remotePlayers[data.id]) return;
     while (mesh.children.length) mesh.remove(mesh.children[0]);
     mesh.add(model);
-    mesh.add(shipTag); // re-add tag after model replaces children
+    mesh.add(shipTag);
   });
 
   // FP mesh for lobby (astronaut in lobbyScene)
@@ -2747,8 +2747,8 @@ function addRemotePlayer(data) {
   const lobbyTag   = _makeNameTag(tagName); lobbyTag.scale.set(14, 3.5, 1);  lobbyTag.position.set(0, 24, 0);   lobbyMesh.add(lobbyTag);
   const roomTag    = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);    roomTag.position.set(0, 115, 0);   roomMesh.add(roomTag);
   const rangeTag   = _makeNameTag(tagName); rangeTag.scale.set(14, 3.5, 1);  rangeTag.position.set(0, 24, 0);   rangeMesh.add(rangeTag);
-  const planetTag  = _makeNameTag(tagName); planetTag.scale.set(120, 30, 1); planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
-  const ejectedTag = _makeNameTag(tagName); ejectedTag.scale.set(120, 30, 1);ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
+  const planetTag  = _makeNameTag(tagName, false); planetTag.scale.set(0.12, 0.03, 1);  planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
+  const ejectedTag = _makeNameTag(tagName, false); ejectedTag.scale.set(0.12, 0.03, 1); ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
 
   remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, ejectedMesh, data, fpMode: null };
 }
@@ -2826,6 +2826,111 @@ const _streaks = Array.from({length: STREAK_COUNT}, () => ({
   r:   Math.random(),   // 0–1 normalized radius, randomized start
   spd: 0.3 + Math.random() * 0.7,
 }));
+
+// ── Minimap ───────────────────────────────────────────────────────────────────
+const _minimapCanvas = document.getElementById('minimap');
+const _mmCtx = _minimapCanvas ? _minimapCanvas.getContext('2d') : null;
+const MM_SIZE = 200;
+const MM_R = MM_SIZE / 2;
+const MM_RANGE = 3000; // world units visible from center
+
+function _drawMinimap() {
+  if (!_mmCtx) return;
+  const inSpace = gameMode === 'flight' || gameMode === 'ejected';
+  _minimapCanvas.style.display = inSpace ? 'block' : 'none';
+  if (!inSpace) return;
+
+  _mmCtx.clearRect(0, 0, MM_SIZE, MM_SIZE);
+
+  // Circular clip
+  _mmCtx.save();
+  _mmCtx.beginPath();
+  _mmCtx.arc(MM_R, MM_R, MM_R - 1, 0, Math.PI * 2);
+  _mmCtx.clip();
+
+  // Background
+  _mmCtx.fillStyle = 'rgba(0,0,10,0.75)';
+  _mmCtx.fillRect(0, 0, MM_SIZE, MM_SIZE);
+
+  // Grid rings
+  _mmCtx.strokeStyle = 'rgba(0,255,255,0.08)';
+  _mmCtx.lineWidth = 1;
+  [0.33, 0.66, 1].forEach(r => {
+    _mmCtx.beginPath();
+    _mmCtx.arc(MM_R, MM_R, r * (MM_R - 2), 0, Math.PI * 2);
+    _mmCtx.stroke();
+  });
+
+  const playerPos = selfMesh.position;
+  // yaw of ship for rotation
+  const shipYaw = selfMesh.rotation.y;
+
+  function worldToMM(wx, wz) {
+    const dx = wx - playerPos.x;
+    const dz = wz - playerPos.z;
+    // Rotate so ship faces up
+    const rx =  dx * Math.cos(-shipYaw) - dz * Math.sin(-shipYaw);
+    const rz =  dx * Math.sin(-shipYaw) + dz * Math.cos(-shipYaw);
+    return [
+      MM_R + (rx / MM_RANGE) * MM_R,
+      MM_R + (rz / MM_RANGE) * MM_R,
+    ];
+  }
+
+  // Planets
+  planets.forEach(p => {
+    const dist = playerPos.distanceTo(p.position);
+    if (dist > MM_RANGE * 6) return;
+    const [mx, my] = worldToMM(p.position.x, p.position.z);
+    const r = Math.max(3, Math.min(10, 40000 / dist));
+    _mmCtx.beginPath();
+    _mmCtx.arc(mx, my, r, 0, Math.PI * 2);
+    _mmCtx.fillStyle = p.userData.mapColor || '#4488ff';
+    _mmCtx.fill();
+    // Name label
+    if (dist < MM_RANGE * 4 && p.userData.mapName) {
+      _mmCtx.font = '8px monospace';
+      _mmCtx.fillStyle = '#aaddff';
+      _mmCtx.textAlign = 'center';
+      _mmCtx.fillText(p.userData.mapName, mx, my - r - 2);
+    }
+  });
+
+  // Remote ships
+  Object.values(remotePlayers).forEach(rp => {
+    if (rp.fpMode) return; // in FP mode, skip
+    const sp = rp.mesh.position;
+    const dist = playerPos.distanceTo(sp);
+    if (dist > MM_RANGE * 2) return;
+    const [mx, my] = worldToMM(sp.x, sp.z);
+    _mmCtx.beginPath();
+    _mmCtx.arc(mx, my, 3, 0, Math.PI * 2);
+    _mmCtx.fillStyle = '#ff6600';
+    _mmCtx.fill();
+    _mmCtx.font = '9px monospace';
+    _mmCtx.fillStyle = '#ffaa66';
+    _mmCtx.textAlign = 'center';
+    _mmCtx.fillText(rp.data.name || 'Pilot', mx, my - 6);
+  });
+
+  // Self — triangle pointing up (ship heading)
+  _mmCtx.beginPath();
+  _mmCtx.moveTo(MM_R, MM_R - 6);
+  _mmCtx.lineTo(MM_R - 4, MM_R + 4);
+  _mmCtx.lineTo(MM_R + 4, MM_R + 4);
+  _mmCtx.closePath();
+  _mmCtx.fillStyle = '#00ffff';
+  _mmCtx.fill();
+
+  _mmCtx.restore();
+
+  // Border
+  _mmCtx.beginPath();
+  _mmCtx.arc(MM_R, MM_R, MM_R - 1, 0, Math.PI * 2);
+  _mmCtx.strokeStyle = 'rgba(0,255,255,0.35)';
+  _mmCtx.lineWidth = 1.5;
+  _mmCtx.stroke();
+}
 
 function drawReticle() {
   rCtx.clearRect(0, 0, reticleCanvas.width, reticleCanvas.height);
@@ -3762,6 +3867,7 @@ function animate(t) {
     renderer.autoClear = true;
   }
   drawReticle();
+  _drawMinimap();
 }
 enterStation();
 requestAnimationFrame(animate);
