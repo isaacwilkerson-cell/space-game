@@ -1534,6 +1534,28 @@ let _sniperLight  = null;
 const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
 scene.add(_muzzleFlash);
 
+// Hit marker state
+let _hitMarker = null; // { color, life }
+const HIT_MARKER_LIFE = 20; // frames
+
+function _drawHitMarker() {
+  if (!_hitMarker) return;
+  _hitMarker.life--;
+  if (_hitMarker.life <= 0) { _hitMarker = null; return; }
+  const alpha = _hitMarker.life / HIT_MARKER_LIFE;
+  const cx = reticleCanvas.width / 2, cy = reticleCanvas.height / 2;
+  const color = _hitMarker.color === 'red' ? `rgba(255,40,40,${alpha})` : `rgba(255,255,255,${alpha})`;
+  const size = 10, gap = 5;
+  rCtx.strokeStyle = color;
+  rCtx.lineWidth = 2.5;
+  rCtx.lineCap = 'round';
+  // Four lines forming an X cross hit marker
+  rCtx.beginPath(); rCtx.moveTo(cx - gap, cy - gap); rCtx.lineTo(cx - gap - size, cy - gap - size); rCtx.stroke();
+  rCtx.beginPath(); rCtx.moveTo(cx + gap, cy - gap); rCtx.lineTo(cx + gap + size, cy - gap - size); rCtx.stroke();
+  rCtx.beginPath(); rCtx.moveTo(cx - gap, cy + gap); rCtx.lineTo(cx - gap - size, cy + gap + size); rCtx.stroke();
+  rCtx.beginPath(); rCtx.moveTo(cx + gap, cy + gap); rCtx.lineTo(cx + gap + size, cy + gap + size); rCtx.stroke();
+}
+
 // Impact sparks pool
 const _impacts = [];
 const _impactGeo = new THREE.SphereGeometry(1.2, 4, 4);
@@ -1669,6 +1691,7 @@ function _fireSniper() {
     const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
     const hitColor = _sampleHitColor(hits[0]);
     _spawnImpact(hits[0].point, normal, activeScene, hitColor);
+    if (gameMode === 'range') _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
   }
 
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
@@ -3307,6 +3330,7 @@ function drawReticle() {
   rCtx.clearRect(0, 0, reticleCanvas.width, reticleCanvas.height);
   const cx = reticleCanvas.width  / 2;
   const cy = reticleCanvas.height / 2;
+  _drawHitMarker();
 
   // Star streaks — always visible, speed up with velocity
   const speed  = self ? self.velocity.length() : 0;
