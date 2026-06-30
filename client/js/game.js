@@ -502,7 +502,7 @@ const _surfPos = new THREE.Vector3(0, 1.8, 0);
 const _surfVel = new THREE.Vector3();
 let _surfYaw = 0, _surfPitch = 0;
 let _surfVertVel = 0;
-const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 0.65, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
+const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 0.42, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
 const SURF_JUMP_V = 0.5, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
