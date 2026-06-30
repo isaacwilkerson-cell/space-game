@@ -255,7 +255,7 @@ const fpPos = new THREE.Vector3(0, 2, 0);
 const fpVel = new THREE.Vector3();
 const FP_SPEED = 1.3, FP_ACCEL = 0.14, FP_FRICTION = 0.8;
 const FP_SPRINT_MUL = 1.4;
-const FP_JUMP_V  = 0.18;
+const FP_JUMP_V  = 0.255;
 const FP_GRAVITY = 0.018;
 let _fpJumpVel = 0;       // vertical velocity for lobby jump
 let _fpBaseY   = 0;       // floor height (set per-mode)
