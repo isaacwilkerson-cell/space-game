@@ -1568,19 +1568,12 @@ const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
 
 function _sampleHitColor(hit) {
-  // First check: is the hit mesh itself red-colored? (works if red circles are separate meshes)
-  const mat = hit.object && (Array.isArray(hit.object.material) ? hit.object.material[0] : hit.object.material);
-  if (mat && mat.color) {
-    const c = mat.color;
-    if (c.r > 0.55 && c.g < 0.35 && c.b < 0.35) return 'red';
-    if (c.r < 0.25 && c.g < 0.25 && c.b < 0.25) return 'black';
-  }
-  // Fallback: Y-position ranges derived from observed coordinates
-  // Head bullseye ~Y43-58, body X ~Y-15 to 0, shoulders ~Y10-35
+  // Y-position zones derived from admin coordinates on screen:
+  // Cursor at Y=-0.6 = large body red circle; head bullseyes visually ~35 units higher
   const y = hit.point.y;
-  if (y > 43 && y < 58) return 'red';   // head bullseye
-  if (y > -15 && y < 2) return 'red';   // body X center
-  return 'black';
+  if (y >= 30 && y <= 50) return 'red';  // head + shoulder bullseyes
+  if (y >= -22 && y <= 8) return 'red';  // body X bullseye
+  return 'black'; // black silhouette / gray background = white hit marker
 }
 
 function _spawnImpact(pos, normal, activeScene, hitColor) {
