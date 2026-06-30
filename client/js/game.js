@@ -606,17 +606,9 @@ function _updatePlanetSurface() {
   // ── Landing animation ──────────────────────────────────
   if (_surfLanding) {
     if (_surfLandShip) {
-      // Raycast to find terrain height at landing spot (0, 0) once
-      if (!_surfLandGroundY) {
-        const _groundMesh = _surfTerrainMesh || _surfGround;
-        _surfRaycaster.set(new THREE.Vector3(0, 2000, 0), new THREE.Vector3(0, -1, 0));
-        const _hits = _surfRaycaster.intersectObject(_groundMesh, true);
-        _surfLandGroundY = _hits.length > 0 ? _hits[0].point.y : 0;
-      }
-
       _surfLandT = Math.min(1, _surfLandT + 1 / SURF_LAND_DUR);
       const ease = 1 - Math.pow(1 - _surfLandT, 3); // ease-out cubic
-      const shipY = _surfLandGroundY + 800 * (1 - ease);
+      const shipY = 800 * (1 - ease) - 38;
       _surfLandShip.position.set(0, shipY, 0);
 
       // Camera follows from behind/above the ship
