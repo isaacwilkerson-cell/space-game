@@ -513,8 +513,12 @@ const _surfRaycaster = new THREE.Raycaster();
 let _surfLanding = false;
 let _surfLandT = 0;
 let _surfLandGroundY = null;
-const SURF_LAND_DUR = 180;   // frames (~3s)
-let _surfLandShip = null;    // ship clone in surface scene
+const SURF_LAND_DUR = 180;
+let _surfLandShip = null;
+let _surfLandShipBaseY = -38; // resting Y of parked ship
+let _surfLeaving = false;     // takeoff animation active
+let _surfLeaveT = 0;
+const SURF_LEAVE_DUR = 150;
 
 const _surfBoardPrompt = document.createElement('div');
 _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
@@ -681,10 +685,56 @@ function _updatePlanetSurface() {
   camera.quaternion.multiplyQuaternions(yawQ, pitchQ);
   camera.position.copy(_surfPos);
 
-  // Board prompt near ship
-  if (_surfShipWorldPos) {
-    const distToShip = _surfPos.distanceTo(_surfShipWorldPos);
-    _surfBoardPrompt.style.display = distToShip < 20 ? 'block' : 'none';
+  // Ship bobbing + collision
+  if (_surfLandShip) {
+    const bobY = _surfLandShipBaseY + Math.sin(Date.now() * 0.001) * 4;
+    _surfLandShip.position.y = bobY;
+
+    // Collision — push player out if too close to ship center (XZ)
+    const sdx = _surfPos.x - _surfLandShip.position.x;
+    const sdz = _surfPos.z - _surfLandShip.position.z;
+    const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
+    const SHIP_RADIUS = 55;
+    if (sDist < SHIP_RADIUS) {
+      const push = SHIP_RADIUS / Math.max(sDist, 0.01);
+      _surfPos.x = _surfLandShip.position.x + sdx * push;
+      _surfPos.z = _surfLandShip.position.z + sdz * push;
+      _surfVel.x = 0; _surfVel.z = 0;
+    }
+
+    // Leave planet prompt
+    const nearShip = sDist < 120;
+    _surfBoardPrompt.textContent = '[ E ]  LEAVE PLANET';
+    _surfBoardPrompt.style.display = nearShip ? 'block' : 'none';
+  } else {
+    _surfBoardPrompt.style.display = 'none';
+  }
+}
+
+function _startLeavePlanet() {
+  if (_surfLeaving || !_surfLandShip) return;
+  _surfLeaving = true;
+  _surfLeaveT = 0;
+  if (_surfHudEl) _surfHudEl.style.display = 'none';
+  _surfBoardPrompt.style.display = 'none';
+}
+
+function _updateLeavePlanet() {
+  _surfLeaveT = Math.min(1, _surfLeaveT + 1 / SURF_LEAVE_DUR);
+  const ease = _surfLeaveT * _surfLeaveT; // ease-in
+  const shipY = _surfLandShipBaseY + ease * 1200;
+  if (_surfLandShip) _surfLandShip.position.y = shipY;
+
+  // Camera follows ship up
+  const camDist = 160;
+  camera.position.set(0, shipY + 60, camDist);
+  camera.lookAt(0, shipY, 0);
+  _pwMouseDX = 0; _pwMouseDY = 0;
+
+  if (_surfLeaveT >= 1) {
+    _surfLeaving = false;
+    if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
+    _exitPlanetSurface();
   }
 }
 
@@ -2129,8 +2179,10 @@ function updatePlanetWalk() {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'e' || e.key === 'E') {
-    if (gameMode === 'planet_surface' && _surfShipWorldPos && _surfPos.distanceTo(_surfShipWorldPos) < 20) {
-      _exitPlanetSurface(); return;
+    if (gameMode === 'planet_surface' && _surfLandShip && !_surfLeaving) {
+      const sdx = _surfPos.x - _surfLandShip.position.x;
+      const sdz = _surfPos.z - _surfLandShip.position.z;
+      if (Math.sqrt(sdx*sdx + sdz*sdz) < 120) { _startLeavePlanet(); return; }
     }
     if (gameMode === 'landed_ship') { exitShipOnPlanet(); return; }
     if (gameMode === 'planet_walk') {
@@ -4005,7 +4057,7 @@ function animate(t) {
     updateAtmosphere();
   } else if (gameMode === 'planet_surface') {
     updateLandedShip();
-    _updatePlanetSurface();
+    if (_surfLeaving) { _updateLeavePlanet(); } else { _updatePlanetSurface(); }
   } else if (gameMode === 'planet_walk') {
     updateLandedShip(); // keep ship glued to planet surface, not following player
     updatePlanetWalk();
