@@ -460,6 +460,152 @@ function exitShootingRange() {
   renderer.toneMappingExposure = 0.8;
 }
 
+// ── Planet surface scene ───────────────────────────────────────────────────────
+const _planetSurfScene = new THREE.Scene();
+_planetSurfScene.fog = new THREE.FogExp2(0xaaccff, 0.0025);
+
+const _surfAmbient = new THREE.AmbientLight(0xffffff, 0.7);
+_planetSurfScene.add(_surfAmbient);
+const _surfDirLight = new THREE.DirectionalLight(0xfff4e0, 1.4);
+_surfDirLight.position.set(1, 2, 0.5).normalize();
+_planetSurfScene.add(_surfDirLight);
+const _surfDirLight2 = new THREE.DirectionalLight(0x8899cc, 0.4);
+_surfDirLight2.position.set(-1, 0.5, -1).normalize();
+_planetSurfScene.add(_surfDirLight2);
+
+// Flat ground plane — huge so you never see the edge
+const _surfGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(40000, 40000, 1, 1),
+  new THREE.MeshStandardMaterial({ color: 0x4a7a3a, roughness: 0.9, metalness: 0.0 })
+);
+_surfGround.rotation.x = -Math.PI / 2;
+_planetSurfScene.add(_surfGround);
+
+// Sky dome (inside of sphere so only visible from inside)
+const _surfSkyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(18000, 16, 8),
+  new THREE.MeshBasicMaterial({ color: 0x88bbff, side: THREE.BackSide })
+);
+_planetSurfScene.add(_surfSkyDome);
+
+// Fog overlay element
+const _planetFogEl = document.getElementById('planet-fog');
+const _surfHudEl   = document.getElementById('planet-surface-hud');
+let _surfFogTarget = 0; // 0=clear, 1=opaque
+
+function _setPlanetFog(opacity, color) {
+  if (!_planetFogEl) return;
+  if (color) _planetFogEl.style.background = color;
+  _planetFogEl.style.opacity = opacity;
+}
+
+// FP state for planet surface
+const _surfPos = new THREE.Vector3(0, 1.8, 0);
+const _surfVel = new THREE.Vector3();
+let _surfYaw = 0, _surfPitch = 0;
+let _surfVertVel = 0;
+const SURF_EYE_H = 1.8, SURF_SPEED = 0.18, SURF_ACCEL = 0.06, SURF_FRICTION = 0.82;
+const SURF_JUMP_V = 0.22, SURF_GRAVITY = 0.012;
+
+let _surfCurrentPlanet = null;
+let _surfShipWorldPos = null; // world pos of the ship when we landed
+
+const _surfBoardPrompt = document.createElement('div');
+_surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+  'color:#0ff;font-family:monospace;font-size:16px;letter-spacing:2px;text-shadow:0 0 8px #000;' +
+  'pointer-events:none;display:none;z-index:30;';
+_surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
+document.body.appendChild(_surfBoardPrompt);
+
+function _enterPlanetSurface(planet) {
+  _surfCurrentPlanet = planet;
+  const atm = planet.userData.atmosphere;
+
+  // Colour the fog overlay to match planet atmosphere
+  const fogHex = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
+  _setPlanetFog(1, fogHex);
+
+  // Update scene colours from planet atmosphere
+  if (atm) {
+    _planetSurfScene.fog.color.copy(atm.fogColor);
+    _surfSkyDome.material.color.copy(atm.skyColor);
+    _surfAmbient.color.copy(atm.skyColor);
+  }
+
+  // Drop player slightly in front of ship (world-space ship position saved before we enter)
+  _surfShipWorldPos = selfMesh.position.clone();
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(selfMesh.quaternion).setY(0).normalize();
+  _surfPos.copy(_surfShipWorldPos).addScaledVector(fwd, 12);
+  _surfPos.y = SURF_EYE_H;
+  _surfVel.set(0, 0, 0);
+  _surfVertVel = 0;
+  _surfYaw = Math.atan2(fwd.x, fwd.z);
+  _surfPitch = 0;
+
+  gameMode = 'planet_surface';
+  if (_surfHudEl) _surfHudEl.style.display = 'block';
+  selfMesh.visible = true;
+
+  // Fade fog overlay out after a short delay (terrain is ready)
+  setTimeout(() => _setPlanetFog(0), 80);
+}
+
+function _exitPlanetSurface() {
+  const atm = _surfCurrentPlanet && _surfCurrentPlanet.userData.atmosphere;
+  const fogHex = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
+  _setPlanetFog(1, fogHex);
+  if (_surfHudEl) _surfHudEl.style.display = 'none';
+  _surfBoardPrompt.style.display = 'none';
+  setTimeout(() => {
+    gameMode = 'landed_ship';
+    _landedMenu.style.display = 'flex';
+    _setPlanetFog(0);
+  }, 850);
+}
+
+function _updatePlanetSurface() {
+  // Mouse look
+  _surfYaw   -= (_pwMouseDX || 0) * 0.0028;
+  _surfPitch -= (_pwMouseDY || 0) * 0.0028;
+  _surfPitch  = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, _surfPitch));
+  _pwMouseDX = 0; _pwMouseDY = 0;
+
+  const forward = new THREE.Vector3(Math.sin(_surfYaw), 0, Math.cos(_surfYaw));
+  const right   = new THREE.Vector3(Math.cos(_surfYaw), 0, -Math.sin(_surfYaw));
+
+  const accel = new THREE.Vector3();
+  if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  SURF_ACCEL);
+  if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -SURF_ACCEL);
+  if (keys['a'] || keys['arrowleft'])  accel.addScaledVector(right,   -SURF_ACCEL);
+  if (keys['d'] || keys['arrowright']) accel.addScaledVector(right,    SURF_ACCEL);
+
+  _surfVel.add(accel);
+  _surfVel.y = 0;
+  _surfVel.multiplyScalar(SURF_FRICTION);
+  if (_surfVel.length() > SURF_SPEED) _surfVel.setLength(SURF_SPEED);
+
+  // Jump
+  const onGround = _surfPos.y <= SURF_EYE_H + 0.05;
+  if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V;
+
+  _surfVertVel -= SURF_GRAVITY;
+  _surfPos.add(_surfVel);
+  _surfPos.y += _surfVertVel;
+  if (_surfPos.y < SURF_EYE_H) { _surfPos.y = SURF_EYE_H; _surfVertVel = 0; }
+
+  // Camera
+  const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch);
+  const yawQ   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _surfYaw);
+  camera.quaternion.multiplyQuaternions(yawQ, pitchQ);
+  camera.position.copy(_surfPos);
+
+  // Board prompt near ship
+  if (_surfShipWorldPos) {
+    const distToShip = _surfPos.distanceTo(_surfShipWorldPos);
+    _surfBoardPrompt.style.display = distToShip < 20 ? 'block' : 'none';
+  }
+}
+
 // ── Hangar scene ──────────────────────────────────────────────────────────────
 const hangarScene = new THREE.Group();
 scene.add(hangarScene);
@@ -1608,6 +1754,10 @@ function landOnPlanet(planet) {
   if (skyboxMesh) scene.background = null;
   const atm = planet.userData.atmosphere;
   if (atm) renderer.setClearColor(atm.skyColor, 1);
+  // Fade fog overlay in during descent — will be fully opaque before surface loads
+  const _fogCol = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
+  _setPlanetFog(0, _fogCol);
+  setTimeout(() => _setPlanetFog(1), 600);
 }
 
 function updateLandingAnim() {
@@ -1633,12 +1783,11 @@ function updateLandingAnim() {
   if (t >= 1) {
     selfMesh.position.copy(_landTargetPos);
     selfMesh.quaternion.copy(_landTargetQuat);
-    // Bake final position into planet-local space so it rotates with the planet
     _shipLocalPos.copy(_landedPlanet.worldToLocal(selfMesh.position.clone()));
     _shipLocalQuat.copy(selfMesh.quaternion).premultiply(_landedPlanet.quaternion.clone().invert());
-    gameMode = 'landed_ship';
-    _landedMenu.style.display = 'flex';
+    // Fog is already covering the screen — transition to flat surface scene
     if (!document.pointerLockElement) document.body.requestPointerLock();
+    _enterPlanetSurface(_landedPlanet);
   }
 }
 
@@ -1896,6 +2045,9 @@ function updatePlanetWalk() {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'e' || e.key === 'E') {
+    if (gameMode === 'planet_surface' && _surfShipWorldPos && _surfPos.distanceTo(_surfShipWorldPos) < 20) {
+      _exitPlanetSurface(); return;
+    }
     if (gameMode === 'landed_ship') { exitShipOnPlanet(); return; }
     if (gameMode === 'planet_walk') {
       // Store crate in ship if holding one and near ship
@@ -3107,7 +3259,7 @@ document.addEventListener('mousemove', e => {
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
     return;
   }
-  if (gameMode === 'planet_walk') {
+  if (gameMode === 'planet_walk' || gameMode === 'planet_surface') {
     const cap = 40;
     _pwMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _pwMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
@@ -3767,6 +3919,9 @@ function animate(t) {
   } else if (gameMode === 'takeoff_anim') {
     updateTakeoffAnim();
     updateAtmosphere();
+  } else if (gameMode === 'planet_surface') {
+    updateLandedShip();
+    _updatePlanetSurface();
   } else if (gameMode === 'planet_walk') {
     updateLandedShip(); // keep ship glued to planet surface, not following player
     updatePlanetWalk();
@@ -3867,6 +4022,8 @@ function animate(t) {
   }
   if (gameMode === 'range') {
     renderer.render(shootingRangeScene, camera);
+  } else if (gameMode === 'planet_surface') {
+    renderer.render(_planetSurfScene, camera);
   } else {
     renderer.render(scene, camera);
   }
