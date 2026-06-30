@@ -751,7 +751,20 @@ function _updateLeavePlanet() {
   if (_surfLeaveT >= 1) {
     _surfLeaving = false;
     if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
-    _exitPlanetSurface();
+    if (_surfHudEl) _surfHudEl.style.display = 'none';
+    // Place selfMesh near the planet and launch into flight mode
+    if (_landedPlanet) {
+      const away = _landedPlanet.position.clone().normalize();
+      selfMesh.position.copy(_landedPlanet.position).addScaledVector(away, 800);
+      selfMesh.quaternion.identity();
+      self.velocity.copy(away).multiplyScalar(8);
+    }
+    _landedPlanet = null;
+    selfMesh.visible = true;
+    gameMode = 'flight';
+    elHud.style.display = 'block';
+    renderer.setClearColor(0x000000, 0);
+    if (skyboxMesh) scene.background = _skyboxTex;
   }
 }
 
