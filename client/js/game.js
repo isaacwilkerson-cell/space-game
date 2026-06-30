@@ -508,7 +508,8 @@ const SURF_EYE_H = 1.8, SURF_SPEED = 0.18, SURF_ACCEL = 0.06, SURF_FRICTION = 0.
 const SURF_JUMP_V = 0.22, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
-let _surfShipWorldPos = null; // world pos of the ship when we landed
+let _surfShipWorldPos = null;
+const _surfRaycaster = new THREE.Raycaster();
 
 const _surfBoardPrompt = document.createElement('div');
 _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
@@ -543,17 +544,21 @@ function _enterPlanetSurface(planet) {
   if (isPhoenix) {
     loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
       if (!model) { _surfGround.visible = true; return; }
-      // Center bottom of terrain at y=0 so player at y=1.8 walks on top
-      const box = new THREE.Box3().setFromObject(model);
-      model.position.y += -box.min.y;
       _surfTerrainMesh = model;
       _planetSurfScene.add(_surfTerrainMesh);
+      // Raycast from high up to find the terrain surface height, then reposition
+      _surfRaycaster.set(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
+      const hits = _surfRaycaster.intersectObject(_surfTerrainMesh, true);
+      if (hits.length > 0) {
+        // Shift terrain so surface at origin hit is at y=0
+        model.position.y += -hits[0].point.y;
+      }
     });
   }
 
-  // Place player and "ship" in local surface scene coords (terrain is centered at origin)
-  _surfShipWorldPos = new THREE.Vector3(0, 0, 0); // ship marker position in surface scene
-  _surfPos.set(0, SURF_EYE_H, 20); // spawn slightly in front of ship
+  // Place player high up so gravity drops them onto the terrain
+  _surfShipWorldPos = new THREE.Vector3(0, 0, 0);
+  _surfPos.set(0, 800, 20);
   _surfVel.set(0, 0, 0);
   _surfVertVel = 0;
   _surfYaw = Math.atan2(fwd.x, fwd.z);
@@ -604,14 +609,19 @@ function _updatePlanetSurface() {
   _surfVel.multiplyScalar(SURF_FRICTION);
   if (_surfVel.length() > SURF_SPEED) _surfVel.setLength(SURF_SPEED);
 
-  // Jump
-  const onGround = _surfPos.y <= SURF_EYE_H + 0.05;
+  // Raycast to find ground height beneath player
+  const _groundMesh = _surfTerrainMesh || _surfGround;
+  _surfRaycaster.set(new THREE.Vector3(_surfPos.x, _surfPos.y + 10, _surfPos.z), new THREE.Vector3(0, -1, 0));
+  const _gHits = _surfRaycaster.intersectObject(_groundMesh, true);
+  const _groundY = _gHits.length > 0 ? _gHits[0].point.y + SURF_EYE_H : SURF_EYE_H;
+
+  const onGround = _surfPos.y <= _groundY + 0.1;
   if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V;
 
   _surfVertVel -= SURF_GRAVITY;
   _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
-  if (_surfPos.y < SURF_EYE_H) { _surfPos.y = SURF_EYE_H; _surfVertVel = 0; }
+  if (_surfPos.y < _groundY) { _surfPos.y = _groundY; _surfVertVel = 0; }
 
   // Camera
   const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch);
