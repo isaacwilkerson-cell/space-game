@@ -593,16 +593,22 @@ const HOT_VOLCANIC_NAMES = new Set([
   'Sulfur Moon', 'Acid Flats', 'Brimstone', 'Gilt Waste',
 ]);
 
+const ICY_NAMES = new Set([
+  'Frost Haven', 'Cryo Reach', 'Glacius', 'Tundra Shelf',
+]);
+
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
   mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e },
   volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff },
 };
 
 function _terrainKeyForPlanet(planet) {
   const name = planet.userData.mapName;
   if (name === 'Phoenix') return 'mars';
   if (HOT_VOLCANIC_NAMES.has(name)) return 'volcano';
+  if (ICY_NAMES.has(name)) return 'icy';
   return null;
 }
 
@@ -632,6 +638,7 @@ function _loadSurfTerrain(key, assetPath) {
 // Preload terrains at startup so they're ready when landing
 _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
+_loadSurfTerrain('icy', 'assets/rocky_glacier_-_snowy_landscape_-_terrain.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
