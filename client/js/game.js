@@ -2717,11 +2717,6 @@ const planets = [];
     [-40000,  -30000,  20000,  500, 0xcc9955, null,      0x331100, 0xbb8833, 0.0007, 0xffaa22, false],
     [ 16000,   50000,  40000,  430, 0xeecc88, 0xddaa55, 0x553300, 0xeeaa44, 0.0012, 0xffdd66, false],
     [-24000,  -48000, -40000,  620, 0xbb9944, null,      0x442200, 0xcc9933, 0.0009, 0xffbb33, false],
-    // Purple/exotic worlds
-    [ 45000,   30000, -10000,  560, 0x884499, 0xaa55bb, 0x220033, 0x8833cc, 0.0011, 0xcc44ff, false],
-    [-14000,  -55000, -44000,  490, 0x9955bb, null,      0x110022, 0x7722aa, 0.0013, 0xaa22ff, false],
-    [ 30000,   15000, -32000,  670, 0xbb66dd, 0x994499, 0x330044, 0xaa44dd, 0.0010, 0xee66ff, false],
-    [-46000,  -20000,  -5000,  440, 0x7733aa, 0xaa55dd, 0x220033, 0x9922cc, 0.0015, 0xbb33ee, false],
     // Ocean/teal worlds
     [ 20000,   38000, -28000,  590, 0x229988, 0x44bbaa, 0x001122, 0x22aabb, 0.0012, 0x00ffee, false],
     [-35000,  -18000,  28000,  510, 0x33bbaa, null,      0x002233, 0x33ccbb, 0.0010, 0x44eedd, false],
@@ -2737,29 +2732,18 @@ const planets = [];
     [-48000,  -35000, -38000,  470, 0x555566, 0x333355, 0x000022, 0x333366, 0.0012, 0x4444ff, false],
     [ 35000,   48000,  48000,  610, 0x334444, null,      0x001111, 0x224444, 0.0010, 0x00ffdd, false],
     [-60000,  -25000,  18000,  720, 0x445555, 0x334455, 0x001122, 0x335566, 0.0009, 0x0088dd, false],
-    // Magenta/pink worlds
-    [ 18000,   70000, -58000,  540, 0xdd4488, 0xbb2266, 0x330022, 0xcc3377, 0.0013, 0xff44aa, false],
-    [-16000,  -70000,  58000,  490, 0xcc3377, null,      0x220011, 0xbb2255, 0.0011, 0xff2288, false],
-    [ 62000,   32000, -20000,  660, 0xee55aa, 0xdd3388, 0x440022, 0xdd4499, 0.0010, 0xff66cc, false],
-    [-62000,  -42000,  -2000,  580, 0xbb2266, 0x991144, 0x330011, 0xaa2255, 0.0014, 0xff3399, false],
     // Yellow/sulfur worlds
     [ 50000,   15000,  48000,  510, 0xeeee44, 0xcccc22, 0x333300, 0xdddd22, 0.0012, 0xffff00, false],
     [-50000,  -45000, -50000,  470, 0xddcc22, null,      0x222200, 0xccbb11, 0.0013, 0xeeee00, false],
     [ 65000,   58000,  35000,  700, 0xffee55, 0xddcc33, 0x443300, 0xeecc33, 0.0009, 0xffff44, false],
     [-65000,  -58000, -30000,  630, 0xccbb33, 0xbbaa22, 0x332200, 0xbbaa22, 0.0010, 0xeedd00, false],
-    // Rust/brown worlds
-    [ 40000,  -22000,  65000,  550, 0x995533, null,      0x221100, 0x884422, 0.0012, 0xcc6633, false],
-    [-40000,   22000, -65000,  610, 0x774422, 0x553311, 0x330000, 0x774422, 0.0010, 0xbb5522, false],
-    [ 68000,   38000,  -5000,  490, 0xaa6644, null,      0x331100, 0x996633, 0.0014, 0xdd8855, false],
-    [-68000,  -38000,  10000,  720, 0x885533, 0x773322, 0x220000, 0x885533, 0.0009, 0xcc7744, false],
     // Glowing/neon worlds
     [ 32000,  -75000, -68000, 580, 0x113355, 0x224488, 0x000022, 0x1144aa, 0.0018, 0x0033ff, false],
     [-72000,  65000,   22000, 540, 0x221133, null,      0x110022, 0x552288, 0.0015, 0x8800ff, false],
     [ 72000, -55000,  -40000, 620, 0x112244, 0x223366, 0x000033, 0x2233aa, 0.0012, 0x2255ff, false],
     [-35000,  48000,   72000, 500, 0x002233, null,      0x001122, 0x113355, 0.0013, 0x0066ff, false],
-    // Two extra varied ones
+    // One extra varied
     [ 58000,  72000,  -62000, 680, 0x228855, 0x117733, 0x001100, 0x33aa55, 0.0010, 0x00ff88, false],
-    [-58000, -72000,   62000, 530, 0x993322, null,      0x220000, 0xaa4422, 0.0011, 0xff5533, false],
   ];
 
   const DIAMOND_COLORS = [
@@ -2775,15 +2759,12 @@ const planets = [];
     'Cinder Peak','Molten Eye','Inferno','Ember Drift',
     'Verdania','Canopy World','Spore Basin','Thornwood',
     'Dust Bowl','Sand Veil','Mirage','Dune Scar',
-    'Shade Hollow','Violet Rift','Amethyst','Umbra Vale',
     'Coral Deep','Tidal Drift','Azurefall','Wavecrest',
     'Titan Amber','Prism Giant','Cloud Titan','Amber Coil',
     'Obsidian','Slate Void','Charcoal Rim','Iron Dark',
-    'Rose Nebula','Fuchsia Deep','Crimson Veil','Magenta Shore',
     'Sulfur Moon','Acid Flats','Brimstone','Gilt Waste',
-    'Rust Belt','Oxide Shelf','Terra Ferrum','Brown Dwarf',
     'Neon Abyss','Void Pulse','Azure Neon','Deep Circuit',
-    'Emerald Gate','Ember Stone',
+    'Emerald Gate',
   ];
 
   defs.forEach(([x, y, z, r, col, ring, skyC, fogC, fogD, dCol, extraRing], i) => {
