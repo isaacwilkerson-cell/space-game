@@ -518,67 +518,58 @@ _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:tran
 _surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
 document.body.appendChild(_surfBoardPrompt);
 
-let _surfTerrainMesh = null; // currently loaded terrain model in the surface scene
+let _surfTerrainMesh = null;
+let _surfTerrainReady = false;
+
+// Preload Phoenix terrain at startup so it's ready when landing
+loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
+  if (!model) return;
+  _surfTerrainMesh = model;
+  _planetSurfScene.add(_surfTerrainMesh);
+  // Raycast to find top surface, shift so surface is at y=0
+  _surfRaycaster.set(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
+  const hits = _surfRaycaster.intersectObject(_surfTerrainMesh, true);
+  if (hits.length > 0) model.position.y -= hits[0].point.y;
+  _surfTerrainReady = true;
+});
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
 
-  // Update sky dome colour from planet atmosphere
   if (atm) {
     _surfSkyDome.material.color.copy(atm.skyColor);
     _surfAmbient.color.copy(atm.skyColor);
   }
 
-  // Remove any previous custom terrain
-  if (_surfTerrainMesh) { _planetSurfScene.remove(_surfTerrainMesh); _surfTerrainMesh = null; }
-
   const isPhoenix = planet.userData.mapName === 'Phoenix';
   _surfGround.visible = !isPhoenix;
 
-  if (isPhoenix) {
-    loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
-      if (!model) { _surfGround.visible = true; return; }
-      _surfTerrainMesh = model;
-      _planetSurfScene.add(_surfTerrainMesh);
-      // Raycast from high up to find the terrain surface height, then reposition
-      _surfRaycaster.set(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
-      const hits = _surfRaycaster.intersectObject(_surfTerrainMesh, true);
-      if (hits.length > 0) {
-        // Shift terrain so surface at origin hit is at y=0
-        model.position.y += -hits[0].point.y;
-      }
-    });
-  }
-
-  // Place player high up so gravity drops them onto the terrain
+  // Spawn player just above terrain surface
   _surfShipWorldPos = new THREE.Vector3(0, 0, 0);
-  _surfPos.set(0, 800, 20);
+  _surfPos.set(0, 50, 20);
   _surfVel.set(0, 0, 0);
   _surfVertVel = 0;
-  _surfYaw = Math.atan2(fwd.x, fwd.z);
+  _surfYaw = 0;
   _surfPitch = 0;
 
-  // Reset renderer clear color to transparent so sky dome shows correctly
   renderer.setClearColor(0x000000, 0);
+
+  // Hide ship and landing menu in surface mode
+  selfMesh.visible = false;
+  if (_landedMenu) _landedMenu.style.display = 'none';
+  elHud.style.display = 'none';
 
   gameMode = 'planet_surface';
   if (_surfHudEl) _surfHudEl.style.display = 'block';
-  selfMesh.visible = true;
-
 }
 
 function _exitPlanetSurface() {
-  const atm = _surfCurrentPlanet && _surfCurrentPlanet.userData.atmosphere;
-  const fogHex = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
-  _setPlanetFog(1, fogHex);
   if (_surfHudEl) _surfHudEl.style.display = 'none';
   _surfBoardPrompt.style.display = 'none';
-  setTimeout(() => {
-    gameMode = 'landed_ship';
-    _landedMenu.style.display = 'flex';
-    _setPlanetFog(0);
-  }, 850);
+  selfMesh.visible = true;
+  gameMode = 'landed_ship';
+  _landedMenu.style.display = 'flex';
 }
 
 function _updatePlanetSurface() {
