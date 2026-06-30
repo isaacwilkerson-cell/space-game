@@ -556,11 +556,9 @@ function _enterPlanetSurface(planet) {
     });
   }
 
-  // Drop player slightly in front of ship
-  _surfShipWorldPos = selfMesh.position.clone();
-  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(selfMesh.quaternion).setY(0).normalize();
-  _surfPos.copy(_surfShipWorldPos).addScaledVector(fwd, 12);
-  _surfPos.y = SURF_EYE_H;
+  // Place player and "ship" in local surface scene coords (terrain is centered at origin)
+  _surfShipWorldPos = new THREE.Vector3(0, 0, 0); // ship marker position in surface scene
+  _surfPos.set(0, SURF_EYE_H, 20); // spawn slightly in front of ship
   _surfVel.set(0, 0, 0);
   _surfVertVel = 0;
   _surfYaw = Math.atan2(fwd.x, fwd.z);
