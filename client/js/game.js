@@ -428,14 +428,9 @@ loadModel('assets/shooting_range.glb', 400, model => {
   model.traverse(c => {
     if (c.isMesh) {
       _rangeCollidables.push(c);
-      // Find target mesh with a texture map and bake it to canvas for UV sampling
-      if (!_rangeTexReady && c.material && c.material.map && c.material.map.image) {
-        const img = c.material.map.image;
-        _rangeTexCanvas.width  = img.width  || img.videoWidth  || 512;
-        _rangeTexCanvas.height = img.height || img.videoHeight || 512;
-        _rangeTexCtx.drawImage(img, 0, 0);
-        _rangeTexReady = true;
-        c.userData.hasTargetTex = true;
+      // Tag meshes that look like targets (have a texture map — walls/floor are plain materials)
+      if (c.material && c.material.map) {
+        c.userData.isTarget = true;
       }
     }
   });
@@ -1683,7 +1678,7 @@ function _fireSniper() {
     const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
     const hitColor = _sampleHitColor(hits[0]);
     _spawnImpact(hits[0].point, normal, activeScene, hitColor);
-    if (gameMode === 'range') _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+    if (gameMode === 'range' && hits[0].object.userData.isTarget) _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
   }
 
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
