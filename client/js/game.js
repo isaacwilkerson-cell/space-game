@@ -584,42 +584,78 @@ _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:tran
 _surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
 document.body.appendChild(_surfBoardPrompt);
 
-let _surfTerrainMesh = null;
+let _surfTerrainMesh = null; // currently active terrain mesh for this landing, or null for flat ground
 let _surfTerrainReady = false;
 let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
-// Preload Phoenix terrain at startup so it's ready when landing
-loadModel('assets/maadim_valles_outflow_mars.glb', 3000, model => {
-  if (!model) return;
-  // Keep original materials but ensure ambient light shows them correctly
-  model.traverse(c => {
-    if (!c.isMesh || !c.material) return;
-    const mats = Array.isArray(c.material) ? c.material : [c.material];
-    mats.forEach(m => {
-      // If no texture and default white color, set a Mars reddish-brown
-      const col = m.color;
-      const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
-      if (isWhite && !m.map) m.color.set(0xc1440e);
-      m.needsUpdate = true;
+const HOT_VOLCANIC_NAMES = new Set([
+  'Cinder Peak', 'Molten Eye', 'Inferno', 'Ember Drift',
+  'Sulfur Moon', 'Acid Flats', 'Brimstone', 'Gilt Waste',
+]);
+
+// Generic terrain registry — each entry holds its own loaded mesh + extents
+const _surfTerrains = {
+  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e },
+  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a },
+};
+
+function _terrainKeyForPlanet(planet) {
+  const name = planet.userData.mapName;
+  if (name === 'Phoenix') return 'mars';
+  if (HOT_VOLCANIC_NAMES.has(name)) return 'volcano';
+  return null;
+}
+
+function _loadSurfTerrain(key, assetPath) {
+  loadModel(assetPath, 3000, model => {
+    if (!model) return;
+    const entry = _surfTerrains[key];
+    model.traverse(c => {
+      if (!c.isMesh || !c.material) return;
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => {
+        const col = m.color;
+        const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
+        if (isWhite && !m.map) m.color.set(entry.tint);
+        m.needsUpdate = true;
+      });
     });
+    entry.mesh = model;
+    const box = new THREE.Box3().setFromObject(model);
+    model.position.y -= box.max.y;
+    entry.halfX = (box.max.x - box.min.x) / 2 * 0.92;
+    entry.halfZ = (box.max.z - box.min.z) / 2 * 0.92;
+    entry.ready = true;
   });
-  _surfTerrainMesh = model;
-  _planetSurfScene.add(_surfTerrainMesh);
-  _planetSurfScene.remove(_surfGround);
-  const box = new THREE.Box3().setFromObject(model);
-  model.position.y -= box.max.y;
-  // Store XZ half-extents so the border matches terrain edges
-  _surfTerrainHalfX = (box.max.x - box.min.x) / 2 * 0.92;
-  _surfTerrainHalfZ = (box.max.z - box.min.z) / 2 * 0.92;
-  _surfTerrainReady = true;
-});
+}
+
+// Preload terrains at startup so they're ready when landing
+_loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
+_loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
 
-  const isPhoenix = planet.userData.mapName === 'Phoenix';
-  const hasTerrain = isPhoenix && _surfTerrainReady;
+  // Remove any previously-shown terrain mesh from the scene
+  Object.values(_surfTerrains).forEach(entry => {
+    if (entry.mesh) _planetSurfScene.remove(entry.mesh);
+  });
+
+  const terrainKey = _terrainKeyForPlanet(planet);
+  const terrainEntry = terrainKey ? _surfTerrains[terrainKey] : null;
+  const hasTerrain = !!(terrainEntry && terrainEntry.ready);
+
+  if (hasTerrain) {
+    _planetSurfScene.add(terrainEntry.mesh);
+    _planetSurfScene.remove(_surfGround);
+    _surfTerrainMesh = terrainEntry.mesh;
+    _surfTerrainHalfX = terrainEntry.halfX;
+    _surfTerrainHalfZ = terrainEntry.halfZ;
+  } else {
+    if (_surfGround.parent !== _planetSurfScene) _planetSurfScene.add(_surfGround);
+    _surfTerrainMesh = null;
+  }
 
   if (atm) {
     _surfSkyDome.material.color.copy(atm.skyColor);
