@@ -359,6 +359,51 @@ function _inRangeZone() {
     fpPos.x > 20 && fpPos.x < 60 && fpPos.z > 30 && fpPos.z < 70;
 }
 
+// ── Team Deathmatch zone ────────────────────────────────────────────────────
+const TDM_ZONE = { minX: -147, maxX: -82, minZ: -26, maxZ: 22 };
+function _posInTDMZone(x, z) {
+  return x > TDM_ZONE.minX && x < TDM_ZONE.maxX && z > TDM_ZONE.minZ && z < TDM_ZONE.maxZ;
+}
+function _inTDMZone() {
+  return gameMode === 'lobby' && _posInTDMZone(fpPos.x, fpPos.z);
+}
+function _tdmPlayerCount() {
+  let n = _inTDMZone() ? 1 : 0;
+  Object.values(remotePlayers).forEach(rp => {
+    if (rp.fpMode === 'lobby' && rp.data && rp.data.fpPos && _posInTDMZone(rp.data.fpPos.x, rp.data.fpPos.z)) n++;
+  });
+  return n;
+}
+const _tdmEl = document.createElement('div');
+_tdmEl.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);color:#0ff;font-family:monospace;font-size:20px;letter-spacing:3px;text-align:center;text-shadow:0 0 8px #000;pointer-events:none;display:none;z-index:40;';
+document.body.appendChild(_tdmEl);
+let _tdmCountdown = null;
+let _tdmCountdownLastTick = 0;
+function _updateTDMZone() {
+  const count = _tdmPlayerCount();
+  const localInZone = _inTDMZone();
+  if (!localInZone) {
+    _tdmEl.style.display = 'none';
+    _tdmCountdown = null;
+    return;
+  }
+  _tdmEl.style.display = 'block';
+  if (count >= 2) {
+    if (_tdmCountdown === null) {
+      _tdmCountdown = 20;
+      _tdmCountdownLastTick = Date.now();
+    }
+    if (Date.now() - _tdmCountdownLastTick >= 1000) {
+      _tdmCountdown = Math.max(0, _tdmCountdown - 1);
+      _tdmCountdownLastTick = Date.now();
+    }
+    _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}`;
+  } else {
+    _tdmCountdown = null;
+    _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
+  }
+}
+
 function enterLobby() {
   gameMode = 'lobby';
   _killAllExteriorLights();
@@ -2426,8 +2471,12 @@ function updateFP() {
     _lobbyRoomPrompt.style.display = _inRoomZone() ? 'block' : 'none';
     _lobbyRangePrompt.style.display = _inRangeZone() ? 'block' : 'none';
     _rangeExitPrompt.style.display = 'none';
+    _updateTDMZone();
   } else if (gameMode === 'range') {
     _rangeExitPrompt.style.display = 'block';
+    _tdmEl.style.display = 'none';
+  } else {
+    _tdmEl.style.display = 'none';
   }
 
   fpPos.add(fpVel);
