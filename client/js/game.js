@@ -2888,20 +2888,17 @@ function _drawMinimap() {
   _mmCtx.textAlign = 'center';
   _mmCtx.fillText('STATION', sx, sy - 8);
 
-  // Planets — always show regardless of distance, clamped to edge of map
+  // Planets — only show if within MM_RANGE
   planets.forEach(p => {
-    let [mx, my] = worldToMM(p.position.x, p.position.z);
-    // Clamp to circle edge if off-map
-    const edgeDx = mx - MM_R, edgeDy = my - MM_R;
-    const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-    const onEdge = edgeDist > MM_R - 4;
-    if (onEdge) { mx = MM_R + (edgeDx / edgeDist) * (MM_R - 5); my = MM_R + (edgeDy / edgeDist) * (MM_R - 5); }
-    const r = onEdge ? 3 : Math.max(3, Math.min(10, 80000 / playerPos.distanceTo(p.position)));
+    const dist = playerPos.distanceTo(p.position);
+    if (dist > MM_RANGE) return;
+    const [mx, my] = worldToMM(p.position.x, p.position.z);
+    const r = Math.max(3, Math.min(10, 80000 / dist));
     _mmCtx.beginPath();
     _mmCtx.arc(mx, my, r, 0, Math.PI * 2);
     _mmCtx.fillStyle = p.userData.mapColor || '#4488ff';
     _mmCtx.fill();
-    if (!onEdge && p.userData.mapName) {
+    if (p.userData.mapName) {
       _mmCtx.font = '8px monospace';
       _mmCtx.fillStyle = '#aaddff';
       _mmCtx.textAlign = 'center';
