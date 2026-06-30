@@ -541,16 +541,11 @@ function _enterPlanetSurface(planet) {
   _surfGround.visible = !isPhoenix;
 
   if (isPhoenix) {
-    loadModel('assets/mars_-_aram_chaos_region.glb', 1, model => {
+    loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
       if (!model) { _surfGround.visible = true; return; }
-      // Scale and center model to fit the surface scene
+      // Shift so the top surface sits at y=0 (player walks at y=SURF_EYE_H)
       const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3(); box.getSize(size);
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const s = 3000 / maxDim;
-      model.scale.setScalar(s);
-      const center = new THREE.Vector3(); box.getCenter(center);
-      model.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+      model.position.y -= box.max.y;
       _surfTerrainMesh = model;
       _planetSurfScene.add(_surfTerrainMesh);
     });
@@ -564,12 +559,15 @@ function _enterPlanetSurface(planet) {
   _surfYaw = Math.atan2(fwd.x, fwd.z);
   _surfPitch = 0;
 
+  // Reset renderer clear color to transparent so sky dome shows correctly
+  renderer.setClearColor(0x000000, 0);
+
   gameMode = 'planet_surface';
   if (_surfHudEl) _surfHudEl.style.display = 'block';
   selfMesh.visible = true;
 
-  // Fade fog out once scene is ready
-  setTimeout(() => _setPlanetFog(0), isPhoenix ? 1200 : 80);
+  // Fade fog out — give Phoenix extra time to stream the terrain GLB
+  setTimeout(() => _setPlanetFog(0), isPhoenix ? 2000 : 80);
 }
 
 function _exitPlanetSurface() {
