@@ -586,6 +586,7 @@ document.body.appendChild(_surfBoardPrompt);
 
 let _surfTerrainMesh = null; // currently active terrain mesh for this landing, or null for flat ground
 let _surfSpeedMul = 1.0; // per-terrain movement speed multiplier
+let _surfJumpMul = 1.0;  // per-terrain jump height multiplier
 let _surfTerrainReady = false;
 let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
@@ -600,9 +601,9 @@ const ICY_NAMES = new Set([
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, speedMul: 1.0 },
-  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, speedMul: 1.0 },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 1.8 },
+  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
+  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 2.3, jumpMul: 1.3 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -666,10 +667,12 @@ function _enterPlanetSurface(planet) {
     _surfTerrainHalfX = terrainEntry.halfX;
     _surfTerrainHalfZ = terrainEntry.halfZ;
     _surfSpeedMul = terrainEntry.speedMul || 1.0;
+    _surfJumpMul = terrainEntry.jumpMul || 1.0;
   } else {
     if (_surfGround.parent !== _planetSurfScene) _planetSurfScene.add(_surfGround);
     _surfTerrainMesh = null;
     _surfSpeedMul = 1.0;
+    _surfJumpMul = 1.0;
   }
 
   if (atm) {
@@ -788,7 +791,7 @@ function _updatePlanetSurface() {
   const _groundY = _gHits.length > 0 ? _gHits[0].point.y + SURF_EYE_H : SURF_EYE_H;
 
   const onGround = _surfPos.y <= _groundY + 0.1;
-  if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V;
+  if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpMul;
 
   _surfVertVel -= SURF_GRAVITY;
   _surfPos.add(_surfVel);
