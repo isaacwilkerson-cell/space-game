@@ -2332,9 +2332,9 @@ function updateFP() {
   fpVel.multiplyScalar(FP_FRICTION);
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
-  // Precise mesh collision — slide along walls
+  // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : _roomCollidables;
-  if (_activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
+  if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = 2.5;
     const origin = fpPos.clone();
     origin.y += 1; // cast from mid-chest height
