@@ -441,6 +441,7 @@ loadModel('assets/shooting_range.glb', 400, model => {
   });
   shootingRangeScene.add(model);
   _rangeBBox = new THREE.Box3().setFromObject(model);
+  console.log('[range] collidables:', _rangeCollidables.length, 'texReady:', _rangeTexReady);
 });
 
 const _rangeExitPrompt = document.createElement('div');
@@ -1539,7 +1540,7 @@ const _impactGeo = new THREE.SphereGeometry(1.2, 4, 4);
 const _impactMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
 
 // Bullet hole decal geo (flat circle)
-const _holeGeo = new THREE.CircleGeometry(1.5, 8);
+const _holeGeo = new THREE.CircleGeometry(3.5, 8);
 const _holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, depthWrite: false, transparent: true, opacity: 1 });
 const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
 const _bulletHoles = [];
