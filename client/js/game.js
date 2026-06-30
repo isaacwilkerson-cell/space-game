@@ -515,7 +515,8 @@ let _surfLandT = 0;
 let _surfLandGroundY = null;
 const SURF_LAND_DUR = 180;
 let _surfLandShip = null;
-let _surfLandShipBaseY = -38; // resting Y of parked ship
+let _surfLandShipBaseY = -38;
+let _surfShipBox = null;      // XZ bounding box of parked ship
 let _surfLeaving = false;     // takeoff animation active
 let _surfLeaveT = 0;
 const SURF_LEAVE_DUR = 150;
@@ -595,6 +596,12 @@ function _enterPlanetSurface(planet) {
     _surfLandShip = m;
     _surfLandShip.position.set(0, 800, 0);
     _planetSurfScene.add(_surfLandShip);
+    // Compute XZ bounding box for collision (in local space, before position offset)
+    const _sBox = new THREE.Box3().setFromObject(m);
+    _surfShipBox = {
+      minX: _sBox.min.x, maxX: _sBox.max.x,
+      minZ: _sBox.min.z, maxZ: _sBox.max.z,
+    };
   });
 }
 
@@ -690,16 +697,26 @@ function _updatePlanetSurface() {
     const bobY = _surfLandShipBaseY + Math.sin(Date.now() * 0.001) * 4;
     _surfLandShip.position.y = bobY;
 
-    // Collision — push player out if too close to ship center (XZ)
+    // Collision — AABB in XZ using actual ship bounding box
     const sdx = _surfPos.x - _surfLandShip.position.x;
     const sdz = _surfPos.z - _surfLandShip.position.z;
     const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
-    const SHIP_RADIUS = 55;
-    if (sDist < SHIP_RADIUS) {
-      const push = SHIP_RADIUS / Math.max(sDist, 0.01);
-      _surfPos.x = _surfLandShip.position.x + sdx * push;
-      _surfPos.z = _surfLandShip.position.z + sdz * push;
-      _surfVel.x = 0; _surfVel.z = 0;
+    if (_surfShipBox) {
+      const PAD = 4;
+      const inX = sdx > _surfShipBox.minX - PAD && sdx < _surfShipBox.maxX + PAD;
+      const inZ = sdz > _surfShipBox.minZ - PAD && sdz < _surfShipBox.maxZ + PAD;
+      if (inX && inZ) {
+        // Push out on the axis with least overlap
+        const ox1 = sdx - (_surfShipBox.minX - PAD);
+        const ox2 = (_surfShipBox.maxX + PAD) - sdx;
+        const oz1 = sdz - (_surfShipBox.minZ - PAD);
+        const oz2 = (_surfShipBox.maxZ + PAD) - sdz;
+        const minO = Math.min(ox1, ox2, oz1, oz2);
+        if (minO === ox1) { _surfPos.x = _surfLandShip.position.x + _surfShipBox.minX - PAD; _surfVel.x = 0; }
+        else if (minO === ox2) { _surfPos.x = _surfLandShip.position.x + _surfShipBox.maxX + PAD; _surfVel.x = 0; }
+        else if (minO === oz1) { _surfPos.z = _surfLandShip.position.z + _surfShipBox.minZ - PAD; _surfVel.z = 0; }
+        else { _surfPos.z = _surfLandShip.position.z + _surfShipBox.maxZ + PAD; _surfVel.z = 0; }
+      }
     }
 
     // Leave planet prompt
