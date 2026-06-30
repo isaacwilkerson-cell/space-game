@@ -3318,7 +3318,7 @@ function drawReticle() {
     });
   }
 
-  // Admin noclip dot — always centered when admin mode is on
+  // Admin noclip dot + world coords of looked-at point
   if (window._adminMode && pointerLocked) {
     rCtx.beginPath();
     rCtx.arc(cx, cy, 4, 0, Math.PI * 2);
@@ -3329,6 +3329,17 @@ function drawReticle() {
     rCtx.strokeStyle = 'rgba(255,80,80,0.5)';
     rCtx.lineWidth = 1.5;
     rCtx.stroke();
+
+    // Raycast from camera center to find looked-at world coords
+    const _adminRay = new THREE.Raycaster();
+    _adminRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const _adminTargets = [...scene.children, ...(gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : _roomCollidables)];
+    const _adminHits = _adminRay.intersectObjects(_adminTargets, true);
+    const _adminPt = _adminHits.length > 0 ? _adminHits[0].point : camera.position.clone().addScaledVector(_adminRay.ray.direction, 100);
+    const _coordStr = `${_adminPt.x.toFixed(1)}, ${_adminPt.y.toFixed(1)}, ${_adminPt.z.toFixed(1)}`;
+    rCtx.font = '12px monospace';
+    rCtx.fillStyle = 'rgba(255,80,80,0.9)';
+    rCtx.fillText(_coordStr, cx + 14, cy - 10);
   }
 
   if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'range' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
