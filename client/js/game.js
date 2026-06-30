@@ -2644,6 +2644,26 @@ selfMesh.add(camera);
 // ── Remote players ────────────────────────────────────────────────────────────
 const remotePlayers = {};
 
+function _makeNameTag(name) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.roundRect ? ctx.roundRect(4, 10, 248, 44, 8) : ctx.fillRect(4, 10, 248, 44);
+  ctx.fill();
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#00ffff';
+  ctx.fillText(name, 128, 33);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
 // Preload astronaut models — different sizes for lobby vs room
 let _astronautLobbyTemplate = null;
 let _astronautRoomTemplate  = null;
@@ -2705,11 +2725,18 @@ function addRemotePlayer(data) {
   scene.add(planetMesh);
   planetMesh.visible = false;
 
-  // Add astronaut clone to each FP mesh (or placeholder if not loaded yet)
+  // Add astronaut clone to each FP mesh
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
   rangeMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+
+  // Name tags — one per scene, positioned above astronaut
+  const tagName = data.name || 'Pilot';
+  const lobbyTag  = _makeNameTag(tagName); lobbyTag.scale.set(12, 3, 1);  lobbyTag.position.set(0, 22, 0);  lobbyMesh.add(lobbyTag);
+  const roomTag   = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);  roomTag.position.set(0, 115, 0);  roomMesh.add(roomTag);
+  const rangeTag  = _makeNameTag(tagName); rangeTag.scale.set(12, 3, 1);  rangeTag.position.set(0, 22, 0);  rangeMesh.add(rangeTag);
+  const planetTag = _makeNameTag(tagName); planetTag.scale.set(12, 3, 1); planetTag.position.set(0, 22, 0); planetMesh.add(planetTag);
 
   remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, data, fpMode: null };
 }
