@@ -2759,12 +2759,12 @@ const planets = [];
     'Cinder Peak','Molten Eye','Inferno','Ember Drift',
     'Verdania','Canopy World','Spore Basin','Thornwood',
     'Dust Bowl','Sand Veil','Mirage','Dune Scar',
-    'Coral Deep','Tidal Drift','Azurefall','Wavecrest',
-    'Titan Amber','Prism Giant','Cloud Titan','Amber Coil',
+    'Forge Hollow','Steel Tide','Rustwater','Smelter\'s Reach',
+    'Iron Colossus','Gear Titan','Foundry Giant','Cog Array',
     'Obsidian','Slate Void','Charcoal Rim','Iron Dark',
     'Sulfur Moon','Acid Flats','Brimstone','Gilt Waste',
     'Neon Abyss','Void Pulse','Azure Neon','Deep Circuit',
-    'Emerald Gate',
+    'Emerald Canopy',
   ];
 
   defs.forEach(([x, y, z, r, col, ring, skyC, fogC, fogD, dCol, extraRing], i) => {
