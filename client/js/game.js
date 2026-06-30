@@ -520,7 +520,7 @@ let _surfTerrainMesh = null;
 let _surfTerrainReady = false;
 
 // Preload Phoenix terrain at startup so it's ready when landing
-loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
+loadModel('assets/maadim_valles_outflow_mars.glb', 3000, model => {
   if (!model) return;
   // No textures in this GLB — use MeshBasicMaterial with vertex colors (bypasses lighting/encoding)
   model.traverse(c => {
