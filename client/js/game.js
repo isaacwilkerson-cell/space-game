@@ -754,8 +754,9 @@ function _updateLeavePlanet() {
     if (_surfHudEl) _surfHudEl.style.display = 'none';
     // Place selfMesh near the planet and launch into flight mode
     if (_landedPlanet) {
+      const r = _landedPlanet.userData.collisionRadius || 700;
       const away = _landedPlanet.position.clone().normalize();
-      selfMesh.position.copy(_landedPlanet.position).addScaledVector(away, 3500);
+      selfMesh.position.copy(_landedPlanet.position).addScaledVector(away, r * 2.2);
       selfMesh.quaternion.identity();
       self.velocity.copy(away).multiplyScalar(8);
     }
