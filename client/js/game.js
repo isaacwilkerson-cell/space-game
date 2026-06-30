@@ -2699,8 +2699,8 @@ function addRemotePlayer(data) {
   // Flight mesh (in main scene)
   const mesh = createShipMesh(0xff6600);
   scene.add(mesh);
-  const shipTag = _makeNameTag(data.name || 'Pilot', false); // sizeAttenuation off = fixed screen size
-  shipTag.scale.set(0.12, 0.03, 1);
+  const shipTag = _makeNameTag(data.name || 'Pilot', true);
+  shipTag.scale.set(40, 10, 1);
   shipTag.position.set(0, 30, 0);
   mesh.add(shipTag);
   loadModel(ASSETS.enemyShip, 20, model => {
