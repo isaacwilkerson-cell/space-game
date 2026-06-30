@@ -2704,9 +2704,10 @@ function addRemotePlayer(data) {
     while (mesh.children.length) mesh.remove(mesh.children[0]);
     mesh.add(model);
   });
+  // Ship tag — large enough to read across space distances
   const shipTag = _makeNameTag(data.name || 'Pilot');
-  shipTag.scale.set(20, 5, 1);
-  shipTag.position.set(0, 18, 0);
+  shipTag.scale.set(120, 30, 1);
+  shipTag.position.set(0, 30, 0);
   mesh.add(shipTag);
 
   // FP mesh for lobby (astronaut in lobbyScene)
@@ -2724,25 +2725,32 @@ function addRemotePlayer(data) {
   shootingRangeScene.add(rangeMesh);
   rangeMesh.visible = false;
 
-  // FP mesh for planet walk (world space — lives in main scene)
+  // FP mesh for planet walk (world space, lives in main scene)
   const planetMesh = new THREE.Group();
   scene.add(planetMesh);
   planetMesh.visible = false;
 
-  // Add astronaut clone to each FP mesh
+  // FP mesh for ejected (floating astronaut in main scene)
+  const ejectedMesh = new THREE.Group();
+  scene.add(ejectedMesh);
+  ejectedMesh.visible = false;
+
+  // Add astronaut clones
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
   rangeMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
 
-  // Name tags — one per scene, positioned above astronaut
+  // Name tags
   const tagName = data.name || 'Pilot';
-  const lobbyTag  = _makeNameTag(tagName); lobbyTag.scale.set(12, 3, 1);  lobbyTag.position.set(0, 22, 0);  lobbyMesh.add(lobbyTag);
-  const roomTag   = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);  roomTag.position.set(0, 115, 0);  roomMesh.add(roomTag);
-  const rangeTag  = _makeNameTag(tagName); rangeTag.scale.set(12, 3, 1);  rangeTag.position.set(0, 22, 0);  rangeMesh.add(rangeTag);
-  const planetTag = _makeNameTag(tagName); planetTag.scale.set(12, 3, 1); planetTag.position.set(0, 22, 0); planetMesh.add(planetTag);
+  const lobbyTag   = _makeNameTag(tagName); lobbyTag.scale.set(14, 3.5, 1);  lobbyTag.position.set(0, 24, 0);   lobbyMesh.add(lobbyTag);
+  const roomTag    = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);    roomTag.position.set(0, 115, 0);   roomMesh.add(roomTag);
+  const rangeTag   = _makeNameTag(tagName); rangeTag.scale.set(14, 3.5, 1);  rangeTag.position.set(0, 24, 0);   rangeMesh.add(rangeTag);
+  const planetTag  = _makeNameTag(tagName); planetTag.scale.set(120, 30, 1); planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
+  const ejectedTag = _makeNameTag(tagName); ejectedTag.scale.set(120, 30, 1);ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
 
-  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, data, fpMode: null };
+  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, ejectedMesh, data, fpMode: null };
 }
 
 function removeRemotePlayer(id) {
@@ -2753,6 +2761,7 @@ function removeRemotePlayer(id) {
   interiorScene.remove(rp.roomMesh);
   shootingRangeScene.remove(rp.rangeMesh);
   scene.remove(rp.planetMesh);
+  scene.remove(rp.ejectedMesh);
   delete remotePlayers[id];
 }
 
@@ -2762,16 +2771,18 @@ function _updateRemoteFPMeshes(p) {
   const fpMode = p.fpMode; // 'lobby' | 'docked' | 'range' | null
   rp.fpMode = fpMode;
 
-  rp.mesh.visible        = !fpMode;
-  rp.lobbyMesh.visible   = fpMode === 'lobby';
-  rp.roomMesh.visible    = false; // room is private
-  rp.rangeMesh.visible   = fpMode === 'range';
-  rp.planetMesh.visible  = fpMode === 'planet_walk';
+  rp.mesh.visible         = !fpMode;
+  rp.lobbyMesh.visible    = fpMode === 'lobby';
+  rp.roomMesh.visible     = false; // room is private
+  rp.rangeMesh.visible    = fpMode === 'range';
+  rp.planetMesh.visible   = fpMode === 'planet_walk';
+  rp.ejectedMesh.visible  = fpMode === 'ejected';
 
   if (fpMode && p.fpPos) {
-    const target = fpMode === 'lobby'       ? rp.lobbyMesh
-                 : fpMode === 'range'        ? rp.rangeMesh
-                 : fpMode === 'planet_walk'  ? rp.planetMesh
+    const target = fpMode === 'lobby'      ? rp.lobbyMesh
+                 : fpMode === 'range'       ? rp.rangeMesh
+                 : fpMode === 'planet_walk' ? rp.planetMesh
+                 : fpMode === 'ejected'     ? rp.ejectedMesh
                  : rp.roomMesh;
     target.position.set(p.fpPos.x, p.fpPos.y, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
@@ -3603,8 +3614,8 @@ if (socket) {
 
   setInterval(() => {
     if (!self.id) return;
-    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk';
-    const _fpBroadcastPos = gameMode === 'planet_walk'
+    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk' || gameMode === 'ejected';
+    const _fpBroadcastPos = (gameMode === 'planet_walk' || gameMode === 'ejected')
       ? { x: camera.position.x, y: camera.position.y, z: camera.position.z }
       : { x: fpPos.x, y: fpPos.y, z: fpPos.z };
     const _fpBroadcastYaw = gameMode === 'planet_walk' ? _pwYaw : fpYaw;
