@@ -473,11 +473,9 @@ const _surfDirLight2 = new THREE.DirectionalLight(0x8899cc, 0.4);
 _surfDirLight2.position.set(-1, 0.5, -1).normalize();
 _planetSurfScene.add(_surfDirLight2);
 
-// Flat ground plane — huge so you never see the edge
-const _surfGround = new THREE.Mesh(
-  new THREE.PlaneGeometry(40000, 40000, 1, 1),
-  new THREE.MeshStandardMaterial({ color: 0x4a7a3a, roughness: 0.9, metalness: 0.0 })
-);
+// Flat ground plane — tinted per planet in _enterPlanetSurface
+const _surfGroundMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.95, metalness: 0.0 });
+const _surfGround = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000, 1, 1), _surfGroundMat);
 _surfGround.rotation.x = -Math.PI / 2;
 _planetSurfScene.add(_surfGround);
 
@@ -538,7 +536,14 @@ function _enterPlanetSurface(planet) {
 
   if (atm) {
     _surfSkyDome.material.color.copy(atm.skyColor);
-    _surfAmbient.color.copy(atm.skyColor);
+    _surfAmbient.color.set(0xffffff); // white ambient so ground shows its own color
+    // Tint ground to match planet surface color
+    const planetMesh = planet.children[0];
+    if (planetMesh && planetMesh.material && planetMesh.material.color) {
+      _surfGroundMat.color.copy(planetMesh.material.color);
+    } else {
+      _surfGroundMat.color.copy(atm.fogColor);
+    }
   }
 
   const isPhoenix = planet.userData.mapName === 'Phoenix';
