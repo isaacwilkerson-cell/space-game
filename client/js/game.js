@@ -57,7 +57,6 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.domElement.setAttribute('tabindex', '0');
 renderer.shadowMap.enabled = true;
-renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.getElementById('canvas-container').appendChild(renderer.domElement);
@@ -269,15 +268,15 @@ const _viewmodelScene = new THREE.Scene();
 const interiorScene = new THREE.Group();
 scene.add(interiorScene);
 interiorScene.visible = false;
-const _iAmbient = new THREE.AmbientLight(0x334466, 0);
+const _iAmbient = new THREE.AmbientLight(0x334466, 2.5);
 interiorScene.add(_iAmbient);
-const _iDirLight = new THREE.DirectionalLight(0xffffff, 0);
+const _iDirLight = new THREE.DirectionalLight(0xffffff, 1.2);
 _iDirLight.position.set(1, 1, -1).normalize();
 interiorScene.add(_iDirLight);
-const _iLight = new THREE.PointLight(0x6688aa, 0, 400);
+const _iLight = new THREE.PointLight(0x6688aa, 2.0, 400);
 _iLight.position.set(0, 40, 0);
 interiorScene.add(_iLight);
-const _iOverhead = new THREE.PointLight(0xffffff, 0, 300);
+const _iOverhead = new THREE.PointLight(0xffffff, 3.0, 300);
 _iOverhead.position.set(0, 80, 0);
 interiorScene.add(_iOverhead);
 
@@ -523,19 +522,18 @@ let _surfTerrainReady = false;
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
   if (!model) return;
-  // Fix texture encoding so colors look correct under Three.js tone mapping
+  // No textures in this GLB — use MeshBasicMaterial with vertex colors (bypasses lighting/encoding)
   model.traverse(c => {
     if (!c.isMesh || !c.material) return;
-    const mats = Array.isArray(c.material) ? c.material : [c.material];
-    mats.forEach(m => {
-      if (m.map)          m.map.encoding          = THREE.sRGBEncoding;
-      if (m.emissiveMap)  m.emissiveMap.encoding   = THREE.sRGBEncoding;
-      m.needsUpdate = true;
+    const old = Array.isArray(c.material) ? c.material[0] : c.material;
+    const hasVC = old && (old.vertexColors === true || old.vertexColors === 2);
+    c.material = new THREE.MeshBasicMaterial({
+      vertexColors: hasVC,
+      color: hasVC ? 0xffffff : (old && old.color ? old.color : new THREE.Color(0.55, 0.38, 0.28)),
     });
   });
   _surfTerrainMesh = model;
   _planetSurfScene.add(_surfTerrainMesh);
-  // Remove flat ground completely — terrain replaces it
   _planetSurfScene.remove(_surfGround);
   const box = new THREE.Box3().setFromObject(model);
   model.position.y -= box.max.y;
