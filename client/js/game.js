@@ -2717,16 +2717,15 @@ const planets = [];
     [-40000,  -30000,  20000,  500, 0xcc9955, null,      0x331100, 0xbb8833, 0.0007, 0xffaa22, false],
     [ 16000,   50000,  40000,  430, 0xeecc88, 0xddaa55, 0x553300, 0xeeaa44, 0.0012, 0xffdd66, false],
     [-24000,  -48000, -40000,  620, 0xbb9944, null,      0x442200, 0xcc9933, 0.0009, 0xffbb33, false],
-    // Ocean/teal worlds
-    [ 20000,   38000, -28000,  590, 0x229988, 0x44bbaa, 0x001122, 0x22aabb, 0.0012, 0x00ffee, false],
-    [-35000,  -18000,  28000,  510, 0x33bbaa, null,      0x002233, 0x33ccbb, 0.0010, 0x44eedd, false],
-    [ 48000,   42000,  22000,  650, 0x1188aa, 0x2299bb, 0x001133, 0x22aacc, 0.0009, 0x00ccff, false],
-    [-22000,  -52000,  48000,  480, 0x44aabb, null,      0x002244, 0x44bbcc, 0.0013, 0x22ddff, false],
-    // Gas giant style (big, many rings)
-    [ 55000,   60000,  15000,  900, 0xddcc88, 0xccaa44, 0x332200, 0xddbb55, 0.0006, 0xffee66, true],
-    [-55000,  -60000,  30000,  850, 0xcc99cc, 0xaa55aa, 0x220022, 0xcc66cc, 0.0006, 0xff88ff, true],
-    [ 28000,   55000,  55000,  950, 0x88aacc, 0x6688bb, 0x001133, 0x99aabb, 0.0005, 0x88bbff, true],
-    [-30000,  -65000, -55000,  820, 0xddaa77, 0xcc8844, 0x332200, 0xccaa66, 0.0006, 0xffcc88, true],
+    // Desert worlds (reassigned from industrial)
+    [ 20000,   38000, -28000,  590, 0xddbb88, 0xccaa66, 0x442200, 0xddaa55, 0.0012, 0xffcc55, false],
+    [-35000,  -18000,  28000,  510, 0xccaa77, null,      0x331100, 0xbb8844, 0.0010, 0xffbb44, false],
+    [ 48000,   42000,  22000,  650, 0xeebb88, 0xddaa66, 0x442200, 0xeebb55, 0.0009, 0xffdd66, false],
+    [-22000,  -52000,  48000,  480, 0xbb9966, null,      0x331100, 0xcc9944, 0.0013, 0xffcc44, false],
+    // Jungle worlds (reassigned from industrial)
+    [ 55000,   60000,  15000,  900, 0x44aa55, 0x227733, 0x001100, 0x33cc44, 0.0006, 0x00ff66, false],
+    [-55000,  -60000,  30000,  850, 0x339944, 0x226633, 0x001100, 0x22bb33, 0.0006, 0x00ee55, false],
+    [ 28000,   55000,  55000,  950, 0x55bb44, 0x338822, 0x001100, 0x44cc33, 0.0005, 0x22ff44, false],
     // Dark/charcoal worlds
     [ 42000,   25000, -42000,  530, 0x444455, null,      0x000011, 0x222244, 0.0015, 0x6666ff, false],
     [-48000,  -35000, -38000,  470, 0x555566, 0x333355, 0x000022, 0x333366, 0.0012, 0x4444ff, false],
@@ -2759,8 +2758,8 @@ const planets = [];
     'Cinder Peak','Molten Eye','Inferno','Ember Drift',
     'Verdania','Canopy World','Spore Basin','Thornwood',
     'Dust Bowl','Sand Veil','Mirage','Dune Scar',
-    'Forge Hollow','Steel Tide','Rustwater','Smelter\'s Reach',
-    'Iron Colossus','Gear Titan','Foundry Giant','Cog Array',
+    'Sunscorch','Amber Wastes','Drylands','Cracked Basin',
+    'Wild Canopy','Fern Hollow','Mossvale',
     'Obsidian','Slate Void','Charcoal Rim','Iron Dark',
     'Sulfur Moon','Acid Flats','Brimstone','Gilt Waste',
     'Neon Abyss','Void Pulse','Azure Neon','Deep Circuit',
