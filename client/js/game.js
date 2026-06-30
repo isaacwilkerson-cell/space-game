@@ -428,10 +428,8 @@ loadModel('assets/shooting_range.glb', 400, model => {
   model.traverse(c => {
     if (c.isMesh) {
       _rangeCollidables.push(c);
-      // Tag meshes that look like targets (have a texture map — walls/floor are plain materials)
-      if (c.material && c.material.map) {
-        c.userData.isTarget = true;
-      }
+      console.log('[range mesh]', c.name, 'mat:', c.material && c.material.name, 'hasMap:', !!(c.material && c.material.map));
+      if (c.material && c.material.map) c.userData.isTarget = true;
     }
   });
   shootingRangeScene.add(model);
