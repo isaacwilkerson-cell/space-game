@@ -502,7 +502,7 @@ const _surfPos = new THREE.Vector3(0, 1.8, 0);
 const _surfVel = new THREE.Vector3();
 let _surfYaw = 0, _surfPitch = 0;
 let _surfVertVel = 0;
-const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 1.2, SURF_ACCEL = 0.06, SURF_FRICTION = 0.82;
+const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 2.5, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
 const SURF_JUMP_V = 0.5, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
@@ -592,11 +592,12 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
+  const _accelAmt = keys['Shift'] ? SURF_ACCEL * 4 : SURF_ACCEL;
   const accel = new THREE.Vector3();
-  if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  SURF_ACCEL);
-  if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -SURF_ACCEL);
-  if (keys['a'] || keys['arrowleft'])  accel.addScaledVector(right,   -SURF_ACCEL);
-  if (keys['d'] || keys['arrowright']) accel.addScaledVector(right,    SURF_ACCEL);
+  if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  _accelAmt);
+  if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -_accelAmt);
+  if (keys['a'] || keys['arrowleft'])  accel.addScaledVector(right,    _accelAmt);
+  if (keys['d'] || keys['arrowright']) accel.addScaledVector(right,   -_accelAmt);
 
   _surfVel.add(accel);
   _surfVel.y = 0;
