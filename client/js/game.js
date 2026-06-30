@@ -1678,7 +1678,13 @@ function _fireSniper() {
     const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
     const hitColor = _sampleHitColor(hits[0]);
     _spawnImpact(hits[0].point, normal, activeScene, hitColor);
-    if (gameMode === 'range' && hits[0].object.userData.isTarget) _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+    if (gameMode === 'range') {
+      // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
+      const faceNorm = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld) : null;
+      if (faceNorm && Math.abs(faceNorm.z) > 0.6) {
+        _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+      }
+    }
   }
 
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
