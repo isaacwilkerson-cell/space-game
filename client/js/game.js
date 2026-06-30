@@ -615,14 +615,12 @@ function _updatePlanetSurface() {
       camera.lookAt(0, shipY, 0);
 
       if (_surfLandT >= 1) {
-        // Ship landed — brief pause then eject player
-        _surfLanding = false;
-        _surfLandT = 0;
-
-        // Fade to black briefly then spawn player
+        // Remove ship immediately, fade to black, then hand control to player
+        if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
         _setFog(undefined, 1);
         setTimeout(() => {
-          if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
+          _surfLanding = false;
+          _surfLandT = 0;
           _surfPos.set(0, 50, 30);
           _surfVel.set(0, 0, 0);
           _surfVertVel = 0;
@@ -630,7 +628,7 @@ function _updatePlanetSurface() {
           _surfPitch = 0;
           if (_surfHudEl) _surfHudEl.style.display = 'block';
           _setFog(undefined, 0);
-        }, 600);
+        }, 700);
       }
     }
     _pwMouseDX = 0; _pwMouseDY = 0;
