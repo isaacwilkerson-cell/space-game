@@ -522,9 +522,22 @@ let _surfTerrainReady = false;
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
   if (!model) return;
+  // Convert to unlit so it looks exactly like the original asset
+  model.traverse(c => {
+    if (!c.isMesh || !c.material) return;
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    mats.forEach((m, i) => {
+      const basic = new THREE.MeshBasicMaterial({
+        map:        m.map        || null,
+        color:      m.color      || new THREE.Color(1,1,1),
+        vertexColors: m.vertexColors,
+      });
+      if (Array.isArray(c.material)) c.material[i] = basic;
+      else c.material = basic;
+    });
+  });
   _surfTerrainMesh = model;
   _planetSurfScene.add(_surfTerrainMesh);
-  // Shift so the highest point sits at y=0 — player spawns above at y=50
   const box = new THREE.Box3().setFromObject(model);
   model.position.y -= box.max.y;
   _surfTerrainReady = true;
