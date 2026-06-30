@@ -522,14 +522,16 @@ let _surfTerrainReady = false;
 // Preload Phoenix terrain at startup so it's ready when landing
 loadModel('assets/maadim_valles_outflow_mars.glb', 3000, model => {
   if (!model) return;
-  // No textures in this GLB — use MeshBasicMaterial with vertex colors (bypasses lighting/encoding)
+  // Keep original materials but ensure ambient light shows them correctly
   model.traverse(c => {
     if (!c.isMesh || !c.material) return;
-    const old = Array.isArray(c.material) ? c.material[0] : c.material;
-    const hasVC = old && (old.vertexColors === true || old.vertexColors === 2);
-    c.material = new THREE.MeshBasicMaterial({
-      vertexColors: hasVC,
-      color: hasVC ? 0xffffff : (old && old.color ? old.color : new THREE.Color(0.55, 0.38, 0.28)),
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    mats.forEach(m => {
+      // If no texture and default white color, set a Mars reddish-brown
+      const col = m.color;
+      const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
+      if (isWhite && !m.map) m.color.set(0xc1440e);
+      m.needsUpdate = true;
     });
   });
   _surfTerrainMesh = model;
