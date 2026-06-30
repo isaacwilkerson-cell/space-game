@@ -585,6 +585,7 @@ _surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
 document.body.appendChild(_surfBoardPrompt);
 
 let _surfTerrainMesh = null; // currently active terrain mesh for this landing, or null for flat ground
+let _surfSpeedMul = 1.0; // per-terrain movement speed multiplier
 let _surfTerrainReady = false;
 let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
@@ -599,9 +600,9 @@ const ICY_NAMES = new Set([
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0 },
-  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0 },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 1.0 },
+  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, speedMul: 1.0 },
+  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, speedMul: 1.0 },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 1.8 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -664,9 +665,11 @@ function _enterPlanetSurface(planet) {
     _surfTerrainMesh = terrainEntry.mesh;
     _surfTerrainHalfX = terrainEntry.halfX;
     _surfTerrainHalfZ = terrainEntry.halfZ;
+    _surfSpeedMul = terrainEntry.speedMul || 1.0;
   } else {
     if (_surfGround.parent !== _planetSurfScene) _planetSurfScene.add(_surfGround);
     _surfTerrainMesh = null;
+    _surfSpeedMul = 1.0;
   }
 
   if (atm) {
@@ -775,7 +778,7 @@ function _updatePlanetSurface() {
   _surfVel.add(accel);
   _surfVel.y = 0;
   _surfVel.multiplyScalar(SURF_FRICTION);
-  const _surfSpeedCap = keys['shift'] ? SURF_SPRINT : SURF_SPEED;
+  const _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfSpeedMul;
   if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
   // Raycast to find ground height beneath player
