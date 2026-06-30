@@ -462,7 +462,7 @@ function exitShootingRange() {
 
 // ── Planet surface scene ───────────────────────────────────────────────────────
 const _planetSurfScene = new THREE.Scene();
-_planetSurfScene.fog = new THREE.FogExp2(0xaaccff, 0.0025);
+_planetSurfScene.fog = new THREE.FogExp2(0xaaccff, 0.0004);
 
 const _surfAmbient = new THREE.AmbientLight(0xffffff, 0.7);
 _planetSurfScene.add(_surfAmbient);
