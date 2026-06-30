@@ -269,15 +269,15 @@ const _viewmodelScene = new THREE.Scene();
 const interiorScene = new THREE.Group();
 scene.add(interiorScene);
 interiorScene.visible = false;
-const _iAmbient = new THREE.AmbientLight(0x334466, 2.5);
+const _iAmbient = new THREE.AmbientLight(0x334466, 0);
 interiorScene.add(_iAmbient);
-const _iDirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+const _iDirLight = new THREE.DirectionalLight(0xffffff, 0);
 _iDirLight.position.set(1, 1, -1).normalize();
 interiorScene.add(_iDirLight);
-const _iLight = new THREE.PointLight(0x6688aa, 2.0, 400);
+const _iLight = new THREE.PointLight(0x6688aa, 0, 400);
 _iLight.position.set(0, 40, 0);
 interiorScene.add(_iLight);
-const _iOverhead = new THREE.PointLight(0xffffff, 3.0, 300);
+const _iOverhead = new THREE.PointLight(0xffffff, 0, 300);
 _iOverhead.position.set(0, 80, 0);
 interiorScene.add(_iOverhead);
 
@@ -548,14 +548,6 @@ function _enterPlanetSurface(planet) {
 
   if (atm) {
     _surfSkyDome.material.color.copy(atm.skyColor);
-    _surfAmbient.color.set(0xffffff); // white ambient so ground shows its own color
-    // Tint ground to match planet surface color
-    const planetMesh = planet.children[0];
-    if (planetMesh && planetMesh.material && planetMesh.material.color) {
-      _surfGroundMat.color.copy(planetMesh.material.color);
-    } else {
-      _surfGroundMat.color.copy(atm.fogColor);
-    }
   }
 
   const isPhoenix = planet.userData.mapName === 'Phoenix';
@@ -597,8 +589,8 @@ function _updatePlanetSurface() {
   _surfPitch  = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, _surfPitch));
   _pwMouseDX = 0; _pwMouseDY = 0;
 
-  const forward = new THREE.Vector3(Math.sin(_surfYaw), 0, Math.cos(_surfYaw));
-  const right   = new THREE.Vector3(Math.cos(_surfYaw), 0, -Math.sin(_surfYaw));
+  const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
+  const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
   const accel = new THREE.Vector3();
   if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  SURF_ACCEL);
