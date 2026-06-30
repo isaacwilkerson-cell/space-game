@@ -511,7 +511,8 @@ const _surfRaycaster = new THREE.Raycaster();
 
 // Landing animation state
 let _surfLanding = false;
-let _surfLandT = 0;          // 0→1 progress
+let _surfLandT = 0;
+let _surfLandGroundY = null;
 const SURF_LAND_DUR = 180;   // frames (~3s)
 let _surfLandShip = null;    // ship clone in surface scene
 
@@ -583,6 +584,7 @@ function _enterPlanetSurface(planet) {
   // Start landing animation — clone ship into surface scene
   _surfLanding = true;
   _surfLandT = 0;
+  _surfLandGroundY = null;
   if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
   loadModel('assets/ships/spaceship.glb', 60, m => {
     if (!m) return;
@@ -604,10 +606,18 @@ function _updatePlanetSurface() {
   // ── Landing animation ──────────────────────────────────
   if (_surfLanding) {
     if (_surfLandShip) {
+      // Raycast to find terrain height at landing spot (0, 0) once
+      if (!_surfLandGroundY) {
+        const _groundMesh = _surfTerrainMesh || _surfGround;
+        _surfRaycaster.set(new THREE.Vector3(0, 2000, 0), new THREE.Vector3(0, -1, 0));
+        const _hits = _surfRaycaster.intersectObject(_groundMesh, true);
+        _surfLandGroundY = _hits.length > 0 ? _hits[0].point.y : 0;
+      }
+
       _surfLandT = Math.min(1, _surfLandT + 1 / SURF_LAND_DUR);
       const ease = 1 - Math.pow(1 - _surfLandT, 3); // ease-out cubic
-      const shipY = 800 * (1 - ease);
-      _surfLandShip.position.set(0, Math.max(shipY, 2), 0);
+      const shipY = _surfLandGroundY + 800 * (1 - ease);
+      _surfLandShip.position.set(0, shipY, 0);
 
       // Camera follows from behind/above the ship
       const camDist = 160, camHeight = 60;
