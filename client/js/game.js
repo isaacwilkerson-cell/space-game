@@ -502,7 +502,7 @@ const _surfPos = new THREE.Vector3(0, 1.8, 0);
 const _surfVel = new THREE.Vector3();
 let _surfYaw = 0, _surfPitch = 0;
 let _surfVertVel = 0;
-const SURF_EYE_H = 8, SURF_SPEED = 0.18, SURF_ACCEL = 0.06, SURF_FRICTION = 0.82;
+const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 0.52, SURF_ACCEL = 0.06, SURF_FRICTION = 0.82;
 const SURF_JUMP_V = 0.22, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
@@ -601,7 +601,8 @@ function _updatePlanetSurface() {
   _surfVel.add(accel);
   _surfVel.y = 0;
   _surfVel.multiplyScalar(SURF_FRICTION);
-  if (_surfVel.length() > SURF_SPEED) _surfVel.setLength(SURF_SPEED);
+  const _surfSpeedCap = keys['Shift'] ? SURF_SPRINT : SURF_SPEED;
+  if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
   // Raycast to find ground height beneath player
   const _groundMesh = _surfTerrainMesh || _surfGround;
