@@ -341,14 +341,22 @@ function _inHangarZone() {
 
 const _lobbyRoomPrompt = document.createElement('div');
 _lobbyRoomPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
-_lobbyRoomPrompt.textContent = '[ E ]  SHOOTING RANGE';
+_lobbyRoomPrompt.textContent = '[ E ]  RETURN TO YOUR ROOM';
+
+const _lobbyRangePrompt = document.createElement('div');
+_lobbyRangePrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
+_lobbyRangePrompt.textContent = '[ E ]  SHOOTING RANGE';
+document.body.appendChild(_lobbyRangePrompt);
 document.body.appendChild(_lobbyRoomPrompt);
 
 function _inRoomZone() {
-  return gameMode === 'lobby' && (
-    (fpPos.x > 20 && fpPos.x < 60 && fpPos.z > 30 && fpPos.z < 70) ||
-    (fpPos.x > 19 && fpPos.x < 59 && fpPos.z > -73 && fpPos.z < -33)
-  );
+  return gameMode === 'lobby' &&
+    fpPos.x > 19 && fpPos.x < 59 && fpPos.z > -73 && fpPos.z < -33;
+}
+
+function _inRangeZone() {
+  return gameMode === 'lobby' &&
+    fpPos.x > 20 && fpPos.x < 60 && fpPos.z > 30 && fpPos.z < 70;
 }
 
 function enterLobby() {
@@ -449,7 +457,7 @@ function exitShootingRange() {
   camera.position.copy(fpPos);
   _lobbyAmbient.intensity = 1.2;
   _lobbyLight.intensity = 1.0;
-  renderer.toneMappingExposure = 0.18;
+  renderer.toneMappingExposure = 0.8;
 }
 
 // ── Hangar scene ──────────────────────────────────────────────────────────────
@@ -1914,9 +1922,15 @@ document.addEventListener('keydown', e => {
     }
     if (gameMode === 'lobby') {
       if (_inHangarZone()) { enterHangar(); return; }
+      if (_inRangeZone()) {
+        _lobbyRangePrompt.style.display = 'none';
+        enterShootingRange();
+        return;
+      }
       if (_inRoomZone()) {
         _lobbyRoomPrompt.style.display = 'none';
-        enterShootingRange();
+        exitLobby();
+        fpPos.set(-9.6, 2, 53); camera.position.copy(fpPos);
         return;
       }
       if (fpPos.distanceTo(_lobbyExitPos) < 40) {
@@ -2027,6 +2041,7 @@ function updateFP() {
     _lobbyExitPrompt.style.display = fpPos.distanceTo(_lobbyExitPos) < 40 ? 'block' : 'none';
     _hangarPrompt.style.display = _inHangarZone() ? 'block' : 'none';
     _lobbyRoomPrompt.style.display = _inRoomZone() ? 'block' : 'none';
+    _lobbyRangePrompt.style.display = _inRangeZone() ? 'block' : 'none';
     _rangeExitPrompt.style.display = 'none';
   } else if (gameMode === 'range') {
     _rangeExitPrompt.style.display = 'block';
