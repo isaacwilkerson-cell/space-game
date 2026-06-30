@@ -543,9 +543,9 @@ function _enterPlanetSurface(planet) {
   if (isPhoenix) {
     loadModel('assets/mars_-_aram_chaos_region.glb', 3000, model => {
       if (!model) { _surfGround.visible = true; return; }
-      // Shift so the top surface sits at y=0 (player walks at y=SURF_EYE_H)
+      // Center bottom of terrain at y=0 so player at y=1.8 walks on top
       const box = new THREE.Box3().setFromObject(model);
-      model.position.y -= box.max.y;
+      model.position.y += -box.min.y;
       _surfTerrainMesh = model;
       _planetSurfScene.add(_surfTerrainMesh);
     });
@@ -4043,7 +4043,10 @@ function animate(t) {
   if (gameMode === 'range') {
     renderer.render(shootingRangeScene, camera);
   } else if (gameMode === 'planet_surface') {
+    const _surfAtm = _surfCurrentPlanet && _surfCurrentPlanet.userData.atmosphere;
+    renderer.setClearColor(_surfAtm ? _surfAtm.skyColor : 0x88bbff, 1);
     renderer.render(_planetSurfScene, camera);
+    renderer.setClearColor(0x000000, 0);
   } else {
     renderer.render(scene, camera);
   }
