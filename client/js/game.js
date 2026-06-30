@@ -462,7 +462,7 @@ function exitShootingRange() {
 
 // ── Planet surface scene ───────────────────────────────────────────────────────
 const _planetSurfScene = new THREE.Scene();
-_planetSurfScene.fog = new THREE.FogExp2(0xaaccff, 0.0004);
+// no fog on planet surface
 
 const _surfAmbient = new THREE.AmbientLight(0xffffff, 0.7);
 _planetSurfScene.add(_surfAmbient);
@@ -524,13 +524,8 @@ function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
 
-  // Colour the fog overlay to match planet atmosphere
-  const fogHex = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
-  _setPlanetFog(1, fogHex);
-
-  // Update scene colours from planet atmosphere
+  // Update sky dome colour from planet atmosphere
   if (atm) {
-    _planetSurfScene.fog.color.copy(atm.fogColor);
     _surfSkyDome.material.color.copy(atm.skyColor);
     _surfAmbient.color.copy(atm.skyColor);
   }
@@ -571,8 +566,6 @@ function _enterPlanetSurface(planet) {
   if (_surfHudEl) _surfHudEl.style.display = 'block';
   selfMesh.visible = true;
 
-  // Fade fog out — give Phoenix extra time to stream the terrain GLB
-  setTimeout(() => _setPlanetFog(0), isPhoenix ? 2000 : 80);
 }
 
 function _exitPlanetSurface() {
@@ -1784,10 +1777,6 @@ function landOnPlanet(planet) {
   if (skyboxMesh) scene.background = null;
   const atm = planet.userData.atmosphere;
   if (atm) renderer.setClearColor(atm.skyColor, 1);
-  // Fade fog overlay in during descent — will be fully opaque before surface loads
-  const _fogCol = atm ? '#' + atm.fogColor.getHexString() : '#aaccff';
-  _setPlanetFog(0, _fogCol);
-  setTimeout(() => _setPlanetFog(1), 600);
 }
 
 function updateLandingAnim() {
@@ -1815,7 +1804,6 @@ function updateLandingAnim() {
     selfMesh.quaternion.copy(_landTargetQuat);
     _shipLocalPos.copy(_landedPlanet.worldToLocal(selfMesh.position.clone()));
     _shipLocalQuat.copy(selfMesh.quaternion).premultiply(_landedPlanet.quaternion.clone().invert());
-    // Fog is already covering the screen — transition to flat surface scene
     if (!document.pointerLockElement) document.body.requestPointerLock();
     _enterPlanetSurface(_landedPlanet);
   }
