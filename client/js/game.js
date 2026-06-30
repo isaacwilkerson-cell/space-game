@@ -1992,6 +1992,11 @@ function updateFP() {
   const _fpSprinting = gameMode === 'lobby' && keys['shift'];
   const _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1);
   const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1);
+  if (window._adminMode) {
+    if (keys[' '])       fpVel.y += _fpAccel;
+    if (keys['control']) fpVel.y -= _fpAccel;
+    fpVel.y *= 0.85;
+  }
   if (keys['w']) fpVel.addScaledVector(_fpFwd,    _fpAccel);
   if (keys['s']) fpVel.addScaledVector(_fpFwd,   -_fpAccel);
   if (keys['a']) fpVel.addScaledVector(_fpRight,  -_fpAccel);
@@ -2048,17 +2053,19 @@ function updateFP() {
   }
 
   fpPos.add(fpVel);
-  // Clamp to active scene bounding box
-  const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : _roomBBox;
-  if (_activeBBox) {
-    const PAD = 2.5;
-    fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
-    fpPos.z = Math.max(_activeBBox.min.z + PAD, Math.min(_activeBBox.max.z - PAD, fpPos.z));
-  }
-  // Shooting range hard boundary — can't walk past the target line
-  if (gameMode === 'range') {
-    if (fpPos.x > 192) fpPos.x = 192;
-    if (fpPos.z > -88) fpPos.z = -88;
+  if (!window._adminMode) {
+    // Clamp to active scene bounding box
+    const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : _roomBBox;
+    if (_activeBBox) {
+      const PAD = 2.5;
+      fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
+      fpPos.z = Math.max(_activeBBox.min.z + PAD, Math.min(_activeBBox.max.z - PAD, fpPos.z));
+    }
+    // Shooting range hard boundary
+    if (gameMode === 'range') {
+      if (fpPos.x > 192) fpPos.x = 192;
+      if (fpPos.z > -88) fpPos.z = -88;
+    }
   }
   const moving = fpVel.lengthSq() > 0.01;
   const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : 2;
@@ -2070,13 +2077,14 @@ function updateFP() {
   if (moving && (gameMode !== 'lobby' || _fpGrounded)) fpBobT += bobSpeed;
   else fpBobT += (Math.round(fpBobT / Math.PI) * Math.PI - fpBobT) * 0.12;
   const bob = Math.sin(fpBobT) * bobAmp * (moving ? 1 : Math.exp(-0.1));
-  if (gameMode === 'lobby') {
+  if (window._adminMode) {
+    camera.position.copy(fpPos);
+  } else if (gameMode === 'lobby') {
     // Jump + gravity
     if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V;
     _fpJumpVel -= FP_GRAVITY;
     fpPos.y += _fpJumpVel;
     if (fpPos.y < _fpFloor) { fpPos.y = _fpFloor; _fpJumpVel = 0; }
-    // Apply bob on top of current Y when grounded
     camera.position.copy(fpPos);
     if (_fpGrounded) camera.position.y += bob * 0.4;
   } else {
@@ -3495,6 +3503,13 @@ function updateHUD() {
   function sendMsg() {
     const text = input.value.trim();
     if (!text) { closeChat(); return; }
+    // Admin command — never sent to server
+    if (text === '/676741') {
+      window._adminMode = !window._adminMode;
+      addMsg('SYSTEM', window._adminMode ? '⚡ ADMIN MODE ON — fly+noclip enabled' : '⚡ ADMIN MODE OFF', false);
+      closeChat();
+      return;
+    }
     const name = self.name || 'You';
     addMsg(name, text, true);
     if (socket) socket.emit('chat', { name, text });
@@ -3531,11 +3546,19 @@ if (socket) {
     self.position.copy(selfMesh.position);
     data.players.forEach(addRemotePlayer);
   });
-  socket.on('player_joined', addRemotePlayer);
+  socket.on('player_joined', data => {
+    addRemotePlayer(data);
+    if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', `${data.name} joined the game`, false);
+  });
   socket.on('chat', ({ name, text }) => {
     if (window._chatAddMsg) window._chatAddMsg(name, text, false);
   });
-  socket.on('player_left',   removeRemotePlayer);
+  socket.on('player_left', id => {
+    const rp = remotePlayers[id];
+    const leaveName = rp ? (rp.data && rp.data.name) : null;
+    removeRemotePlayer(id);
+    if (leaveName && window._chatAddMsg) window._chatAddMsg('🛸 SERVER', `${leaveName} left the game`, false);
+  });
   socket.on('world_state', (players) => {
     players.forEach(p => {
       if (p.id === self.id) return;
@@ -3570,7 +3593,9 @@ function animate(t) {
   requestAnimationFrame(animate);
   if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range') {
     updateFP();
-    elPos.textContent = `${fpPos.x.toFixed(1)}, ${fpPos.z.toFixed(1)} (fp)`;
+    elPos.textContent = window._adminMode
+      ? `X:${fpPos.x.toFixed(1)} Y:${fpPos.y.toFixed(1)} Z:${fpPos.z.toFixed(1)} ⚡ADMIN`
+      : `${fpPos.x.toFixed(1)}, ${fpPos.z.toFixed(1)} (fp)`;
   } else if (gameMode === 'ejected') {
     updateEjected();
     updateAtmosphere();
