@@ -592,7 +592,7 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  const _accelAmt = keys['Shift'] ? SURF_ACCEL * 4 : SURF_ACCEL;
+  const _accelAmt = keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL;
   const accel = new THREE.Vector3();
   if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  _accelAmt);
   if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -_accelAmt);
@@ -602,7 +602,7 @@ function _updatePlanetSurface() {
   _surfVel.add(accel);
   _surfVel.y = 0;
   _surfVel.multiplyScalar(SURF_FRICTION);
-  const _surfSpeedCap = keys['Shift'] ? SURF_SPRINT : SURF_SPEED;
+  const _surfSpeedCap = keys['shift'] ? SURF_SPRINT : SURF_SPEED;
   if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
   // Raycast to find ground height beneath player
@@ -618,6 +618,17 @@ function _updatePlanetSurface() {
   _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
   if (_surfPos.y < _groundY) { _surfPos.y = _groundY; _surfVertVel = 0; }
+
+  // World border — clamp to terrain bounds
+  const SURF_BORDER = 1400;
+  const _dx = _surfPos.x, _dz = _surfPos.z;
+  const _distFromCenter = Math.sqrt(_dx * _dx + _dz * _dz);
+  if (_distFromCenter > SURF_BORDER) {
+    const _ratio = SURF_BORDER / _distFromCenter;
+    _surfPos.x = _dx * _ratio;
+    _surfPos.z = _dz * _ratio;
+    _surfVel.x = 0; _surfVel.z = 0;
+  }
 
   // Camera
   const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch);
