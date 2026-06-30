@@ -1598,10 +1598,8 @@ function _spawnImpact(pos, normal, activeScene, hitColor) {
   }
   _impacts.push({ sparks, life: 90, maxLife: 90, scene: activeScene });
 
-  // Bullet hole decal — color depends on zone hit (red zone → red mark, black zone → white mark)
-  const holeColor = hitColor === 'red' ? 0xff2222 : 0xffffff;
+  // Bullet hole decal — always dark
   const holeMat = _holeMat.clone();
-  holeMat.color.set(holeColor);
   const hole = new THREE.Mesh(_holeGeo, holeMat);
   hole.position.copy(pos).addScaledVector(normal, 0.3);
   hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
