@@ -562,13 +562,21 @@ function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
 
+  const isPhoenix = planet.userData.mapName === 'Phoenix';
+  const hasTerrain = isPhoenix && _surfTerrainReady;
+
   if (atm) {
     _surfSkyDome.material.color.copy(atm.skyColor);
+    if (!hasTerrain) {
+      // Tint flat ground to match planet fog/surface color
+      _surfGroundMat.color.copy(atm.fogColor || atm.skyColor);
+      _surfGroundMat.needsUpdate = true;
+    }
   }
 
-  const isPhoenix = planet.userData.mapName === 'Phoenix';
-  // Hide flat ground if terrain model is ready, otherwise show it
-  _surfGround.visible = !(isPhoenix && _surfTerrainReady);
+  _surfGround.visible = !hasTerrain;
+  // For flat ground planets use a large open border; terrain planets use computed extents
+  if (!hasTerrain) { _surfTerrainHalfX = 18000; _surfTerrainHalfZ = 18000; }
 
   _surfShipWorldPos = new THREE.Vector3(0, 0, 0);
   _surfVel.set(0, 0, 0);
