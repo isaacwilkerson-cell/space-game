@@ -2832,7 +2832,7 @@ const _minimapCanvas = document.getElementById('minimap');
 const _mmCtx = _minimapCanvas ? _minimapCanvas.getContext('2d') : null;
 const MM_SIZE = 200;
 const MM_R = MM_SIZE / 2;
-const MM_RANGE = 3000; // world units visible from center
+const MM_RANGE = 15000; // world units visible from center
 
 function _drawMinimap() {
   if (!_mmCtx) return;
@@ -2877,18 +2877,31 @@ function _drawMinimap() {
     ];
   }
 
-  // Planets
+  // Station
+  const [sx, sy] = worldToMM(station.position.x, station.position.z);
+  _mmCtx.beginPath();
+  _mmCtx.arc(sx, sy, 5, 0, Math.PI * 2);
+  _mmCtx.fillStyle = '#ffffff';
+  _mmCtx.fill();
+  _mmCtx.font = '8px monospace';
+  _mmCtx.fillStyle = '#cccccc';
+  _mmCtx.textAlign = 'center';
+  _mmCtx.fillText('STATION', sx, sy - 8);
+
+  // Planets — always show regardless of distance, clamped to edge of map
   planets.forEach(p => {
-    const dist = playerPos.distanceTo(p.position);
-    if (dist > MM_RANGE * 6) return;
-    const [mx, my] = worldToMM(p.position.x, p.position.z);
-    const r = Math.max(3, Math.min(10, 40000 / dist));
+    let [mx, my] = worldToMM(p.position.x, p.position.z);
+    // Clamp to circle edge if off-map
+    const edgeDx = mx - MM_R, edgeDy = my - MM_R;
+    const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    const onEdge = edgeDist > MM_R - 4;
+    if (onEdge) { mx = MM_R + (edgeDx / edgeDist) * (MM_R - 5); my = MM_R + (edgeDy / edgeDist) * (MM_R - 5); }
+    const r = onEdge ? 3 : Math.max(3, Math.min(10, 80000 / playerPos.distanceTo(p.position)));
     _mmCtx.beginPath();
     _mmCtx.arc(mx, my, r, 0, Math.PI * 2);
     _mmCtx.fillStyle = p.userData.mapColor || '#4488ff';
     _mmCtx.fill();
-    // Name label
-    if (dist < MM_RANGE * 4 && p.userData.mapName) {
+    if (!onEdge && p.userData.mapName) {
       _mmCtx.font = '8px monospace';
       _mmCtx.fillStyle = '#aaddff';
       _mmCtx.textAlign = 'center';
@@ -2896,13 +2909,14 @@ function _drawMinimap() {
     }
   });
 
-  // Remote ships
+  // Remote ships — always show, clamped to edge if far
   Object.values(remotePlayers).forEach(rp => {
-    if (rp.fpMode) return; // in FP mode, skip
+    if (rp.fpMode) return;
     const sp = rp.mesh.position;
-    const dist = playerPos.distanceTo(sp);
-    if (dist > MM_RANGE * 2) return;
-    const [mx, my] = worldToMM(sp.x, sp.z);
+    let [mx, my] = worldToMM(sp.x, sp.z);
+    const edgeDx = mx - MM_R, edgeDy = my - MM_R;
+    const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    if (edgeDist > MM_R - 4) { mx = MM_R + (edgeDx / edgeDist) * (MM_R - 5); my = MM_R + (edgeDy / edgeDist) * (MM_R - 5); }
     _mmCtx.beginPath();
     _mmCtx.arc(mx, my, 3, 0, Math.PI * 2);
     _mmCtx.fillStyle = '#ff6600';
