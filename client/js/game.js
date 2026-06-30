@@ -517,6 +517,8 @@ _surfBoardPrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:tran
 _surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
 document.body.appendChild(_surfBoardPrompt);
 
+let _surfTerrainMesh = null; // currently loaded terrain model in the surface scene
+
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
@@ -532,7 +534,29 @@ function _enterPlanetSurface(planet) {
     _surfAmbient.color.copy(atm.skyColor);
   }
 
-  // Drop player slightly in front of ship (world-space ship position saved before we enter)
+  // Remove any previous custom terrain
+  if (_surfTerrainMesh) { _planetSurfScene.remove(_surfTerrainMesh); _surfTerrainMesh = null; }
+
+  const isPhoenix = planet.userData.mapName === 'Phoenix';
+  _surfGround.visible = !isPhoenix;
+
+  if (isPhoenix) {
+    loadModel('assets/mars_-_aram_chaos_region.glb', 1, model => {
+      if (!model) { _surfGround.visible = true; return; }
+      // Scale and center model to fit the surface scene
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3(); box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const s = 3000 / maxDim;
+      model.scale.setScalar(s);
+      const center = new THREE.Vector3(); box.getCenter(center);
+      model.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+      _surfTerrainMesh = model;
+      _planetSurfScene.add(_surfTerrainMesh);
+    });
+  }
+
+  // Drop player slightly in front of ship
   _surfShipWorldPos = selfMesh.position.clone();
   const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(selfMesh.quaternion).setY(0).normalize();
   _surfPos.copy(_surfShipWorldPos).addScaledVector(fwd, 12);
@@ -546,8 +570,8 @@ function _enterPlanetSurface(planet) {
   if (_surfHudEl) _surfHudEl.style.display = 'block';
   selfMesh.visible = true;
 
-  // Fade fog overlay out after a short delay (terrain is ready)
-  setTimeout(() => _setPlanetFog(0), 80);
+  // Fade fog out once scene is ready
+  setTimeout(() => _setPlanetFog(0), isPhoenix ? 1200 : 80);
 }
 
 function _exitPlanetSurface() {
