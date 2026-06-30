@@ -2699,16 +2699,16 @@ function addRemotePlayer(data) {
   // Flight mesh (in main scene)
   const mesh = createShipMesh(0xff6600);
   scene.add(mesh);
-  loadModel(ASSETS.enemyShip, 20, model => {
-    if (!model || !remotePlayers[data.id]) return;
-    while (mesh.children.length) mesh.remove(mesh.children[0]);
-    mesh.add(model);
-  });
-  // Ship tag — large enough to read across space distances
   const shipTag = _makeNameTag(data.name || 'Pilot');
   shipTag.scale.set(120, 30, 1);
   shipTag.position.set(0, 30, 0);
   mesh.add(shipTag);
+  loadModel(ASSETS.enemyShip, 20, model => {
+    if (!model || !remotePlayers[data.id]) return;
+    while (mesh.children.length) mesh.remove(mesh.children[0]);
+    mesh.add(model);
+    mesh.add(shipTag); // re-add tag after model replaces children
+  });
 
   // FP mesh for lobby (astronaut in lobbyScene)
   const lobbyMesh = new THREE.Group();
