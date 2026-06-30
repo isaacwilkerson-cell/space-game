@@ -755,7 +755,7 @@ function _updateLeavePlanet() {
     // Place selfMesh near the planet and launch into flight mode
     if (_landedPlanet) {
       const away = _landedPlanet.position.clone().normalize();
-      selfMesh.position.copy(_landedPlanet.position).addScaledVector(away, 800);
+      selfMesh.position.copy(_landedPlanet.position).addScaledVector(away, 3500);
       selfMesh.quaternion.identity();
       self.velocity.copy(away).multiplyScalar(8);
     }
