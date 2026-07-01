@@ -647,7 +647,7 @@ function _loadSurfTerrain(key, assetPath) {
 // Preload terrains at startup so they're ready when landing
 _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
-_loadSurfTerrain('icy', 'assets/rocky_glacier_v2.glb');
+_loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
