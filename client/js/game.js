@@ -616,9 +616,9 @@ const INDUSTRIAL_NAMES = new Set([
   'Neon Abyss', 'Void Pulse', 'Azure Neon', 'Deep Circuit',
 ]);
 
-const JUNGLE_NAMES = new Set([
-  'Verdania', 'Canopy World', 'Spore Basin', 'Thornwood',
-  'Wild Canopy', 'Fern Hollow', 'Mossvale', 'Emerald Canopy',
+const VALLEY_NAMES = new Set([
+  'Greenvale', 'Highland Vale', 'Mossy Hollow', 'Sunken Valley',
+  'Silverbrook', 'Fernvale', 'Windmere Vale', 'Emerald Valley',
 ]);
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
@@ -629,7 +629,7 @@ const _surfTerrains = {
   icy2:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 2.0, sprintMul: 2.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 0.18 },
-  jungle:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x336633, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  valley:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x336633, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -640,7 +640,7 @@ function _terrainKeyForPlanet(planet) {
   if (ICY2_NAMES.has(name)) return 'icy2';
   if (DESERT_NAMES.has(name)) return 'desert';
   if (INDUSTRIAL_NAMES.has(name)) return 'industrial';
-  if (JUNGLE_NAMES.has(name)) return 'jungle';
+  if (VALLEY_NAMES.has(name)) return 'valley';
   return null;
 }
 
@@ -713,7 +713,7 @@ _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
 _loadSurfTerrain('icy2', 'assets/icy_terrain_export.glb');
 _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
 _loadSurfTerrain('industrial', 'assets/futuristic_cube-shaped_cityscape.glb');
-_loadSurfTerrain('jungle', 'assets/grassy_mountains_geo.glb');
+_loadSurfTerrain('valley', 'assets/grassy_mountains_geo.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
@@ -2856,14 +2856,14 @@ const planets = [];
   const PLANET_NAMES = [
     'Frost Haven','Cryo Reach','Glacius','Tundra Shelf',
     'Cinder Peak','Molten Eye','Inferno','Ember Drift',
-    'Verdania','Canopy World','Spore Basin','Thornwood',
+    'Greenvale','Highland Vale','Mossy Hollow','Sunken Valley',
     'Dust Bowl','Sand Veil','Mirage','Dune Scar',
     'Sunscorch','Amber Wastes','Drylands','Cracked Basin',
-    'Wild Canopy','Fern Hollow','Mossvale',
+    'Silverbrook','Fernvale','Windmere Vale',
     'Obsidian','Slate Void','Charcoal Rim','Iron Dark',
     'Sulfur Moon','Acid Flats','Brimstone','Gilt Waste',
     'Neon Abyss','Void Pulse','Azure Neon','Deep Circuit',
-    'Emerald Canopy',
+    'Emerald Valley',
   ];
 
   defs.forEach(([x, y, z, r, col, ring, skyC, fogC, fogD, dCol, extraRing], i) => {
