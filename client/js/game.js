@@ -1136,11 +1136,11 @@ document.body.appendChild(_inventoryBar);
 // guns need a bigger forward offset relative to their size or they end up too close.
 const WEAPON_DEFS = {
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
   ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1960,11 +1960,14 @@ function _updateSniperShots() {
       const recoilT = _sniperRecoil / 12;
       const recoilBack = recoilT * 5;
       const recoilUp   = recoilT * 2;
-      const _viewFwd = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewFwd) || 14;
+      const _wdef = WEAPON_DEFS[_equippedWeaponId];
+      const _viewFwd   = (_wdef && _wdef.viewFwd)   || 14;
+      const _viewRight = (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
+      const _viewUp    = (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
       _sniperMesh.position.copy(camera.position)
         .addScaledVector(dir,   _viewFwd - recoilBack)
-        .addScaledVector(right,  8)
-        .addScaledVector(up,    -6 + recoilUp);
+        .addScaledVector(right, _viewRight)
+        .addScaledVector(up,    _viewUp + recoilUp);
       _sniperMesh.quaternion.copy(camera.quaternion);
       _sniperMesh.rotateY(Math.PI + ((WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewYaw) || 0));
       _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
