@@ -606,12 +606,18 @@ const DESERT_NAMES = new Set([
   'Sunscorch', 'Amber Wastes', 'Drylands', 'Cracked Basin',
 ]);
 
+const INDUSTRIAL_NAMES = new Set([
+  'Obsidian', 'Slate Void', 'Charcoal Rim', 'Iron Dark',
+  'Neon Abyss', 'Void Pulse', 'Azure Neon', 'Deep Circuit',
+]);
+
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  desert:  { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  mars:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -620,6 +626,7 @@ function _terrainKeyForPlanet(planet) {
   if (HOT_VOLCANIC_NAMES.has(name)) return 'volcano';
   if (ICY_NAMES.has(name)) return 'icy';
   if (DESERT_NAMES.has(name)) return 'desert';
+  if (INDUSTRIAL_NAMES.has(name)) return 'industrial';
   return null;
 }
 
@@ -690,6 +697,7 @@ _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
 _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
+_loadSurfTerrain('industrial', 'assets/ruined_city_free.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
