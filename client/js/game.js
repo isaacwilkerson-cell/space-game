@@ -1967,7 +1967,7 @@ function _startReload() {
 }
 
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
   if (_sniperCooldown > 0 || _gunReloading) return;
   if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
   _weaponAmmo[_equippedWeaponId]--;
@@ -2056,7 +2056,7 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate;
     _sniperMesh.visible = show;
     if (show) {
       // Sniper always lives in _viewmodelScene — no reparenting needed
@@ -2136,7 +2136,7 @@ function _updateSniperShots() {
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
 let _gunMouseHeld = false;
 document.addEventListener('mousedown', e => {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
   if (e.button === 0) { _gunMouseHeld = true; _fireSniper(); }
   if (e.button === 2) { e.preventDefault(); _sniperScoped = true; }
 });
@@ -2144,12 +2144,12 @@ document.addEventListener('mouseup', e => {
   if (e.button === 0) _gunMouseHeld = false;
   if (e.button === 2) _sniperScoped = false;
 });
-document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
 
 // R — manual reload
 document.addEventListener('keydown', e => {
   if (e.key !== 'r' && e.key !== 'R') return;
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
   _startReload();
 });
 
