@@ -1089,6 +1089,8 @@ document.head.appendChild(_hangarTabStyle);
 
 // ── Inventory bar ─────────────────────────────────────────────────────────────
 let _hasSniper = false;
+let _sniperMesh = null;      // currently-equipped weapon's viewmodel mesh
+const _weaponMeshes = {};    // weapon id -> loaded viewmodel mesh (all preloaded, hidden)
 
 // ── Inventory system ──────────────────────────────────────────────────────────
 const INVENTORY_SIZE = 8;
@@ -1126,6 +1128,18 @@ for (let i = 0; i < INVENTORY_SIZE; i++) {
 }
 document.body.appendChild(_inventoryBar);
 
+// Weapon definitions — all weapons share identical fire/scope/recoil mechanics (see
+// _fireSniper / _updateSniperShots), only the viewmodel mesh + shop copy differ.
+const WEAPON_DEFS = {
+  sniper:  { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb' },
+  pistol:  { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb' },
+  pistol9mm: { name: '9mm Pistol', desc: 'Standard-issue 9mm sidearm',                         asset: 'assets/9mm_pistol.glb' },
+  ak105:   { name: 'AK-105',       desc: 'Compact automatic rifle',                            asset: 'assets/ak-105.glb' },
+  ak47:    { name: 'AK-47',        desc: 'Classic automatic rifle',                             asset: 'assets/ak-47_kalashnikov.glb' },
+  shotgun: { name: 'Shotgun',      desc: 'Close-range heavy hitter',                            asset: 'assets/shotgun.glb' },
+};
+const WEAPON_IDS = Object.keys(WEAPON_DEFS);
+
 // Item definitions
 const _itemDefs = {
   sniper: { name: 'Sniper Rifle' },
@@ -1140,8 +1154,11 @@ function _invSetActive(idx) {
       : '0 0 6px rgba(0,255,255,0.1) inset';
     s.el.style.transform   = i === _activeSlot ? 'translateY(-4px)' : 'none';
   });
-  // Show sniper only if active slot has it
-  _hasSniper = _inventory[_activeSlot] === 'sniper';
+  // Show the weapon viewmodel only if the active slot holds a weapon
+  const _equippedWeaponId = WEAPON_IDS.includes(_inventory[_activeSlot]) ? _inventory[_activeSlot] : null;
+  _hasSniper = !!_equippedWeaponId;
+  Object.entries(_weaponMeshes).forEach(([wid, m]) => { if (m) m.visible = false; });
+  _sniperMesh = _equippedWeaponId ? (_weaponMeshes[_equippedWeaponId] || null) : null;
 }
 
 function _invAddItem(itemId) {
@@ -1611,16 +1628,18 @@ function makePanel(title, color, id) {
 // ── Shop ──────────────────────────────────────────────────────────────────────
 const shopEl = makePanel('SHOP', '#0af', 'shop');
 // Replace default "COMING SOON" content with actual shop items
+const _weaponShopRows = Object.entries(WEAPON_DEFS).map(([id, def]) => `
+  <div style="border:1px solid #0af4;border-radius:6px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:14px;">
+    <div style="text-align:left;">
+      <div style="font-size:14px;letter-spacing:2px;color:#fff;">${def.name.toUpperCase()}</div>
+      <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">${def.desc}</div>
+    </div>
+    <button id="shop-${id}-btn" style="background:#0af2;border:1px solid #0af;border-radius:4px;color:#0af;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">EQUIP</button>
+  </div>`).join('');
 shopEl.innerHTML = `
   <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0af;">SHOP</div>
   <div style="color:#0af8;font-size:11px;letter-spacing:2px;margin-bottom:18px;">WEAPONS</div>
-  <div style="border:1px solid #0af4;border-radius:6px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:24px;">
-    <div style="text-align:left;">
-      <div style="font-size:14px;letter-spacing:2px;color:#fff;">SNIPER RIFLE</div>
-      <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">Long-range precision weapon<br>RMB to zoom scope</div>
-    </div>
-    <button id="shop-sniper-btn" style="background:#0af2;border:1px solid #0af;border-radius:4px;color:#0af;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">EQUIP</button>
-  </div>
+  <div style="max-height:50vh;overflow-y:auto;margin-bottom:10px;">${_weaponShopRows}</div>
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
 let shopOpen = false;
 function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); }
@@ -1628,9 +1647,8 @@ function closeShop() { shopOpen = false; shopEl.style.display = 'none'; }
 shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
 document.addEventListener('keydown', e => { if (shopOpen  && e.key === 'Escape') { closeShop(); e.stopPropagation(); } });
 
-// ── Sniper System ─────────────────────────────────────────────────────────────
-// _hasSniper declared earlier near inventory system
-let _sniperMesh     = null; // loaded GLB scene, attached to camera each frame
+// ── Weapon System (all weapons share this exact fire/scope/recoil behavior) ────
+// _hasSniper, _sniperMesh, _weaponMeshes declared earlier near inventory system
 let _sniperScoped   = false;
 let _sniperCooldown = 0;
 const SNIPER_COOLDOWN  = 60;  // frames between shots (~1s at 60fps)
@@ -1693,47 +1711,54 @@ function _renderIconToSlot(model, slotIdx) {
   _invSlotEls[slotIdx].icon.appendChild(img);
 }
 
-// Load the sniper model (done once; shown/hidden based on equip state)
-loadModel('assets/sniper.glb', 40, model => {
-  if (!model) return;
-  model.traverse(c => {
-    if (!c.isMesh || !c.material) return;
-    const mats = Array.isArray(c.material) ? c.material : [c.material];
-    mats.forEach(m => {
-      m.emissive = new THREE.Color(0x303030);
-      m.emissiveIntensity = 1;
-      if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.4);
-      if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.6);
+// Load every weapon model up front (done once each; shown/hidden based on equip state).
+// All weapons share one point light, repositioned each frame to whichever gun is active.
+window._weaponModelRefs = {};
+Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
+  loadModel(def.asset, 40, model => {
+    if (!model) return;
+    model.traverse(c => {
+      if (!c.isMesh || !c.material) return;
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => {
+        m.emissive = new THREE.Color(0x303030);
+        m.emissiveIntensity = 1;
+        if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.4);
+        if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.6);
+      });
     });
+    model.visible = false;
+    _viewmodelScene.add(model);
+    _weaponMeshes[id] = model;
+    window._weaponModelRefs[id] = model;
+    // If this weapon happens to already be the equipped one (e.g. loaded after equip), show it
+    if (_inventory[_activeSlot] === id) _sniperMesh = model;
   });
-  _sniperMesh = model;
-  _sniperMesh.visible = false;
-  _viewmodelScene.add(_sniperMesh);
-
-  // Dedicated side light — lives in viewmodel scene so it only ever lights the gun
-  _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
-  _viewmodelScene.add(_sniperLight);
-
-  // Store for icon rendering when equipped
-  window._sniperModelRef = model;
 });
 
-// Shop equip button
-shopEl.querySelector('#shop-sniper-btn').addEventListener('click', () => {
-  if (_inventory.includes('sniper')) return;
+// Shared side light — lives in viewmodel scene so it only ever lights the gun
+let _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
+_viewmodelScene.add(_sniperLight);
+
+// Shop equip buttons — identical behavior for every weapon
+function _equipWeapon(id, btn) {
+  if (_inventory.includes(id)) return;
   const slotIdx = _inventory.indexOf(null);
-  _invAddItem('sniper');
-  if (window._sniperModelRef) _renderIconToSlot(window._sniperModelRef, slotIdx);
-  const btn = shopEl.querySelector('#shop-sniper-btn');
+  if (slotIdx === -1) return; // inventory full
+  _invAddItem(id);
+  if (window._weaponModelRefs[id]) _renderIconToSlot(window._weaponModelRefs[id], slotIdx);
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
   btn.style.borderColor = '#0f4';
   btn.style.color = '#0f4';
+}
+Object.keys(WEAPON_DEFS).forEach(id => {
+  const btn = shopEl.querySelector(`#shop-${id}-btn`);
+  if (btn) btn.addEventListener('click', () => _equipWeapon(id, btn));
 });
 
 // Recoil state
 let _sniperRecoil = 0;
-let _sniperLight  = null;
 
 // Muzzle flash light (reused)
 const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
