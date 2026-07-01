@@ -1149,12 +1149,12 @@ const WEAPON_DEFS = {
   // cooldown: frames between shots. auto: holding the trigger keeps firing. spread: random
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes.
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5 },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170 },
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯' },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫' },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫' },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥' },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥' },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢' },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1190,8 +1190,10 @@ function _invAddItem(itemId) {
   if (emptyIdx === -1) return; // full
   _inventory[emptyIdx] = itemId;
   const def = _itemDefs[itemId];
-  _invSlotEls[emptyIdx].icon.textContent = def ? def.icon : '?';
   const wdef = WEAPON_DEFS[itemId];
+  // 3D render-to-icon can silently fail (texture not decoded yet, etc.) — always set a
+  // reliable emoji icon first so the slot never ends up blank.
+  _invSlotEls[emptyIdx].icon.textContent = wdef ? wdef.icon : (def ? def.icon : '?');
   if (wdef) {
     _invSlotEls[emptyIdx].label.textContent = wdef.name;
     _invSlotEls[emptyIdx].label.style.display = 'block';
@@ -1791,8 +1793,7 @@ function _equipWeapon(id, btn) {
   if (_inventory.includes(id)) return;
   const slotIdx = _inventory.indexOf(null);
   if (slotIdx === -1) return; // inventory full
-  _invAddItem(id);
-  if (window._weaponModelRefs[id]) _renderIconToSlot(window._weaponModelRefs[id], slotIdx);
+  _invAddItem(id); // sets the reliable emoji icon + name label — no 3D render needed
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
   btn.style.borderColor = '#0f4';
