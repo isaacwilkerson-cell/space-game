@@ -264,6 +264,11 @@ let _fpBaseY   = 0;       // floor height (set per-mode)
 let _crouchAmount = 0;    // 0 = standing, 1 = fully crouched (eased)
 const CROUCH_HEIGHT = 5;
 const CROUCH_SPEED_MUL = 0.55;
+// Slide: crouching while sprinting launches a burst of speed that decays back to crouch speed
+let _slideTimer = 0;
+let _prevCrouchKey = false;
+const SLIDE_DURATION = 28;
+const SLIDE_SPEED_MUL = 1.7; // relative to sprint speed at the start of the slide
 let fpBobT = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -857,8 +862,15 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  // C or Alt to crouch
+  // C or Alt to crouch — crouching while sprinting triggers a slide
   const _surfCrouching = keys['c'] || keys['alt'];
+  const _wasSprintingSurf = keys['shift'] && _surfVel.lengthSq() > 0.3;
+  if (_surfCrouching && !_prevCrouchKey && _wasSprintingSurf) {
+    _slideTimer = SLIDE_DURATION;
+    _surfVel.setLength(SURF_SPRINT * SLIDE_SPEED_MUL); // launch the slide
+  }
+  _prevCrouchKey = _surfCrouching;
+  if (_slideTimer > 0 && !_surfCrouching) _slideTimer = 0; // cancel if you stand back up
   _crouchAmount += ((_surfCrouching ? 1 : 0) - _crouchAmount) * 0.2;
   const _surfCrouchSpeedMul = 1 - CROUCH_SPEED_MUL * _crouchAmount;
 
@@ -872,8 +884,12 @@ function _updatePlanetSurface() {
 
   _surfVel.add(accel);
   _surfVel.y = 0;
-  _surfVel.multiplyScalar(SURF_FRICTION);
-  const _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfMoveMul;
+  _surfVel.multiplyScalar(_slideTimer > 0 ? 0.94 : SURF_FRICTION); // slide loses speed more gently
+  let _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfMoveMul;
+  if (_slideTimer > 0) {
+    _surfSpeedCap = Math.max(_surfSpeedCap, SURF_SPRINT * SLIDE_SPEED_MUL * (_slideTimer / SLIDE_DURATION));
+    _slideTimer--;
+  }
   if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
   // Raycast to find ground height beneath player
@@ -2777,12 +2793,25 @@ function updateFP() {
 
   // C or Alt to crouch (Alt is already noclip-descend in admin mode, so skip it there)
   const _crouching = !window._adminMode && (keys['c'] || keys['alt']);
+  // Crouching while sprinting triggers a slide — a burst of speed that decays back down
+  const _wasSprintingFP = gameMode === 'lobby' && keys['shift'] && fpVel.lengthSq() > 0.3;
+  if (_crouching && !_prevCrouchKey && _wasSprintingFP) {
+    _slideTimer = SLIDE_DURATION;
+    fpVel.setLength(FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL); // launch the slide
+  }
+  _prevCrouchKey = _crouching;
+  if (_slideTimer > 0 && (!_crouching || gameMode !== 'lobby')) _slideTimer = 0; // cancel if you stand back up
   _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
 
   const _fpSprinting = gameMode === 'lobby' && keys['shift'] && !_crouching;
   const _fpSpeedMul  = 1 - CROUCH_SPEED_MUL * _crouchAmount;
-  const _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
+  let _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
   const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
+  if (_slideTimer > 0) {
+    const _slideT = _slideTimer / SLIDE_DURATION; // 1 -> 0
+    _fpSpeedCap = Math.max(_fpSpeedCap, FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL * _slideT);
+    _slideTimer--;
+  }
   if (window._adminMode) {
     if (keys[' '])   fpVel.y += _fpAccel;
     if (keys['alt']) fpVel.y -= _fpAccel;
@@ -2793,7 +2822,7 @@ function updateFP() {
   if (keys['a']) fpVel.addScaledVector(_fpRight,  -_fpAccel);
   if (keys['d']) fpVel.addScaledVector(_fpRight,   _fpAccel);
   fpVel.y = 0;
-  fpVel.multiplyScalar(FP_FRICTION);
+  fpVel.multiplyScalar(_slideTimer > 0 ? 0.94 : FP_FRICTION); // slide loses speed more gently
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
