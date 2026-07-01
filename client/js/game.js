@@ -576,16 +576,19 @@ function enterShootingRange() {
   // Always show it (not just when we know assets are missing) — guards against any
   // race where the range briefly renders black for a frame before content is in.
   // Mesh being in the scene isn't the same as it being ready to draw — brand-new
-  // materials still need their shaders compiled on first render, which was the extra
-  // ~1s black flash AFTER the bar finished. Pre-compile while still covered so that
-  // cost happens behind the loading screen instead of after it disappears.
-  let _rangePrecompiled = false;
+  // materials/textures still need shader compilation + GPU texture upload on the first
+  // real draw call, which was the extra few seconds of black AFTER the bar finished.
+  // renderer.compile() alone doesn't force texture upload, so actually render the scene
+  // (harmless — it's still hidden behind the opaque loading overlay) to pay that cost
+  // while covered instead of on the first frame the player actually sees.
+  let _rangeWarmFrames = 0;
   _showLoadingScreen('LOADING SHOOTING RANGE', () => {
     if (_rangeCollidables.length === 0) return false;
-    if (!_rangePrecompiled) {
+    if (_rangeWarmFrames < 3) {
       renderer.compile(shootingRangeScene, camera);
-      _rangePrecompiled = true;
-      return false; // wait one more poll so the compiled scene has a chance to warm up
+      renderer.render(shootingRangeScene, camera);
+      _rangeWarmFrames++;
+      return false;
     }
     return true;
   }, { timeoutMs: 10000, minShowMs: 150 });
