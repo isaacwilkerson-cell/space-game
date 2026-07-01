@@ -4828,5 +4828,9 @@ function animate(t) {
   _drawMinimap();
 }
 enterStation();
-_showLoadingScreen('ENTERING STATION', () => _loadStats.pending <= 0, { timeoutMs: 15000 });
+// Everything (weapons, shooting range, planet terrains, etc.) already starts loading
+// synchronously above, so waiting on _loadStats.pending here naturally covers all of it —
+// no need for separate loading screens later. Long timeout since there's now a lot of
+// large assets (guns + terrain GLBs) that can take a while on a slow connection.
+_showLoadingScreen('ENTERING STATION', () => _loadStats.pending <= 0, { timeoutMs: 60000 });
 requestAnimationFrame(animate);
