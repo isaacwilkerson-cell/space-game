@@ -658,7 +658,7 @@ function _loadSurfTerrain(key, assetPath) {
 _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
-_loadSurfTerrain('desert', 'assets/desert_landscape.glb');
+_loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
