@@ -1137,9 +1137,9 @@ document.body.appendChild(_inventoryBar);
 const WEAPON_DEFS = {
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: -Math.PI / 2 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
   shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
