@@ -575,7 +575,20 @@ function enterShootingRange() {
   renderer.toneMappingExposure = 0.18;
   // Always show it (not just when we know assets are missing) — guards against any
   // race where the range briefly renders black for a frame before content is in.
-  _showLoadingScreen('LOADING SHOOTING RANGE', () => _rangeCollidables.length > 0, { timeoutMs: 10000, minShowMs: 150 });
+  // Mesh being in the scene isn't the same as it being ready to draw — brand-new
+  // materials still need their shaders compiled on first render, which was the extra
+  // ~1s black flash AFTER the bar finished. Pre-compile while still covered so that
+  // cost happens behind the loading screen instead of after it disappears.
+  let _rangePrecompiled = false;
+  _showLoadingScreen('LOADING SHOOTING RANGE', () => {
+    if (_rangeCollidables.length === 0) return false;
+    if (!_rangePrecompiled) {
+      renderer.compile(shootingRangeScene, camera);
+      _rangePrecompiled = true;
+      return false; // wait one more poll so the compiled scene has a chance to warm up
+    }
+    return true;
+  }, { timeoutMs: 10000, minShowMs: 150 });
 }
 
 function exitShootingRange() {
