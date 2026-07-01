@@ -4418,11 +4418,17 @@ if (_dustBowlPlanet) {
   // looking down, so the surface is actually visible instead of being embedded in the ground.
   _surfLanding = false;
   _surfLandT = 0;
-  _surfPos.set(0, 400, 0);
   _surfVel.set(0, 0, 0);
   _surfVertVel = 0;
   _surfYaw = 0;
-  _surfPitch = -0.6;
+  _surfPitch = -0.35;
+  // Snap directly onto the ground (raycast down) instead of waiting on gravity to fall —
+  // removes any timing uncertainty from screenshots taken before the player has landed.
+  const _groundMesh0 = _surfTerrainMesh || _surfGround;
+  _surfRaycaster.set(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
+  const _gHits0 = _surfRaycaster.intersectObject(_groundMesh0, true);
+  const _groundY0 = _gHits0.length > 0 ? _gHits0[0].point.y : 0;
+  _surfPos.set(0, _groundY0 + SURF_EYE_H, 0);
   if (_surfHudEl) _surfHudEl.style.display = 'block';
 }
 requestAnimationFrame(animate);
