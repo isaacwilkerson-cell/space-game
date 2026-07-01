@@ -1090,6 +1090,7 @@ document.head.appendChild(_hangarTabStyle);
 // ── Inventory bar ─────────────────────────────────────────────────────────────
 let _hasSniper = false;
 let _sniperMesh = null;      // currently-equipped weapon's viewmodel mesh
+let _equippedWeaponId = null;
 const _weaponMeshes = {};    // weapon id -> loaded viewmodel mesh (all preloaded, hidden)
 
 // ── Inventory system ──────────────────────────────────────────────────────────
@@ -1130,13 +1131,16 @@ document.body.appendChild(_inventoryBar);
 
 // Weapon definitions — all weapons share identical fire/scope/recoil mechanics (see
 // _fireSniper / _updateSniperShots), only the viewmodel mesh + shop copy differ.
+// viewSize: loadModel's targetSize (bigger guns need a bigger normalized scale so they
+// don't look tiny). viewFwd: how far out in front of the camera the gun sits — smaller
+// guns need a bigger forward offset relative to their size or they end up too close.
 const WEAPON_DEFS = {
-  sniper:  { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb' },
-  pistol:  { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb' },
-  pistol9mm: { name: '9mm Pistol', desc: 'Standard-issue 9mm sidearm',                         asset: 'assets/9mm_pistol.glb' },
-  ak105:   { name: 'AK-105',       desc: 'Compact automatic rifle',                            asset: 'assets/ak-105.glb' },
-  ak47:    { name: 'AK-47',        desc: 'Classic automatic rifle',                             asset: 'assets/ak-47_kalashnikov.glb' },
-  shotgun: { name: 'Shotgun',      desc: 'Close-range heavy hitter',                            asset: 'assets/shotgun.glb' },
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1155,7 +1159,7 @@ function _invSetActive(idx) {
     s.el.style.transform   = i === _activeSlot ? 'translateY(-4px)' : 'none';
   });
   // Show the weapon viewmodel only if the active slot holds a weapon
-  const _equippedWeaponId = WEAPON_IDS.includes(_inventory[_activeSlot]) ? _inventory[_activeSlot] : null;
+  _equippedWeaponId = WEAPON_IDS.includes(_inventory[_activeSlot]) ? _inventory[_activeSlot] : null;
   _hasSniper = !!_equippedWeaponId;
   Object.entries(_weaponMeshes).forEach(([wid, m]) => { if (m) m.visible = false; });
   _sniperMesh = _equippedWeaponId ? (_weaponMeshes[_equippedWeaponId] || null) : null;
@@ -1715,7 +1719,7 @@ function _renderIconToSlot(model, slotIdx) {
 // All weapons share one point light, repositioned each frame to whichever gun is active.
 window._weaponModelRefs = {};
 Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
-  loadModel(def.asset, 40, model => {
+  loadModel(def.asset, def.viewSize || 40, model => {
     if (!model) return;
     model.traverse(c => {
       if (!c.isMesh || !c.material) return;
@@ -1956,8 +1960,9 @@ function _updateSniperShots() {
       const recoilT = _sniperRecoil / 12;
       const recoilBack = recoilT * 5;
       const recoilUp   = recoilT * 2;
+      const _viewFwd = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewFwd) || 14;
       _sniperMesh.position.copy(camera.position)
-        .addScaledVector(dir,   14 - recoilBack)
+        .addScaledVector(dir,   _viewFwd - recoilBack)
         .addScaledVector(right,  8)
         .addScaledVector(up,    -6 + recoilUp);
       _sniperMesh.quaternion.copy(camera.quaternion);
