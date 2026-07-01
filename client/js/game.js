@@ -3633,6 +3633,18 @@ function _updateSelfAstronaut() {
   _selfAstronautMesh.visible = true;
   _selfAstronautMesh.position.set(fpPos.x, fpPos.y, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
+
+  // The astronaut model has no rig/animations at all (static mesh) — fake a walk cycle
+  // with a procedural bob + sway on the inner clone, driven by the same walk-phase
+  // clock the camera bob already uses, scaled by how fast you're actually moving.
+  const _astroBody = _selfAstronautMesh.children[0];
+  if (_astroBody) {
+    const _speed = fpVel.length();
+    const _walkT = Math.min(1, _speed / 1.5);
+    _astroBody.position.y = Math.abs(Math.sin(fpBobT)) * 1.6 * _walkT;
+    _astroBody.rotation.z = Math.sin(fpBobT) * 0.09 * _walkT;
+    _astroBody.rotation.x = Math.cos(fpBobT) * 0.05 * _walkT;
+  }
 }
 
 function addRemotePlayer(data) {
