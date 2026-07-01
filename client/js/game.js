@@ -3595,9 +3595,15 @@ function _updateRemoteFPMeshes(p) {
     target.position.set(p.fpPos.x, p.fpPos.y, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
 
-    if (target.children.length === 0) {
+    // The name tag is always already a child of `target` (added at player creation), so
+    // "no children" is never true — that meant the astronaut body never actually got added.
+    // Track it explicitly instead.
+    if (!target.userData.hasAstronaut) {
       const tmpl = fpMode === 'docked' ? _astronautRoomTemplate : _astronautLobbyTemplate;
-      if (tmpl) target.add(_cloneAstronaut(tmpl));
+      if (tmpl) {
+        target.add(_cloneAstronaut(tmpl));
+        target.userData.hasAstronaut = true;
+      }
     }
   }
 }
