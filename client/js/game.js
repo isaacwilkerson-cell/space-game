@@ -53,7 +53,9 @@ function loadModel(path, targetSize, onLoaded) {
 
 // ── Scene setup ──────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
+// Cap pixel ratio — on high-DPI displays devicePixelRatio can be 2-3x, which quadruples
+// fragment shading cost for little visible gain, especially on heavier planet terrain.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.domElement.setAttribute('tabindex', '0');
 renderer.shadowMap.enabled = true;
@@ -4449,11 +4451,15 @@ function animate(t) {
     }
   }
 
-  // Stars update every frame except when docked or in shooting range
-  if (gameMode !== 'docked' && gameMode !== 'range' && window._updateStars) {
+  // Stars update every frame except when docked, in shooting range, or on a planet
+  // surface — the surface scene renders separately and never shows the starfield,
+  // so updating it there was pure wasted work hurting surface framerate.
+  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'planet_surface' && window._updateStars) {
     if (window._setStarsVisible) window._setStarsVisible(true);
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
+  } else if (gameMode === 'planet_surface' && window._setStarsVisible) {
+    window._setStarsVisible(false);
   }
   if (gameMode === 'range') {
     renderer.render(shootingRangeScene, camera);
