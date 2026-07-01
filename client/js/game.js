@@ -4460,16 +4460,5 @@ function animate(t) {
   drawReticle();
   _drawMinimap();
 }
-// TEMPORARY: spawn in flight near an industrial planet for testing — revert to enterStation() when done.
 enterStation();
-const _testIndustrialPlanet = planets.find(p => INDUSTRIAL_NAMES.has(p.userData.mapName));
-if (_testIndustrialPlanet) {
-  exitStation();
-  const r = _testIndustrialPlanet.userData.collisionRadius || 700;
-  const away = new THREE.Vector3(0, 0, 1);
-  selfMesh.position.copy(_testIndustrialPlanet.position).addScaledVector(away, r * 2.2);
-  selfMesh.quaternion.identity();
-  self.velocity.set(0, 0, 0);
-  camera.position.copy(selfMesh.position);
-}
 requestAnimationFrame(animate);
