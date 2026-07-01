@@ -581,11 +581,15 @@ function enterShootingRange() {
   // renderer.compile() alone doesn't force texture upload, so actually render the scene
   // (harmless — it's still hidden behind the opaque loading overlay) to pay that cost
   // while covered instead of on the first frame the player actually sees.
+  // 3 frames (~50ms) wasn't nearly enough — large embedded textures decode/upload on a
+  // background timeline that a couple of synchronous render() calls can't force to
+  // finish. Keep warming up for a real ~1.5s so that work actually completes while
+  // still hidden, instead of bleeding into the first frame the player sees.
   let _rangeWarmFrames = 0;
+  const _rangeWarmTarget = 90;
   _showLoadingScreen('LOADING SHOOTING RANGE', () => {
     if (_rangeCollidables.length === 0) return false;
-    if (_rangeWarmFrames < 3) {
-      renderer.compile(shootingRangeScene, camera);
+    if (_rangeWarmFrames < _rangeWarmTarget) {
       renderer.render(shootingRangeScene, camera);
       _rangeWarmFrames++;
       return false;
