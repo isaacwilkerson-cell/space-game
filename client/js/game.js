@@ -656,6 +656,33 @@ function _loadSurfTerrain(key, assetPath) {
     entry.halfX = (box.max.x - box.min.x) / 2 * 0.92;
     entry.halfZ = (box.max.z - box.min.z) / 2 * 0.92;
     entry.ready = true;
+
+    // TEMP DEBUG: dump material/texture/UV state on screen so it's visible without devtools.
+    if (key === 'desert') {
+      const lines = [];
+      let meshCount = 0;
+      model.traverse(c => {
+        if (!c.isMesh || !c.material) return;
+        meshCount++;
+        const mats = Array.isArray(c.material) ? c.material : [c.material];
+        mats.forEach(m => {
+          const uv = c.geometry.attributes.uv;
+          let uvMin = [Infinity, Infinity], uvMax = [-Infinity, -Infinity];
+          if (uv) {
+            for (let i = 0; i < uv.count; i++) {
+              const u = uv.getX(i), v = uv.getY(i);
+              if (u < uvMin[0]) uvMin[0] = u; if (u > uvMax[0]) uvMax[0] = u;
+              if (v < uvMin[1]) uvMin[1] = v; if (v > uvMax[1]) uvMax[1] = v;
+            }
+          }
+          lines.push(`mesh${meshCount}: map=${!!m.map} imgOK=${m.map ? !!m.map.image : 'n/a'} imgWH=${m.map && m.map.image ? m.map.image.width+'x'+m.map.image.height : 'n/a'} color=#${m.color.getHexString()} uvRange=[${uvMin.map(x=>x.toFixed(2))}]-[${uvMax.map(x=>x.toFixed(2))}]`);
+        });
+      });
+      const dbg = document.createElement('div');
+      dbg.style.cssText = 'position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:8px;z-index:9999;white-space:pre;max-width:90vw;';
+      dbg.textContent = 'DESERT TERRAIN DEBUG:\n' + lines.join('\n');
+      document.body.appendChild(dbg);
+    }
   });
 }
 
