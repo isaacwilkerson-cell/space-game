@@ -1142,7 +1142,7 @@ const WEAPON_DEFS = {
   // cooldown: frames between shots. auto: holding the trigger keeps firing. spread: random
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes.
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 5, reloadTime: 150 },
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100 },
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5 },
@@ -1958,6 +1958,11 @@ function _fireSniper() {
   if (_sniperCooldown > 0 || _gunReloading) return;
   if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
   _weaponAmmo[_equippedWeaponId]--;
+  // Bolt-action-style weapons (magSize 1, like the sniper) reload automatically after
+  // every single shot instead of waiting for the player to fire again into an empty gun.
+  if (_weaponAmmo[_equippedWeaponId] <= 0 && WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].magSize === 1) {
+    _startReload();
+  }
   const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = _wdef.recoil != null ? _wdef.recoil : 12; // frames of recoil
