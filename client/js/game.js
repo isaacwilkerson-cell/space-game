@@ -3014,6 +3014,14 @@ function updateFP() {
     camera.position.copy(fpPos);
     camera.position.y -= CROUCH_HEIGHT * _crouchAmount;
   }
+
+  _updateSelfAstronaut();
+  if (window._thirdPerson && !window._adminMode) {
+    // Pull the camera back and up behind the player, still looking the same direction
+    const _tpBack = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+    camera.position.addScaledVector(_tpBack, 26);
+    camera.position.y += 10;
+  }
 }
 
 // ── Safe zone ─────────────────────────────────────────────────────────────────
@@ -3595,6 +3603,35 @@ function _cloneAstronaut(template) {
   light.position.set(0, 20, 0);
   clone.add(light);
   return clone;
+}
+
+// ── Third-person mode (toggle via /qwertyuiop in chat) ─────────────────────────
+// One shared self-astronaut mesh, reparented into whichever FP scene is currently
+// active and only shown while third-person is on.
+window._thirdPerson = false;
+let _selfAstronautMesh = null;
+function _updateSelfAstronaut() {
+  const wantScene = gameMode === 'lobby' ? lobbyScene
+                   : gameMode === 'docked' ? interiorScene
+                   : gameMode === 'range' ? shootingRangeScene
+                   : null;
+  const show = !!(window._thirdPerson && wantScene && !window._adminMode);
+  if (!show) {
+    if (_selfAstronautMesh) _selfAstronautMesh.visible = false;
+    return;
+  }
+  if (!_selfAstronautMesh) {
+    const tmpl = gameMode === 'docked' ? _astronautRoomTemplate : _astronautLobbyTemplate;
+    if (!tmpl) return; // not loaded yet
+    _selfAstronautMesh = _cloneAstronaut(tmpl);
+  }
+  if (_selfAstronautMesh.parent !== wantScene) {
+    if (_selfAstronautMesh.parent) _selfAstronautMesh.parent.remove(_selfAstronautMesh);
+    wantScene.add(_selfAstronautMesh);
+  }
+  _selfAstronautMesh.visible = true;
+  _selfAstronautMesh.position.set(fpPos.x, fpPos.y, fpPos.z);
+  _selfAstronautMesh.rotation.set(0, fpYaw, 0);
 }
 
 function addRemotePlayer(data) {
@@ -4605,6 +4642,13 @@ function updateHUD() {
     if (text === '/676741') {
       window._adminMode = !window._adminMode;
       addMsg('SYSTEM', window._adminMode ? '⚡ ADMIN MODE ON — fly+noclip enabled' : '⚡ ADMIN MODE OFF', false);
+      closeChat();
+      return;
+    }
+    // Third-person toggle — never sent to server
+    if (text === '/qwertyuiop') {
+      window._thirdPerson = !window._thirdPerson;
+      addMsg('SYSTEM', window._thirdPerson ? '🎥 THIRD PERSON ON' : '🎥 THIRD PERSON OFF', false);
       closeChat();
       return;
     }
