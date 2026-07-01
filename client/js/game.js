@@ -1140,8 +1140,8 @@ const WEAPON_DEFS = {
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 7, pellets: 1, spread: 0.025, auto: true },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 8, pellets: 1, spread: 0.03, auto: true },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true },
   shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
