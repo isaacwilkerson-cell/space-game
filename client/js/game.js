@@ -599,7 +599,11 @@ const HOT_VOLCANIC_NAMES = new Set([
 ]);
 
 const ICY_NAMES = new Set([
-  'Frost Haven', 'Cryo Reach', 'Glacius', 'Tundra Shelf',
+  'Frost Haven', 'Cryo Reach',
+]);
+
+const ICY2_NAMES = new Set([
+  'Glacius', 'Tundra Shelf',
 ]);
 
 const DESERT_NAMES = new Set([
@@ -622,6 +626,7 @@ const _surfTerrains = {
   mars:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  icy2:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 2.0, sprintMul: 2.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 0.18 },
   jungle:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x336633, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
@@ -632,6 +637,7 @@ function _terrainKeyForPlanet(planet) {
   if (name === 'Phoenix') return 'mars';
   if (HOT_VOLCANIC_NAMES.has(name)) return 'volcano';
   if (ICY_NAMES.has(name)) return 'icy';
+  if (ICY2_NAMES.has(name)) return 'icy2';
   if (DESERT_NAMES.has(name)) return 'desert';
   if (INDUSTRIAL_NAMES.has(name)) return 'industrial';
   if (JUNGLE_NAMES.has(name)) return 'jungle';
@@ -704,6 +710,7 @@ function _loadSurfTerrain(key, assetPath) {
 _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
+_loadSurfTerrain('icy2', 'assets/icy_terrain_export.glb');
 _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
 _loadSurfTerrain('industrial', 'assets/futuristic_cube-shaped_cityscape.glb');
 _loadSurfTerrain('jungle', 'assets/forest_and_country_road.glb');
