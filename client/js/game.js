@@ -267,8 +267,8 @@ const CROUCH_SPEED_MUL = 0.55;
 // Slide: crouching while sprinting launches a burst of speed that decays back to crouch speed
 let _slideTimer = 0;
 let _prevCrouchKey = false;
-const SLIDE_DURATION = 28;
-const SLIDE_SPEED_MUL = 1.7; // relative to sprint speed at the start of the slide
+const SLIDE_DURATION = 55;
+const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the slide
 let fpBobT = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -862,15 +862,16 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  // C or Alt to crouch — crouching while sprinting triggers a slide
-  const _surfCrouching = keys['c'] || keys['alt'];
+  // C or Alt to crouch — crouching while sprinting triggers a slide. Once triggered it
+  // plays out fully; you don't need to keep holding the key.
+  const _surfCrouchKeyDown = keys['c'] || keys['alt'];
   const _wasSprintingSurf = keys['shift'] && _surfVel.lengthSq() > 0.3;
-  if (_surfCrouching && !_prevCrouchKey && _wasSprintingSurf) {
+  if (_surfCrouchKeyDown && !_prevCrouchKey && _wasSprintingSurf) {
     _slideTimer = SLIDE_DURATION;
     _surfVel.setLength(SURF_SPRINT * SLIDE_SPEED_MUL); // launch the slide
   }
-  _prevCrouchKey = _surfCrouching;
-  if (_slideTimer > 0 && !_surfCrouching) _slideTimer = 0; // cancel if you stand back up
+  _prevCrouchKey = _surfCrouchKeyDown;
+  const _surfCrouching = _surfCrouchKeyDown || _slideTimer > 0; // stay low for the whole slide
   _crouchAmount += ((_surfCrouching ? 1 : 0) - _crouchAmount) * 0.2;
   const _surfCrouchSpeedMul = 1 - CROUCH_SPEED_MUL * _crouchAmount;
 
@@ -884,7 +885,7 @@ function _updatePlanetSurface() {
 
   _surfVel.add(accel);
   _surfVel.y = 0;
-  _surfVel.multiplyScalar(_slideTimer > 0 ? 0.94 : SURF_FRICTION); // slide loses speed more gently
+  _surfVel.multiplyScalar(_slideTimer > 0 ? 0.97 : SURF_FRICTION); // slide loses speed more gently
   let _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfMoveMul;
   if (_slideTimer > 0) {
     _surfSpeedCap = Math.max(_surfSpeedCap, SURF_SPRINT * SLIDE_SPEED_MUL * (_slideTimer / SLIDE_DURATION));
@@ -2792,15 +2793,16 @@ function updateFP() {
   _fpRight.set(cosY, 0, -sinY);
 
   // C or Alt to crouch (Alt is already noclip-descend in admin mode, so skip it there)
-  const _crouching = !window._adminMode && (keys['c'] || keys['alt']);
-  // Crouching while sprinting triggers a slide — a burst of speed that decays back down
+  const _crouchKeyDown = !window._adminMode && (keys['c'] || keys['alt']);
+  // Crouching while sprinting triggers a slide — a one-shot burst that decays back down.
+  // Once triggered it plays out fully; you don't need to keep holding the key.
   const _wasSprintingFP = gameMode === 'lobby' && keys['shift'] && fpVel.lengthSq() > 0.3;
-  if (_crouching && !_prevCrouchKey && _wasSprintingFP) {
+  if (_crouchKeyDown && !_prevCrouchKey && _wasSprintingFP) {
     _slideTimer = SLIDE_DURATION;
     fpVel.setLength(FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL); // launch the slide
   }
-  _prevCrouchKey = _crouching;
-  if (_slideTimer > 0 && (!_crouching || gameMode !== 'lobby')) _slideTimer = 0; // cancel if you stand back up
+  _prevCrouchKey = _crouchKeyDown;
+  const _crouching = _crouchKeyDown || _slideTimer > 0; // stay low for the whole slide
   _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
 
   const _fpSprinting = gameMode === 'lobby' && keys['shift'] && !_crouching;
@@ -2822,7 +2824,7 @@ function updateFP() {
   if (keys['a']) fpVel.addScaledVector(_fpRight,  -_fpAccel);
   if (keys['d']) fpVel.addScaledVector(_fpRight,   _fpAccel);
   fpVel.y = 0;
-  fpVel.multiplyScalar(_slideTimer > 0 ? 0.94 : FP_FRICTION); // slide loses speed more gently
+  fpVel.multiplyScalar(_slideTimer > 0 ? 0.97 : FP_FRICTION); // slide loses speed more gently
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
