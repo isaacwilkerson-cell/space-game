@@ -3019,8 +3019,8 @@ function updateFP() {
   if (window._thirdPerson && !window._adminMode) {
     // Pull the camera back and up behind the player, still looking the same direction
     const _tpBack = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-    camera.position.addScaledVector(_tpBack, 26);
-    camera.position.y += 10;
+    camera.position.addScaledVector(_tpBack, 70);
+    camera.position.y += 20;
   }
 }
 
@@ -3584,7 +3584,7 @@ loadModel('assets/astronaught.glb', 100, m => { if (m) { m.position.y -= 25; } _
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
   const clone = template.clone(true);
-  clone.rotation.y -= Math.PI / 2; // face-forward correction — was rotated 90° off
+  clone.rotation.y -= Math.PI / 2 + Math.PI; // face-forward correction — was 90° off, plus 180° flip
   clone.traverse(c => {
     if (c.isMesh && c.material) {
       const mats = Array.isArray(c.material) ? c.material : [c.material];
