@@ -560,7 +560,9 @@ const _surfPos = new THREE.Vector3(0, 1.8, 0);
 const _surfVel = new THREE.Vector3();
 let _surfYaw = 0, _surfPitch = 0;
 let _surfVertVel = 0;
-const SURF_EYE_H = 12, SURF_SPEED = 0.22, SURF_SPRINT = 0.42, SURF_ACCEL = 0.18, SURF_FRICTION = 0.82;
+// Speeds brought in line with the room/lobby walk speed (FP_SPEED = 1.3) — these used to be
+// ~6x slower than everywhere else in the game, which made every planet feel sluggish.
+const SURF_EYE_H = 12, SURF_SPEED = 1.1, SURF_SPRINT = 1.7, SURF_ACCEL = 0.9, SURF_FRICTION = 0.82;
 const SURF_JUMP_V = 0.5, SURF_GRAVITY = 0.012;
 
 let _surfCurrentPlanet = null;
