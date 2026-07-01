@@ -4405,10 +4405,9 @@ function animate(t) {
   _drawMinimap();
 }
 // TEMPORARY: spawn directly on the Dust Bowl desert planet for testing terrain — revert to enterStation() when done.
+enterStation();
 const _dustBowlPlanet = planets.find(p => p.userData.mapName === 'Dust Bowl');
 if (_dustBowlPlanet) {
   _enterPlanetSurface(_dustBowlPlanet);
-} else {
-  enterStation();
 }
 requestAnimationFrame(animate);
