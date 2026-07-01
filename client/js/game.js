@@ -631,7 +631,7 @@ const _surfTerrains = {
   volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   icy2:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
-  desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0, shiny: true, roughness: 0.2, metalness: 0.4 },
   industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 0.8, sprintMul: 0.8, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   valley:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x336633, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
 };
@@ -698,6 +698,11 @@ function _loadSurfTerrain(key, assetPath) {
         if (m.aoMap && !c.geometry.attributes.uv2) m.aoMap = null;
         // Avoid rendering both faces of every triangle — halves fill cost on heavy terrain
         m.side = THREE.FrontSide;
+        if (entry.shiny && m.isMeshStandardMaterial) {
+          m.roughness = entry.roughness != null ? entry.roughness : 0.25;
+          m.metalness = entry.metalness != null ? entry.metalness : 0.35;
+          m.envMapIntensity = 1.5;
+        }
         m.needsUpdate = true;
       });
     });
