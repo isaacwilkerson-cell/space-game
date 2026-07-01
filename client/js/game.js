@@ -1092,6 +1092,10 @@ let _hasSniper = false;
 let _sniperMesh = null;      // currently-equipped weapon's viewmodel mesh
 let _equippedWeaponId = null;
 const _weaponMeshes = {};    // weapon id -> loaded viewmodel mesh (all preloaded, hidden)
+const _weaponAmmo = {};      // weapon id -> current rounds loaded (initialized to magSize on first equip)
+let _gunReloading = false;
+let _reloadTimer = 0;
+let _reloadDuration = 1;
 
 // ── Inventory system ──────────────────────────────────────────────────────────
 const INVENTORY_SIZE = 8;
@@ -1137,12 +1141,13 @@ document.body.appendChild(_inventoryBar);
 const WEAPON_DEFS = {
   // cooldown: frames between shots. auto: holding the trigger keeps firing. spread: random
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09 },
+  // magSize: rounds per magazine. reloadTime: frames the reload shake takes.
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 5, reloadTime: 90 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 60 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 60 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 80 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 80 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 100 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1165,6 +1170,11 @@ function _invSetActive(idx) {
   _hasSniper = !!_equippedWeaponId;
   Object.entries(_weaponMeshes).forEach(([wid, m]) => { if (m) m.visible = false; });
   _sniperMesh = _equippedWeaponId ? (_weaponMeshes[_equippedWeaponId] || null) : null;
+  _gunReloading = false; // switching weapons cancels any in-progress reload
+  if (_equippedWeaponId && _weaponAmmo[_equippedWeaponId] === undefined) {
+    const def = WEAPON_DEFS[_equippedWeaponId];
+    _weaponAmmo[_equippedWeaponId] = def ? def.magSize : 0;
+  }
 }
 
 function _invAddItem(itemId) {
@@ -1932,9 +1942,22 @@ function _firePellet(dir, activeScene) {
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
 }
 
+// Starts the reload shake; refills ammo once _reloadDuration frames pass (see _updateSniperShots).
+function _startReload() {
+  if (!_hasSniper || !_equippedWeaponId || _gunReloading) return;
+  const def = WEAPON_DEFS[_equippedWeaponId];
+  if (!def) return;
+  if ((_weaponAmmo[_equippedWeaponId] || 0) >= def.magSize) return; // already full
+  _gunReloading = true;
+  _reloadDuration = def.reloadTime || 60;
+  _reloadTimer = _reloadDuration;
+}
+
 function _fireSniper() {
   if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
-  if (_sniperCooldown > 0) return;
+  if (_sniperCooldown > 0 || _gunReloading) return;
+  if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
+  _weaponAmmo[_equippedWeaponId]--;
   const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = 12; // frames of recoil
@@ -1984,6 +2007,23 @@ function _updateSniperShots() {
   const _wdef = WEAPON_DEFS[_equippedWeaponId];
   if (_gunMouseHeld && _wdef && _wdef.auto) _fireSniper();
 
+  // Reload countdown
+  if (_gunReloading) {
+    _reloadTimer--;
+    if (_reloadTimer <= 0) {
+      _gunReloading = false;
+      if (_equippedWeaponId && _wdef) _weaponAmmo[_equippedWeaponId] = _wdef.magSize;
+    }
+  }
+
+  // Ammo HUD
+  if (_hasSniper && _equippedWeaponId && _wdef) {
+    _ammoEl.style.display = 'block';
+    _ammoEl.textContent = _gunReloading ? 'RELOADING…' : `${_weaponAmmo[_equippedWeaponId] || 0} / ${_wdef.magSize}`;
+  } else {
+    _ammoEl.style.display = 'none';
+  }
+
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
     const s = _sniperShots[i];
     s.mesh.position.add(s.vel);
@@ -2014,10 +2054,19 @@ function _updateSniperShots() {
       const _viewFwd   = (_wdef && _wdef.viewFwd)   || 14;
       const _viewRight = (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
       const _viewUp    = (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
+      // Reload shake — random jitter that eases out as the reload finishes
+      let _shakeRight = 0, _shakeUp = 0, _shakeFwd = 0;
+      if (_gunReloading) {
+        const _reloadT = _reloadTimer / _reloadDuration; // 1 -> 0 over the reload
+        const _shakeMag = 1.6 * _reloadT;
+        _shakeRight = (Math.random() - 0.5) * 2 * _shakeMag;
+        _shakeUp    = (Math.random() - 0.5) * 2 * _shakeMag;
+        _shakeFwd   = (Math.random() - 0.5) * _shakeMag;
+      }
       _sniperMesh.position.copy(camera.position)
-        .addScaledVector(dir,   _viewFwd - recoilBack)
-        .addScaledVector(right, _viewRight)
-        .addScaledVector(up,    _viewUp + recoilUp);
+        .addScaledVector(dir,   _viewFwd - recoilBack + _shakeFwd)
+        .addScaledVector(right, _viewRight + _shakeRight)
+        .addScaledVector(up,    _viewUp + recoilUp + _shakeUp);
       _sniperMesh.quaternion.copy(camera.quaternion);
       _sniperMesh.rotateY(Math.PI + ((WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewYaw) || 0));
       _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
@@ -2067,6 +2116,22 @@ document.addEventListener('mouseup', e => {
   if (e.button === 2) _sniperScoped = false;
 });
 document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
+
+// R — manual reload
+document.addEventListener('keydown', e => {
+  if (e.key !== 'r' && e.key !== 'R') return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  _startReload();
+});
+
+// Ammo counter HUD
+const _ammoEl = document.createElement('div');
+_ammoEl.style.cssText = `
+  position:fixed;bottom:80px;right:20px;z-index:30;display:none;
+  font-family:'Courier New',monospace;font-size:22px;letter-spacing:2px;
+  color:#0ff;text-shadow:0 0 8px #000;
+`;
+document.body.appendChild(_ammoEl);
 
 // Drop scope if player leaves planet
 // (handled naturally — _sniperScoped gets ignored outside planet_walk)
