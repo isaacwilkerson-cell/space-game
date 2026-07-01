@@ -1135,12 +1135,14 @@ document.body.appendChild(_inventoryBar);
 // don't look tiny). viewFwd: how far out in front of the camera the gun sits — smaller
 // guns need a bigger forward offset relative to their size or they end up too close.
 const WEAPON_DEFS = {
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9 },
+  // cooldown: frames between shots. auto: holding the trigger keeps firing. spread: random
+  // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 7, pellets: 1, spread: 0.025, auto: true },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 8, pellets: 1, spread: 0.03, auto: true },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1888,41 +1890,17 @@ function _updateImpacts() {
   }
 }
 
-function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
-  if (_sniperCooldown > 0) return;
-  _sniperCooldown = SNIPER_COOLDOWN;
-  _sniperRecoil = 12; // frames of recoil
-
-  const activeScene = gameMode === 'docked' ? interiorScene
-                    : gameMode === 'lobby'   ? lobbyScene
-                    : gameMode === 'range'   ? shootingRangeScene
-                    : scene;
-
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-
+// Fires one projectile in `dir` (already spread-adjusted). Shared by every weapon/pellet.
+function _firePellet(dir, activeScene) {
   // Bullet tracer
   const mesh = new THREE.Mesh(_sniperGeo, _sniperMat);
   mesh.position.copy(camera.position).addScaledVector(dir, 8);
-  mesh.quaternion.copy(camera.quaternion);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
   activeScene.add(mesh);
 
   const glow = new THREE.PointLight(0x00ffaa, 40, 300);
   glow.position.copy(mesh.position);
   activeScene.add(glow);
-
-  // Muzzle flash — bright burst at gun tip
-  const muzzlePos = camera.position.clone()
-    .addScaledVector(dir, 20)
-    .addScaledVector(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion), 8)
-    .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), -6);
-  if (_muzzleFlash.parent !== activeScene) {
-    if (_muzzleFlash.parent) _muzzleFlash.parent.remove(_muzzleFlash);
-    activeScene.add(_muzzleFlash);
-  }
-  _muzzleFlash.position.copy(muzzlePos);
-  _muzzleFlash.intensity = 120;
 
   // Raycast for bullet impact
   const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
@@ -1947,10 +1925,57 @@ function _fireSniper() {
   _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
 }
 
+function _fireSniper() {
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (_sniperCooldown > 0) return;
+  const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
+  _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
+  _sniperRecoil = 12; // frames of recoil
+
+  const activeScene = gameMode === 'docked' ? interiorScene
+                    : gameMode === 'lobby'   ? lobbyScene
+                    : gameMode === 'range'   ? shootingRangeScene
+                    : scene;
+
+  const baseDir = new THREE.Vector3();
+  camera.getWorldDirection(baseDir);
+
+  // Muzzle flash — bright burst at gun tip (once per trigger pull, not per pellet)
+  const muzzlePos = camera.position.clone()
+    .addScaledVector(baseDir, 20)
+    .addScaledVector(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion), 8)
+    .addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion), -6);
+  if (_muzzleFlash.parent !== activeScene) {
+    if (_muzzleFlash.parent) _muzzleFlash.parent.remove(_muzzleFlash);
+    activeScene.add(_muzzleFlash);
+  }
+  _muzzleFlash.position.copy(muzzlePos);
+  _muzzleFlash.intensity = 120;
+
+  const pellets = _wdef.pellets || 1;
+  const spread  = _wdef.spread  || 0;
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const up    = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  for (let i = 0; i < pellets; i++) {
+    let dir = baseDir;
+    if (spread > 0) {
+      dir = baseDir.clone()
+        .addScaledVector(right, (Math.random() - 0.5) * 2 * spread)
+        .addScaledVector(up,    (Math.random() - 0.5) * 2 * spread)
+        .normalize();
+    }
+    _firePellet(dir, activeScene);
+  }
+}
+
 function _updateSniperShots() {
   if (_sniperCooldown > 0) _sniperCooldown--;
   _muzzleFlash.intensity = 0; // instant off
   _updateImpacts();
+
+  // Automatic weapons keep firing while the trigger is held down
+  const _wdef = WEAPON_DEFS[_equippedWeaponId];
+  if (_gunMouseHeld && _wdef && _wdef.auto) _fireSniper();
 
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
     const s = _sniperShots[i];
@@ -2024,12 +2049,14 @@ function _updateSniperShots() {
 }
 
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
+let _gunMouseHeld = false;
 document.addEventListener('mousedown', e => {
   if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
-  if (e.button === 0) _fireSniper();
+  if (e.button === 0) { _gunMouseHeld = true; _fireSniper(); }
   if (e.button === 2) { e.preventDefault(); _sniperScoped = true; }
 });
 document.addEventListener('mouseup', e => {
+  if (e.button === 0) _gunMouseHeld = false;
   if (e.button === 2) _sniperScoped = false;
 });
 document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
