@@ -568,7 +568,7 @@ function enterShootingRange() {
   _killAllExteriorLights();
   lobbyScene.visible = false;
   interiorScene.visible = false;
-  fpPos.set(55, 2, -155);
+  fpPos.set(63, 2, -142);
   fpVel.set(0, 0, 0);
   fpYaw = Math.PI; fpPitch = 0;
   camera.position.copy(fpPos);
@@ -2084,6 +2084,7 @@ function _startReload() {
 
 function _fireSniper() {
   if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked || _surfLanding) return;
+  if (!_weaponMeshes[_equippedWeaponId]) return; // model still downloading
   if (_sniperCooldown > 0 || _gunReloading) return;
   if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
   _weaponAmmo[_equippedWeaponId]--;
@@ -2151,10 +2152,13 @@ function _updateSniperShots() {
     }
   }
 
-  // Ammo HUD
+  // Ammo HUD — also covers the case where the equipped weapon's (often large) model
+  // is still downloading, so it's obvious you're not actually empty-handed.
   if (_hasSniper && _equippedWeaponId && _wdef) {
     _ammoEl.style.display = 'block';
-    _ammoEl.textContent = _gunReloading ? 'RELOADING…' : `${_weaponAmmo[_equippedWeaponId] || 0} / ${_wdef.magSize}`;
+    _ammoEl.textContent = !_weaponMeshes[_equippedWeaponId] ? 'LOADING WEAPON…'
+      : _gunReloading ? 'RELOADING…'
+      : `${_weaponAmmo[_equippedWeaponId] || 0} / ${_wdef.magSize}`;
   } else {
     _ammoEl.style.display = 'none';
   }
