@@ -632,7 +632,7 @@ const _surfTerrains = {
   icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   icy2:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
-  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 0.8, sprintMul: 0.8, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   valley:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x336633, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
 };
 
@@ -2817,15 +2817,15 @@ const planets = [];
     [ 11000,   45000, -35000,  460, 0x55aa33, null,      0x001100, 0x22bb33, 0.0013, 0x44dd22, false],
     [-18000,  -40000,  35000,  580, 0x33771f, 0x224411, 0x112200, 0x44aa22, 0.0010, 0x00ee33, false],
     // Desert/tan worlds
-    [ 38000,   20000,  14000,  700, 0xddbb77, 0xcc9944, 0x442200, 0xddaa44, 0.0008, 0xffcc44, false],
-    [-40000,  -30000,  20000,  500, 0xcc9955, null,      0x331100, 0xbb8833, 0.0007, 0xffaa22, false],
-    [ 16000,   50000,  40000,  430, 0xeecc88, 0xddaa55, 0x553300, 0xeeaa44, 0.0012, 0xffdd66, false],
-    [-24000,  -48000, -40000,  620, 0xbb9944, null,      0x442200, 0xcc9933, 0.0009, 0xffbb33, false],
+    [ 38000,   20000,  14000,  700, 0xddbb77, 0xcc9944, 0x3399ee, 0xddaa44, 0.0008, 0xffcc44, false],
+    [-40000,  -30000,  20000,  500, 0xcc9955, null,      0x3399ee, 0xbb8833, 0.0007, 0xffaa22, false],
+    [ 16000,   50000,  40000,  430, 0xeecc88, 0xddaa55, 0x3399ee, 0xeeaa44, 0.0012, 0xffdd66, false],
+    [-24000,  -48000, -40000,  620, 0xbb9944, null,      0x3399ee, 0xcc9933, 0.0009, 0xffbb33, false],
     // Desert worlds (reassigned from industrial)
-    [ 20000,   38000, -28000,  590, 0xddbb88, 0xccaa66, 0x442200, 0xddaa55, 0.0012, 0xffcc55, false],
-    [-35000,  -18000,  28000,  510, 0xccaa77, null,      0x331100, 0xbb8844, 0.0010, 0xffbb44, false],
-    [ 48000,   42000,  22000,  650, 0xeebb88, 0xddaa66, 0x442200, 0xeebb55, 0.0009, 0xffdd66, false],
-    [-22000,  -52000,  48000,  480, 0xbb9966, null,      0x331100, 0xcc9944, 0.0013, 0xffcc44, false],
+    [ 20000,   38000, -28000,  590, 0xddbb88, 0xccaa66, 0x3399ee, 0xddaa55, 0.0012, 0xffcc55, false],
+    [-35000,  -18000,  28000,  510, 0xccaa77, null,      0x3399ee, 0xbb8844, 0.0010, 0xffbb44, false],
+    [ 48000,   42000,  22000,  650, 0xeebb88, 0xddaa66, 0x3399ee, 0xeebb55, 0.0009, 0xffdd66, false],
+    [-22000,  -52000,  48000,  480, 0xbb9966, null,      0x3399ee, 0xcc9944, 0.0013, 0xffcc44, false],
     // Jungle worlds (reassigned from industrial)
     [ 55000,   60000,  15000,  900, 0x44aa55, 0x227733, 0x001100, 0x33cc44, 0.0006, 0x00ff66, false],
     [-55000,  -60000,  30000,  850, 0x339944, 0x226633, 0x001100, 0x22bb33, 0.0006, 0x00ee55, false],
