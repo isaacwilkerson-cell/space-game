@@ -771,7 +771,7 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  const _accelAmt = keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL;
+  const _accelAmt = (keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL) * _surfSpeedMul;
   const accel = new THREE.Vector3();
   if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  _accelAmt);
   if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -_accelAmt);
