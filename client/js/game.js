@@ -633,9 +633,14 @@ function _loadSurfTerrain(key, assetPath) {
       c.receiveShadow = false;
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => {
-        const col = m.color;
-        const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
-        if (isWhite && !m.map) m.color.set(entry.tint);
+        // Only fall back to a flat tint when the material genuinely has no texture at all —
+        // never override a real base color texture (was incorrectly painting over textured
+        // sand/snow assets that have a texture but happened to have a white color factor).
+        if (!m.map && !m.aoMap && !m.roughnessMap && !m.metalnessMap) {
+          const col = m.color;
+          const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
+          if (isWhite) m.color.set(entry.tint);
+        }
         if (entry.dim !== 1.0) m.color.multiplyScalar(entry.dim);
         // A baked AO map without a matching uv2 channel darkens/discolors the whole
         // surface incorrectly — drop it so the base color texture shows through as intended.
