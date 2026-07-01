@@ -28,11 +28,13 @@ const ASSETS = {
 
 
 // ── Global asset load tracking (drives the loading-screen progress bar) ────────
-const _loadStats = { total: 0, loaded: 0 };
+// pending = number of loadModel() calls currently in flight, right now — not a running
+// total, so it correctly reflects "how much is left" no matter when each load started.
+const _loadStats = { pending: 0 };
 
 function loadModel(path, targetSize, onLoaded) {
-  _loadStats.total++;
-  const _done = () => { _loadStats.loaded++; };
+  _loadStats.pending++;
+  const _done = () => { _loadStats.pending = Math.max(0, _loadStats.pending - 1); };
   fetch(path)
     .then(r => { if (!r.ok) { _done(); onLoaded(null); return null; } return r.blob(); })
     .then(blob => {
@@ -80,22 +82,28 @@ function _showLoadingScreen(label, isDoneFn, opts) {
   _loadingScreenActive = true;
   _loadingScreenDoneCheck = isDoneFn;
   _loadingLabelEl.textContent = label;
+  _loadingBarEl.style.width = '0%';
   _loadingScreenEl.style.display = 'flex';
-  const startTotal = _loadStats.total;
+  // Snapshot how many loads are in flight right now — the bar tracks THOSE finishing,
+  // regardless of when they originally started (fixes the bar jumping straight to 100%
+  // for assets that began loading long before this screen was shown).
+  const startPending = _loadStats.pending;
   const timeoutMs = (opts && opts.timeoutMs) || 8000;
+  const minShowMs = (opts && opts.minShowMs != null) ? opts.minShowMs : 300; // never just flash
   const startTime = Date.now();
   (function poll() {
     if (!_loadingScreenActive) return;
-    const pending = Math.max(_loadStats.total - _loadStats.loaded, 0);
-    const startedPending = Math.max(_loadStats.total - startTotal, 0);
-    const pct = startedPending > 0
-      ? Math.min(100, Math.round(((startedPending - Math.min(pending, startedPending)) / startedPending) * 100))
-      : 100;
+    const finishedSinceShown = Math.max(startPending - _loadStats.pending, 0);
+    const pct = startPending > 0
+      ? Math.min(99, Math.round((finishedSinceShown / startPending) * 100))
+      : 99;
     _loadingBarEl.style.width = pct + '%';
-    const timedOut = Date.now() - startTime > timeoutMs;
-    if (timedOut || (_loadingScreenDoneCheck && _loadingScreenDoneCheck())) {
+    const elapsed = Date.now() - startTime;
+    const timedOut = elapsed > timeoutMs;
+    const contentReady = _loadingScreenDoneCheck && _loadingScreenDoneCheck();
+    if ((elapsed >= minShowMs) && (timedOut || contentReady)) {
       _loadingBarEl.style.width = '100%';
-      setTimeout(() => { _loadingScreenActive = false; _loadingScreenEl.style.display = 'none'; }, 120);
+      setTimeout(() => { _loadingScreenActive = false; _loadingScreenEl.style.display = 'none'; }, 150);
       return;
     }
     requestAnimationFrame(poll);
@@ -565,9 +573,9 @@ function enterShootingRange() {
   fpYaw = Math.PI; fpPitch = 0;
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 0.18;
-  if (_rangeCollidables.length === 0) {
-    _showLoadingScreen('LOADING SHOOTING RANGE', () => _rangeCollidables.length > 0, { timeoutMs: 10000 });
-  }
+  // Always show it (not just when we know assets are missing) — guards against any
+  // race where the range briefly renders black for a frame before content is in.
+  _showLoadingScreen('LOADING SHOOTING RANGE', () => _rangeCollidables.length > 0, { timeoutMs: 10000, minShowMs: 150 });
 }
 
 function exitShootingRange() {
@@ -4796,5 +4804,5 @@ function animate(t) {
   _drawMinimap();
 }
 enterStation();
-_showLoadingScreen('ENTERING STATION', () => _loadStats.loaded >= _loadStats.total, { timeoutMs: 15000 });
+_showLoadingScreen('ENTERING STATION', () => _loadStats.pending <= 0, { timeoutMs: 15000 });
 requestAnimationFrame(animate);
