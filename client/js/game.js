@@ -631,6 +631,32 @@ function _loadSurfTerrain(key, assetPath) {
       if (!c.isMesh || !c.material) return;
       c.castShadow = false;
       c.receiveShadow = false;
+      // Some exported terrain assets ship with degenerate UVs (every coordinate collapsed to
+      // the same point), which samples one single texel across the whole surface and looks
+      // like a flat, untextured color. Detect that and rebuild UVs via planar XZ projection.
+      const _uvAttr = c.geometry.attributes.uv;
+      if (_uvAttr) {
+        let _uMin = Infinity, _uMax = -Infinity, _vMin = Infinity, _vMax = -Infinity;
+        for (let i = 0; i < _uvAttr.count; i++) {
+          const u = _uvAttr.getX(i), v = _uvAttr.getY(i);
+          if (u < _uMin) _uMin = u; if (u > _uMax) _uMax = u;
+          if (v < _vMin) _vMin = v; if (v > _vMax) _vMax = v;
+        }
+        if (_uMax - _uMin < 1e-5 && _vMax - _vMin < 1e-5) {
+          const pos = c.geometry.attributes.position;
+          c.geometry.computeBoundingBox();
+          const bb = c.geometry.boundingBox;
+          const sizeX = Math.max(bb.max.x - bb.min.x, 1e-5);
+          const sizeZ = Math.max(bb.max.z - bb.min.z, 1e-5);
+          const TILE = 8; // repeat count across this mesh's span
+          const newUv = new Float32Array(pos.count * 2);
+          for (let i = 0; i < pos.count; i++) {
+            newUv[i * 2]     = (pos.getX(i) - bb.min.x) / sizeX * TILE;
+            newUv[i * 2 + 1] = (pos.getZ(i) - bb.min.z) / sizeZ * TILE;
+          }
+          c.geometry.setAttribute('uv', new THREE.BufferAttribute(newUv, 2));
+        }
+      }
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => {
         // Only fall back to a flat tint when the material genuinely has no texture at all —
@@ -656,33 +682,6 @@ function _loadSurfTerrain(key, assetPath) {
     entry.halfX = (box.max.x - box.min.x) / 2 * 0.92;
     entry.halfZ = (box.max.z - box.min.z) / 2 * 0.92;
     entry.ready = true;
-
-    // TEMP DEBUG: dump material/texture/UV state on screen so it's visible without devtools.
-    if (key === 'desert') {
-      const lines = [];
-      let meshCount = 0;
-      model.traverse(c => {
-        if (!c.isMesh || !c.material) return;
-        meshCount++;
-        const mats = Array.isArray(c.material) ? c.material : [c.material];
-        mats.forEach(m => {
-          const uv = c.geometry.attributes.uv;
-          let uvMin = [Infinity, Infinity], uvMax = [-Infinity, -Infinity];
-          if (uv) {
-            for (let i = 0; i < uv.count; i++) {
-              const u = uv.getX(i), v = uv.getY(i);
-              if (u < uvMin[0]) uvMin[0] = u; if (u > uvMax[0]) uvMax[0] = u;
-              if (v < uvMin[1]) uvMin[1] = v; if (v > uvMax[1]) uvMax[1] = v;
-            }
-          }
-          lines.push(`mesh${meshCount}: map=${!!m.map} imgOK=${m.map ? !!m.map.image : 'n/a'} imgWH=${m.map && m.map.image ? m.map.image.width+'x'+m.map.image.height : 'n/a'} color=#${m.color.getHexString()} uvRange=[${uvMin.map(x=>x.toFixed(2))}]-[${uvMax.map(x=>x.toFixed(2))}]`);
-        });
-      });
-      const dbg = document.createElement('div');
-      dbg.style.cssText = 'position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:8px;z-index:9999;white-space:pre;max-width:90vw;';
-      dbg.textContent = 'DESERT TERRAIN DEBUG:\n' + lines.join('\n');
-      document.body.appendChild(dbg);
-    }
   });
 }
 
