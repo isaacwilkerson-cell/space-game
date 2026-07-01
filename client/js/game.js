@@ -3609,7 +3609,7 @@ function _cloneAstronaut(template) {
 // One shared self-astronaut mesh, reparented into whichever FP scene is currently
 // active and only shown while third-person is on.
 window._thirdPerson = false;
-let _selfAstronautMesh = null;
+let _selfAstronautMesh = null; // wrapper group — rotated to fpYaw; the clone inside keeps its own facing correction
 function _updateSelfAstronaut() {
   const wantScene = gameMode === 'lobby' ? lobbyScene
                    : gameMode === 'docked' ? interiorScene
@@ -3623,7 +3623,8 @@ function _updateSelfAstronaut() {
   if (!_selfAstronautMesh) {
     const tmpl = gameMode === 'docked' ? _astronautRoomTemplate : _astronautLobbyTemplate;
     if (!tmpl) return; // not loaded yet
-    _selfAstronautMesh = _cloneAstronaut(tmpl);
+    _selfAstronautMesh = new THREE.Group();
+    _selfAstronautMesh.add(_cloneAstronaut(tmpl)); // clone's own rotation correction stays intact
   }
   if (_selfAstronautMesh.parent !== wantScene) {
     if (_selfAstronautMesh.parent) _selfAstronautMesh.parent.remove(_selfAstronautMesh);
