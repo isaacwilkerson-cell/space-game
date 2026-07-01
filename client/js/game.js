@@ -697,7 +697,7 @@ _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
 _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
-_loadSurfTerrain('industrial', 'assets/ruined_city_free.glb');
+_loadSurfTerrain('industrial', 'assets/futuristic_cube-shaped_cityscape.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
