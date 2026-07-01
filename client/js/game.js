@@ -2763,10 +2763,10 @@ const planets = [];
   planets.push(p);
 })();
 
-// Planet at 2062, -12912, -12849
+// Planet at 42000, 25000, -42000 (swapped with Obsidian's original position)
 (function() {
-  const p = createPlanet(2062, -12849, 700, 0xcc6644, 0x886644);
-  p.position.y = -12912;
+  const p = createPlanet(42000, -42000, 700, 0xcc6644, 0x886644);
+  p.position.y = 25000;
   p.userData.mapName = 'Phoenix';
   p.userData.atmosphere = {
     skyColor:   new THREE.Color(0xbb3300),
@@ -2831,7 +2831,7 @@ const planets = [];
     [-55000,  -60000,  30000,  850, 0x339944, 0x226633, 0x001100, 0x22bb33, 0.0006, 0x00ee55, false],
     [ 28000,   55000,  55000,  950, 0x55bb44, 0x338822, 0x001100, 0x44cc33, 0.0005, 0x22ff44, false],
     // Dark/charcoal worlds
-    [ 42000,   25000, -42000,  530, 0x444455, null,      0x000011, 0x222244, 0.0015, 0x6666ff, false],
+    [ 2062,   -12912, -12849,  530, 0x444455, null,      0x000011, 0x222244, 0.0015, 0x6666ff, false],
     [-48000,  -35000, -38000,  470, 0x555566, 0x333355, 0x000022, 0x333366, 0.0012, 0x4444ff, false],
     [ 35000,   48000,  48000,  610, 0x334444, null,      0x001111, 0x224444, 0.0010, 0x00ffdd, false],
     [-60000,  -25000,  18000,  720, 0x445555, 0x334455, 0x001122, 0x335566, 0.0009, 0x0088dd, false],
