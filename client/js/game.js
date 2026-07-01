@@ -1140,7 +1140,7 @@ const WEAPON_DEFS = {
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
   ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, aimUp: -1 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1968,7 +1968,7 @@ function _updateSniperShots() {
                                   : (_wdef && _wdef.viewFwd)   || 14;
       const _viewRight = _aiming ? ((_wdef && _wdef.aimRight) != null ? _wdef.aimRight : 0)
                                   : (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
-      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : 3)
+      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : 6)
                                   : (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
       _sniperMesh.position.copy(camera.position)
         .addScaledVector(dir,   _viewFwd - recoilBack)
