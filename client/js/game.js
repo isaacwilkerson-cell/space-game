@@ -605,10 +605,7 @@ const ICY_NAMES = new Set([
 const _surfTerrains = {
   mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
   volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  // Walk speed matches the old sprint speed; sprint is faster still.
-  // Jump: same peak height as normal (v^2/g unchanged) but higher gravity + higher launch
-  // velocity means less hang time, so landings feel snappy instead of floaty.
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 5.7, sprintMul: 7.5, jumpVelMul: 1.5, gravityMul: 2.25 },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
 };
 
 function _terrainKeyForPlanet(planet) {
