@@ -618,7 +618,7 @@ const _surfTerrains = {
   volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
   desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
-  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 0.25 },
+  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 0.08 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -854,6 +854,7 @@ function _updatePlanetSurface() {
   if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpVelMul;
 
   _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
+  const _prevX = _surfPos.x, _prevZ = _surfPos.z;
   _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
   if (_surfPos.y < _groundY) {
@@ -867,6 +868,10 @@ function _updatePlanetSurface() {
     if (_groundGap < CLIMB_STEP) {
       _surfPos.y += _groundGap * 0.4;
     } else if (_surfVel.lengthSq() > 0.0001) {
+      // Undo this frame's horizontal push into the wall so the camera doesn't end up
+      // embedded in/clipping through the geometry while climbing.
+      _surfPos.x = _prevX;
+      _surfPos.z = _prevZ;
       _surfPos.y += Math.min(_groundGap, CLIMB_SPEED);
     } else {
       _surfPos.y = _groundY; // not moving horizontally — just a real fall/landing
