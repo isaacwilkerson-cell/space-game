@@ -853,30 +853,33 @@ function _updatePlanetSurface() {
   const onGround = _surfPos.y <= _groundY + 0.1;
   if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpVelMul;
 
+  const CLIMB_STEP = 6;
+  const CLIMB_SPEED = 5 * _surfClimbMul;
+
+  // Look ahead at where we're about to move BEFORE moving there. A tall obstacle (e.g.
+  // a building wall) shows up as a big height jump — hold horizontal position there and
+  // climb straight up instead of stepping into the wall and reacting afterward (which
+  // used to flip-flop between "moved in" and "pushed back out" every other frame).
+  let _blockHorizontal = false;
+  let _climbTargetY = _groundY;
+  if (_surfVel.lengthSq() > 0.0001) {
+    _surfRaycaster.set(new THREE.Vector3(_surfPos.x + _surfVel.x, _surfPos.y + 10, _surfPos.z + _surfVel.z), new THREE.Vector3(0, -1, 0));
+    const _aHits = _surfRaycaster.intersectObject(_groundMesh, true);
+    const _attemptGroundY = _aHits.length > 0 ? _aHits[0].point.y + SURF_EYE_H : SURF_EYE_H;
+    if (_attemptGroundY - _surfPos.y > CLIMB_STEP) { _blockHorizontal = true; _climbTargetY = _attemptGroundY; }
+  }
+
   _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
-  const _prevX = _surfPos.x, _prevZ = _surfPos.z;
-  _surfPos.add(_surfVel);
+  if (!_blockHorizontal) _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
-  if (_surfPos.y < _groundY) {
+  if (_blockHorizontal) {
+    _surfPos.y = Math.min(_surfPos.y + CLIMB_SPEED, _climbTargetY);
+    _surfVertVel = 0;
+  } else if (_surfPos.y < _groundY) {
     // Small terrain bumps get smoothed instead of hard-snapped so fast movement
-    // over uneven ground doesn't jitter the camera. Tall obstacles (e.g. a building
-    // wall) get climbed at a capped speed instead of teleported through instantly,
-    // so it reads as climbing rather than clipping. Real falls still snap immediately.
-    const CLIMB_STEP = 6;
-    const CLIMB_SPEED = 5 * _surfClimbMul;
+    // over uneven ground doesn't jitter the camera. Real falls still snap immediately.
     const _groundGap = _groundY - _surfPos.y;
-    if (_groundGap < CLIMB_STEP) {
-      _surfPos.y += _groundGap * 0.4;
-    } else if (_surfVel.lengthSq() > 0.0001) {
-      // Back away from the wall (not just undo this frame's step) so the camera's near
-      // clip plane clears the geometry instead of poking through it while climbing.
-      const _pullBack = _surfVel.clone().normalize().multiplyScalar(3);
-      _surfPos.x = _prevX - _pullBack.x;
-      _surfPos.z = _prevZ - _pullBack.z;
-      _surfPos.y += Math.min(_groundGap, CLIMB_SPEED);
-    } else {
-      _surfPos.y = _groundY; // not moving horizontally — just a real fall/landing
-    }
+    _surfPos.y += _groundGap < CLIMB_STEP ? _groundGap * 0.4 : _groundGap;
     _surfVertVel = 0;
   }
 
@@ -4457,5 +4460,16 @@ function animate(t) {
   drawReticle();
   _drawMinimap();
 }
+// TEMPORARY: spawn in flight near an industrial planet for testing — revert to enterStation() when done.
 enterStation();
+const _testIndustrialPlanet = planets.find(p => INDUSTRIAL_NAMES.has(p.userData.mapName));
+if (_testIndustrialPlanet) {
+  exitStation();
+  const r = _testIndustrialPlanet.userData.collisionRadius || 700;
+  const away = new THREE.Vector3(0, 0, 1);
+  selfMesh.position.copy(_testIndustrialPlanet.position).addScaledVector(away, r * 2.2);
+  selfMesh.quaternion.identity();
+  self.velocity.set(0, 0, 0);
+  camera.position.copy(selfMesh.position);
+}
 requestAnimationFrame(animate);
