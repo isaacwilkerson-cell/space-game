@@ -27,9 +27,14 @@ const ASSETS = {
 };
 
 
+// ── Global asset load tracking (drives the loading-screen progress bar) ────────
+const _loadStats = { total: 0, loaded: 0 };
+
 function loadModel(path, targetSize, onLoaded) {
+  _loadStats.total++;
+  const _done = () => { _loadStats.loaded++; };
   fetch(path)
-    .then(r => { if (!r.ok) { onLoaded(null); return null; } return r.blob(); })
+    .then(r => { if (!r.ok) { _done(); onLoaded(null); return null; } return r.blob(); })
     .then(blob => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -45,10 +50,56 @@ function loadModel(path, targetSize, onLoaded) {
           const center = box.getCenter(new THREE.Vector3());
           model.position.set(-center.x * s, -center.y * s, -center.z * s);
         }
+        _done();
         onLoaded(model);
-      }, undefined, () => { URL.revokeObjectURL(url); onLoaded(null); });
+      }, undefined, () => { URL.revokeObjectURL(url); _done(); onLoaded(null); });
     })
-    .catch(() => onLoaded(null));
+    .catch(() => { _done(); onLoaded(null); });
+}
+
+// ── Loading screen (progress bar fills as pending assets finish loading) ───────
+const _loadingScreenEl = document.createElement('div');
+_loadingScreenEl.style.cssText = `
+  position:fixed; inset:0; z-index:500; display:none;
+  background:#000; flex-direction:column; align-items:center; justify-content:center;
+  font-family:'Courier New',monospace; color:#0ff;
+`;
+_loadingScreenEl.innerHTML = `
+  <div id="loading-label" style="font-size:15px;letter-spacing:4px;margin-bottom:18px;text-shadow:0 0 10px #0af;">LOADING</div>
+  <div style="width:340px;height:10px;border:1px solid #0af;border-radius:5px;overflow:hidden;background:rgba(0,255,255,0.08);">
+    <div id="loading-bar-fill" style="width:0%;height:100%;background:#0ff;box-shadow:0 0 10px #0ff;transition:width 0.15s;"></div>
+  </div>
+`;
+document.body.appendChild(_loadingScreenEl);
+const _loadingLabelEl = _loadingScreenEl.querySelector('#loading-label');
+const _loadingBarEl   = _loadingScreenEl.querySelector('#loading-bar-fill');
+
+let _loadingScreenActive = false;
+let _loadingScreenDoneCheck = null;
+function _showLoadingScreen(label, isDoneFn, opts) {
+  _loadingScreenActive = true;
+  _loadingScreenDoneCheck = isDoneFn;
+  _loadingLabelEl.textContent = label;
+  _loadingScreenEl.style.display = 'flex';
+  const startTotal = _loadStats.total;
+  const timeoutMs = (opts && opts.timeoutMs) || 8000;
+  const startTime = Date.now();
+  (function poll() {
+    if (!_loadingScreenActive) return;
+    const pending = Math.max(_loadStats.total - _loadStats.loaded, 0);
+    const startedPending = Math.max(_loadStats.total - startTotal, 0);
+    const pct = startedPending > 0
+      ? Math.min(100, Math.round(((startedPending - Math.min(pending, startedPending)) / startedPending) * 100))
+      : 100;
+    _loadingBarEl.style.width = pct + '%';
+    const timedOut = Date.now() - startTime > timeoutMs;
+    if (timedOut || (_loadingScreenDoneCheck && _loadingScreenDoneCheck())) {
+      _loadingBarEl.style.width = '100%';
+      setTimeout(() => { _loadingScreenActive = false; _loadingScreenEl.style.display = 'none'; }, 120);
+      return;
+    }
+    requestAnimationFrame(poll);
+  })();
 }
 
 // ── Scene setup ──────────────────────────────────────────────────────────────
@@ -430,6 +481,9 @@ function enterLobby() {
   camera.quaternion.identity();
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 0.8;
+  if (_lobbyCollidables.length === 0) {
+    _showLoadingScreen('LOADING LOBBY', () => _lobbyCollidables.length > 0, { timeoutMs: 10000 });
+  }
 }
 
 function exitLobby() {
@@ -511,6 +565,9 @@ function enterShootingRange() {
   fpYaw = Math.PI; fpPitch = 0;
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 0.18;
+  if (_rangeCollidables.length === 0) {
+    _showLoadingScreen('LOADING SHOOTING RANGE', () => _rangeCollidables.length > 0, { timeoutMs: 10000 });
+  }
 }
 
 function exitShootingRange() {
@@ -1345,6 +1402,9 @@ function enterHangarFromFlight() {
   camera.position.set(0, 32, 20);
   camera.lookAt(_hangarCamTarget);
   renderer.toneMappingExposure = 0.6;
+  if (_hangarCollidables.length === 0) {
+    _showLoadingScreen('LOADING HANGAR', () => _hangarCollidables.length > 0, { timeoutMs: 10000 });
+  }
 }
 
 function enterHangar() {
@@ -1363,6 +1423,9 @@ function enterHangar() {
   camera.position.set(0, 32, 20);
   camera.lookAt(_hangarCamTarget);
   renderer.toneMappingExposure = 0.6;
+  if (_hangarCollidables.length === 0) {
+    _showLoadingScreen('LOADING HANGAR', () => _hangarCollidables.length > 0, { timeoutMs: 10000 });
+  }
 }
 
 function exitHangar() {
@@ -4733,4 +4796,5 @@ function animate(t) {
   _drawMinimap();
 }
 enterStation();
+_showLoadingScreen('ENTERING STATION', () => _loadStats.loaded >= _loadStats.total, { timeoutMs: 15000 });
 requestAnimationFrame(animate);
