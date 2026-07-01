@@ -1859,6 +1859,13 @@ function _spawnImpact(pos, normal, activeScene, hitColor) {
   hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
   activeScene.add(hole);
   _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
+  // Cap total decals so sustained auto-fire (shotgun pellets, AK bursts) can't pile up
+  // meshes faster than they naturally expire.
+  const MAX_BULLET_HOLES = 150;
+  while (_bulletHoles.length > MAX_BULLET_HOLES) {
+    const old = _bulletHoles.shift();
+    old.scene.remove(old.mesh);
+  }
 }
 
 function _updateImpacts() {
