@@ -4409,6 +4409,11 @@ enterStation();
 const _dustBowlPlanet = planets.find(p => p.userData.mapName === 'Dust Bowl');
 if (_dustBowlPlanet) {
   _enterPlanetSurface(_dustBowlPlanet);
+  // updateLandedShip() runs every frame in planet_surface mode and dereferences
+  // _landedPlanet unconditionally — must be set or it throws and blacks out every frame.
+  _landedPlanet = _dustBowlPlanet;
+  _shipLocalPos.set(0, 0, 0);
+  _shipLocalQuat.identity();
   // Skip the ship-landing animation and drop the player in mid-air above the terrain,
   // looking down, so the surface is actually visible instead of being embedded in the ground.
   _surfLanding = false;
