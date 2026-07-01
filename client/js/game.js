@@ -1968,7 +1968,7 @@ function _updateSniperShots() {
                                   : (_wdef && _wdef.viewFwd)   || 14;
       const _viewRight = _aiming ? ((_wdef && _wdef.aimRight) != null ? _wdef.aimRight : 0)
                                   : (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
-      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : -1)
+      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : 3)
                                   : (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
       _sniperMesh.position.copy(camera.position)
         .addScaledVector(dir,   _viewFwd - recoilBack)
