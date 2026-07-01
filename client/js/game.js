@@ -572,7 +572,7 @@ function enterShootingRange() {
   fpVel.set(0, 0, 0);
   fpYaw = Math.PI; fpPitch = 0;
   camera.position.copy(fpPos);
-  renderer.toneMappingExposure = 0.18;
+  renderer.toneMappingExposure = 1.0; // was 0.18 — rendered the whole range almost pitch black
   // Always show it (not just when we know assets are missing) — guards against any
   // race where the range briefly renders black for a frame before content is in.
   // Mesh being in the scene isn't the same as it being ready to draw — brand-new
