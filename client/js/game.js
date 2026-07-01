@@ -1961,9 +1961,15 @@ function _updateSniperShots() {
       const recoilBack = recoilT * 5;
       const recoilUp   = recoilT * 2;
       const _wdef = WEAPON_DEFS[_equippedWeaponId];
-      const _viewFwd   = (_wdef && _wdef.viewFwd)   || 14;
-      const _viewRight = (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
-      const _viewUp    = (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
+      // Aiming down sights (non-sniper, right-click): pull the gun to screen-center and
+      // in close, as if looking over the top-back of the gun through its iron sights.
+      const _aiming = _sniperScoped && _equippedWeaponId !== 'sniper';
+      const _viewFwd   = _aiming ? ((_wdef && _wdef.aimFwd)   != null ? _wdef.aimFwd   : 9)
+                                  : (_wdef && _wdef.viewFwd)   || 14;
+      const _viewRight = _aiming ? ((_wdef && _wdef.aimRight) != null ? _wdef.aimRight : 0)
+                                  : (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
+      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : -1)
+                                  : (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
       _sniperMesh.position.copy(camera.position)
         .addScaledVector(dir,   _viewFwd - recoilBack)
         .addScaledVector(right, _viewRight)
@@ -1983,11 +1989,17 @@ function _updateSniperShots() {
     if (_sniperLight) _sniperLight.intensity = show ? 9 : 0;
   }
 
-  // Scope zoom
-  if (_sniperScoped) {
+  // Scope / aim zoom — sniper gets the full scope overlay + tight zoom; every other
+  // weapon has iron sights on the model itself, so it just zooms in with no overlay.
+  if (_sniperScoped && _equippedWeaponId === 'sniper') {
     camera.fov = 15;
     camera.updateProjectionMatrix();
     _scopeEl.style.display = 'block';
+  } else if (_sniperScoped) {
+    const _wdef = WEAPON_DEFS[_equippedWeaponId];
+    camera.fov = (_wdef && _wdef.aimFov) || 45;
+    camera.updateProjectionMatrix();
+    _scopeEl.style.display = 'none';
   } else {
     camera.fov = 75;
     camera.updateProjectionMatrix();
