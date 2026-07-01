@@ -1140,7 +1140,7 @@ const WEAPON_DEFS = {
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
   ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, aimUp: -1 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -1682,6 +1682,24 @@ const _scopeEl = (() => {
   return el;
 })();
 
+// Small aim reticle for non-sniper weapons — just a crosshair dot, no scope overlay
+const _aimReticleEl = (() => {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:80;pointer-events:none;display:none;
+  `;
+  el.innerHTML = `
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <line x1="14" y1="2" x2="14" y2="10" stroke="#0f0" stroke-width="2"/>
+      <line x1="14" y1="18" x2="14" y2="26" stroke="#0f0" stroke-width="2"/>
+      <line x1="2" y1="14" x2="10" y2="14" stroke="#0f0" stroke-width="2"/>
+      <line x1="18" y1="14" x2="26" y2="14" stroke="#0f0" stroke-width="2"/>
+    </svg>`;
+  document.body.appendChild(el);
+  return el;
+})();
+
 // Small offscreen renderer for inventory icons
 const _iconRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 _iconRenderer.setSize(48, 48);
@@ -1961,15 +1979,9 @@ function _updateSniperShots() {
       const recoilBack = recoilT * 5;
       const recoilUp   = recoilT * 2;
       const _wdef = WEAPON_DEFS[_equippedWeaponId];
-      // Aiming down sights (non-sniper, right-click): pull the gun to screen-center and
-      // in close, as if looking over the top-back of the gun through its iron sights.
-      const _aiming = _sniperScoped && _equippedWeaponId !== 'sniper';
-      const _viewFwd   = _aiming ? ((_wdef && _wdef.aimFwd)   != null ? _wdef.aimFwd   : 9)
-                                  : (_wdef && _wdef.viewFwd)   || 14;
-      const _viewRight = _aiming ? ((_wdef && _wdef.aimRight) != null ? _wdef.aimRight : 0)
-                                  : (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
-      const _viewUp    = _aiming ? ((_wdef && _wdef.aimUp)    != null ? _wdef.aimUp    : 6)
-                                  : (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
+      const _viewFwd   = (_wdef && _wdef.viewFwd)   || 14;
+      const _viewRight = (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
+      const _viewUp    = (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
       _sniperMesh.position.copy(camera.position)
         .addScaledVector(dir,   _viewFwd - recoilBack)
         .addScaledVector(right, _viewRight)
@@ -1995,15 +2007,17 @@ function _updateSniperShots() {
     camera.fov = 15;
     camera.updateProjectionMatrix();
     _scopeEl.style.display = 'block';
+    _aimReticleEl.style.display = 'none';
   } else if (_sniperScoped) {
-    const _wdef = WEAPON_DEFS[_equippedWeaponId];
-    camera.fov = (_wdef && _wdef.aimFov) || 45;
+    camera.fov = 55; // a bit of zoom, not a full scope
     camera.updateProjectionMatrix();
     _scopeEl.style.display = 'none';
+    _aimReticleEl.style.display = 'block';
   } else {
     camera.fov = 75;
     camera.updateProjectionMatrix();
     _scopeEl.style.display = 'none';
+    _aimReticleEl.style.display = 'none';
   }
 }
 
