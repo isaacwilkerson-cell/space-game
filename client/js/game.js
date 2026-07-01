@@ -261,6 +261,9 @@ const FP_JUMP_V  = 0.255;
 const FP_GRAVITY = 0.018;
 let _fpJumpVel = 0;       // vertical velocity for lobby jump
 let _fpBaseY   = 0;       // floor height (set per-mode)
+let _crouchAmount = 0;    // 0 = standing, 1 = fully crouched (eased)
+const CROUCH_HEIGHT = 5;
+const CROUCH_SPEED_MUL = 0.55;
 let fpBobT = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -854,8 +857,13 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  const _surfMoveMul = keys['shift'] ? _surfSprintMul : _surfWalkMul;
-  const _accelAmt = (keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL) * _surfMoveMul;
+  // C or Alt to crouch
+  const _surfCrouching = keys['c'] || keys['alt'];
+  _crouchAmount += ((_surfCrouching ? 1 : 0) - _crouchAmount) * 0.2;
+  const _surfCrouchSpeedMul = 1 - CROUCH_SPEED_MUL * _crouchAmount;
+
+  const _surfMoveMul = (keys['shift'] && !_surfCrouching ? _surfSprintMul : _surfWalkMul) * _surfCrouchSpeedMul;
+  const _accelAmt = (keys['shift'] && !_surfCrouching ? SURF_ACCEL * 4 : SURF_ACCEL) * _surfMoveMul;
   const accel = new THREE.Vector3();
   if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  _accelAmt);
   if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -_accelAmt);
@@ -918,6 +926,7 @@ function _updatePlanetSurface() {
   const yawQ   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _surfYaw);
   camera.quaternion.multiplyQuaternions(yawQ, pitchQ);
   camera.position.copy(_surfPos);
+  camera.position.y -= CROUCH_HEIGHT * _crouchAmount;
 
   // Ship bobbing + collision
   if (_surfLandShip) {
@@ -2766,9 +2775,14 @@ function updateFP() {
   _fpFwd.set(-sinY, 0, -cosY);
   _fpRight.set(cosY, 0, -sinY);
 
-  const _fpSprinting = gameMode === 'lobby' && keys['shift'];
-  const _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1);
-  const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1);
+  // C or Alt to crouch (Alt is already noclip-descend in admin mode, so skip it there)
+  const _crouching = !window._adminMode && (keys['c'] || keys['alt']);
+  _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
+
+  const _fpSprinting = gameMode === 'lobby' && keys['shift'] && !_crouching;
+  const _fpSpeedMul  = 1 - CROUCH_SPEED_MUL * _crouchAmount;
+  const _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
+  const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
   if (window._adminMode) {
     if (keys[' '])   fpVel.y += _fpAccel;
     if (keys['alt']) fpVel.y -= _fpAccel;
@@ -2868,9 +2882,11 @@ function updateFP() {
     if (fpPos.y < _fpFloor) { fpPos.y = _fpFloor; _fpJumpVel = 0; }
     camera.position.copy(fpPos);
     if (_fpGrounded) camera.position.y += bob * 0.4;
+    camera.position.y -= CROUCH_HEIGHT * _crouchAmount;
   } else {
     fpPos.y = _fpFloor + bob;
     camera.position.copy(fpPos);
+    camera.position.y -= CROUCH_HEIGHT * _crouchAmount;
   }
 }
 
