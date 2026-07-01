@@ -603,7 +603,7 @@ const ICY_NAMES = new Set([
 const _surfTerrains = {
   mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
   volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 2.3, jumpMul: 1.3 },
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 3.0, jumpMul: 1.3 },
 };
 
 function _terrainKeyForPlanet(planet) {
