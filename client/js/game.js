@@ -1929,9 +1929,10 @@ function _firePellet(dir, activeScene) {
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
   activeScene.add(mesh);
 
-  const glow = new THREE.PointLight(0x00ffaa, 40, 300);
-  glow.position.copy(mesh.position);
-  activeScene.add(glow);
+  // Bullet tracers used to also spawn a real-time PointLight each — with a 10-pellet
+  // shotgun blast or rapid AK fire that meant a dozen+ dynamic lights alive at once,
+  // which is expensive to shade and was the main cause of the stutter on firing. The
+  // tracer's own bright unlit material already reads as a glowing shot without one.
 
   // Raycast for bullet impact
   const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
@@ -1954,7 +1955,7 @@ function _firePellet(dir, activeScene) {
     }
   }
 
-  _sniperShots.push({ mesh, glow, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
+  _sniperShots.push({ mesh, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
 }
 
 // Starts the reload shake; refills ammo once _reloadDuration frames pass (see _updateSniperShots).
@@ -2048,11 +2049,9 @@ function _updateSniperShots() {
   for (let i = _sniperShots.length - 1; i >= 0; i--) {
     const s = _sniperShots[i];
     s.mesh.position.add(s.vel);
-    s.glow.position.copy(s.mesh.position);
     s.life--;
-    s.glow.intensity = 40 * (s.life / SNIPER_LIFETIME);
     if (s.life <= 0) {
-      s.scene.remove(s.mesh); s.scene.remove(s.glow);
+      s.scene.remove(s.mesh);
       _sniperShots.splice(i, 1);
     }
   }
