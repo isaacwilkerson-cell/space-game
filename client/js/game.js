@@ -3576,6 +3576,7 @@ loadModel('assets/astronaught.glb', 100, m => { if (m) { m.position.y -= 25; } _
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
   const clone = template.clone(true);
+  clone.rotation.y -= Math.PI / 2; // face-forward correction — was rotated 90° off
   clone.traverse(c => {
     if (c.isMesh && c.material) {
       const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -3641,7 +3642,9 @@ function addRemotePlayer(data) {
   // Add astronaut clones
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
-  rangeMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  const _rangeAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
+  _rangeAstronaut.scale.multiplyScalar(48 / 18); // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
+  rangeMesh.add(_rangeAstronaut);
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
 
@@ -3696,7 +3699,9 @@ function _updateRemoteFPMeshes(p) {
     if (!target.userData.hasAstronaut) {
       const tmpl = fpMode === 'docked' ? _astronautRoomTemplate : _astronautLobbyTemplate;
       if (tmpl) {
-        target.add(_cloneAstronaut(tmpl));
+        const _astro = _cloneAstronaut(tmpl);
+        if (fpMode === 'range') _astro.scale.multiplyScalar(48 / 18); // 30 units bigger in the range
+        target.add(_astro);
         target.userData.hasAstronaut = true;
       }
     }
