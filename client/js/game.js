@@ -601,11 +601,17 @@ const ICY_NAMES = new Set([
   'Frost Haven', 'Cryo Reach', 'Glacius', 'Tundra Shelf',
 ]);
 
+const DESERT_NAMES = new Set([
+  'Dust Bowl', 'Sand Veil', 'Mirage', 'Dune Scar',
+  'Sunscorch', 'Amber Wastes', 'Drylands', 'Cracked Basin',
+]);
+
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
   mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
   volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
   icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  desert:  { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -613,6 +619,7 @@ function _terrainKeyForPlanet(planet) {
   if (name === 'Phoenix') return 'mars';
   if (HOT_VOLCANIC_NAMES.has(name)) return 'volcano';
   if (ICY_NAMES.has(name)) return 'icy';
+  if (DESERT_NAMES.has(name)) return 'desert';
   return null;
 }
 
@@ -648,6 +655,7 @@ function _loadSurfTerrain(key, assetPath) {
 _loadSurfTerrain('mars', 'assets/maadim_valles_outflow_mars.glb');
 _loadSurfTerrain('volcano', 'assets/volcano_v1.glb');
 _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
+_loadSurfTerrain('desert', 'assets/desert_landscape.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
