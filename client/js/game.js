@@ -1828,7 +1828,7 @@ const _impactMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
 // Bullet hole decal geo (flat circle)
 const _holeGeo = new THREE.CircleGeometry(1.5, 8);
 const _holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, depthWrite: false, transparent: true, opacity: 1 });
-const BULLET_HOLE_LIFE = 3600; // ~1 minute at 60fps
+const BULLET_HOLE_LIFE = 900; // ~15s at 60fps — was 1 minute, let decals clear much faster
 const _bulletHoles = [];
 
 function _sampleHitColor(hit) {
@@ -1843,9 +1843,9 @@ function _sampleHitColor(hit) {
 function _spawnImpact(pos, normal, activeScene, hitColor) {
   const light = null;
 
-  // Sparks — more of them, live longer
+  // Sparks — kept modest so rapid multi-pellet/full-auto fire doesn't pile up meshes
   const sparks = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 4; i++) {
     const m = new THREE.Mesh(_impactGeo, _impactMat);
     m.position.copy(pos);
     m.scale.setScalar(0.4 + Math.random() * 0.8);
@@ -1871,7 +1871,7 @@ function _spawnImpact(pos, normal, activeScene, hitColor) {
   _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
   // Cap total decals so sustained auto-fire (shotgun pellets, AK bursts) can't pile up
   // meshes faster than they naturally expire.
-  const MAX_BULLET_HOLES = 150;
+  const MAX_BULLET_HOLES = 50;
   while (_bulletHoles.length > MAX_BULLET_HOLES) {
     const old = _bulletHoles.shift();
     old.scene.remove(old.mesh);
