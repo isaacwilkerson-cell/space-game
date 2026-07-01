@@ -4030,8 +4030,9 @@ function updateShip() {
   } else {
     boostThrottle = Math.max(0, boostThrottle - 0.03);
   }
-  const basePower  = THRUST * engineThrottle;
-  const boostExtra = THRUST * (BOOST_MULT - 1) * boostThrottle;
+  const _devSpeedMul = window._adminMode ? 5 : 1;
+  const basePower  = THRUST * engineThrottle * _devSpeedMul;
+  const boostExtra = THRUST * (BOOST_MULT - 1) * boostThrottle * _devSpeedMul;
   const thrustPower = basePower + boostExtra;
   if (keys['w']) self.velocity.addScaledVector(_fwd,  thrustPower);
   if (keys['s']) self.velocity.addScaledVector(_fwd, -basePower * 0.5);
@@ -4040,8 +4041,8 @@ function updateShip() {
   const drag = (braking || self.inSafeZone) ? BRAKE_DRAG : DRAG;
   self.velocity.multiplyScalar(drag);
 
-  // Speed cap (higher when boosting)
-  const cap = boosting ? MAX_BOOST : MAX_SPEED;
+  // Speed cap (higher when boosting) — 5x in dev/admin mode
+  const cap = (boosting ? MAX_BOOST : MAX_SPEED) * _devSpeedMul;
   if (self.velocity.length() > cap) self.velocity.setLength(cap);
 
   selfMesh.position.add(self.velocity);
