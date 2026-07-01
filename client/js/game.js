@@ -806,7 +806,14 @@ function _updatePlanetSurface() {
   _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
   _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
-  if (_surfPos.y < _groundY) { _surfPos.y = _groundY; _surfVertVel = 0; }
+  if (_surfPos.y < _groundY) {
+    // Small terrain bumps get smoothed instead of hard-snapped so fast movement
+    // over uneven ground (e.g. the icy terrain's rocky surface) doesn't jitter the camera.
+    // Real falls/landings (big gap) still snap immediately.
+    const _groundGap = _groundY - _surfPos.y;
+    _surfPos.y += _groundGap < 6 ? _groundGap * 0.4 : _groundGap;
+    _surfVertVel = 0;
+  }
 
   // World border — clamp to terrain edges
   if (_surfPos.x >  _surfTerrainHalfX) { _surfPos.x =  _surfTerrainHalfX; _surfVel.x = 0; }
