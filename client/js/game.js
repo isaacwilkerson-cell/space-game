@@ -841,7 +841,7 @@ function _updatePlanetSurface() {
   const _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfMoveMul;
   if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
-  // Raycast to find ground height beneath player's current spot
+  // Raycast to find ground height beneath player
   const _groundMesh = _surfTerrainMesh || _surfGround;
   _surfRaycaster.set(new THREE.Vector3(_surfPos.x, _surfPos.y + 10, _surfPos.z), new THREE.Vector3(0, -1, 0));
   const _gHits = _surfRaycaster.intersectObject(_groundMesh, true);
@@ -850,34 +850,25 @@ function _updatePlanetSurface() {
   const onGround = _surfPos.y <= _groundY + 0.1;
   if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpVelMul;
 
-  // Check ground height at the spot we're ABOUT to move to. A tall obstacle (e.g. a
-  // building wall) shows up as a big jump in height there — instead of letting the
-  // player pass through it and snap up after the fact (looked like clipping), hold
-  // horizontal movement at the wall and climb straight up it over a few frames.
-  const CLIMB_STEP = 6;   // steps/curbs shorter than this are walked over normally
-  const CLIMB_SPEED = 5;  // vertical units climbed per frame against a tall obstacle
-  const _attemptPos = new THREE.Vector3(_surfPos.x + _surfVel.x, _surfPos.y + 10, _surfPos.z + _surfVel.z);
-  _surfRaycaster.set(_attemptPos, new THREE.Vector3(0, -1, 0));
-  const _aHits = _surfRaycaster.intersectObject(_groundMesh, true);
-  const _attemptGroundY = _aHits.length > 0 ? _aHits[0].point.y + SURF_EYE_H : SURF_EYE_H;
-  const _climbGap = _attemptGroundY - _surfPos.y;
-
-  if (_climbGap > CLIMB_STEP) {
-    // Wall ahead — climb in place instead of walking forward through it.
-    _surfPos.y = Math.min(_attemptGroundY, _surfPos.y + CLIMB_SPEED);
-    _surfVertVel = 0;
-  } else {
-    _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
-    _surfPos.add(_surfVel);
-    _surfPos.y += _surfVertVel;
-    if (_surfPos.y < _attemptGroundY) {
-      // Small terrain bumps get smoothed instead of hard-snapped so fast movement
-      // over uneven ground (e.g. the icy terrain's rocky surface) doesn't jitter the camera.
-      // Real falls/landings (big gap) still snap immediately.
-      const _groundGap = _attemptGroundY - _surfPos.y;
-      _surfPos.y += _groundGap < CLIMB_STEP ? _groundGap * 0.4 : _groundGap;
-      _surfVertVel = 0;
+  _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
+  _surfPos.add(_surfVel);
+  _surfPos.y += _surfVertVel;
+  if (_surfPos.y < _groundY) {
+    // Small terrain bumps get smoothed instead of hard-snapped so fast movement
+    // over uneven ground doesn't jitter the camera. Tall obstacles (e.g. a building
+    // wall) get climbed at a capped speed instead of teleported through instantly,
+    // so it reads as climbing rather than clipping. Real falls still snap immediately.
+    const CLIMB_STEP = 6;
+    const CLIMB_SPEED = 5;
+    const _groundGap = _groundY - _surfPos.y;
+    if (_groundGap < CLIMB_STEP) {
+      _surfPos.y += _groundGap * 0.4;
+    } else if (_surfVel.lengthSq() > 0.0001) {
+      _surfPos.y += Math.min(_groundGap, CLIMB_SPEED);
+    } else {
+      _surfPos.y = _groundY; // not moving horizontally — just a real fall/landing
     }
+    _surfVertVel = 0;
   }
 
   // World border — clamp to terrain edges
