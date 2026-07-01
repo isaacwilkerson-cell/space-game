@@ -4409,5 +4409,15 @@ enterStation();
 const _dustBowlPlanet = planets.find(p => p.userData.mapName === 'Dust Bowl');
 if (_dustBowlPlanet) {
   _enterPlanetSurface(_dustBowlPlanet);
+  // Skip the ship-landing animation and drop the player in mid-air above the terrain,
+  // looking down, so the surface is actually visible instead of being embedded in the ground.
+  _surfLanding = false;
+  _surfLandT = 0;
+  _surfPos.set(0, 400, 0);
+  _surfVel.set(0, 0, 0);
+  _surfVertVel = 0;
+  _surfYaw = 0;
+  _surfPitch = -0.6;
+  if (_surfHudEl) _surfHudEl.style.display = 'block';
 }
 requestAnimationFrame(animate);
