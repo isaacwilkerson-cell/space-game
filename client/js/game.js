@@ -713,7 +713,7 @@ _loadSurfTerrain('icy', 'assets/snow_terrain_low_poly.glb');
 _loadSurfTerrain('icy2', 'assets/icy_terrain_export.glb');
 _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
 _loadSurfTerrain('industrial', 'assets/futuristic_cube-shaped_cityscape.glb');
-_loadSurfTerrain('jungle', 'assets/forest_and_country_road.glb');
+_loadSurfTerrain('jungle', 'assets/grassy_mountains_geo.glb');
 
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
