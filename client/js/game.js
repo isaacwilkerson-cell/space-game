@@ -637,6 +637,9 @@ function _loadSurfTerrain(key, assetPath) {
         const isWhite = col && col.r > 0.95 && col.g > 0.95 && col.b > 0.95;
         if (isWhite && !m.map) m.color.set(entry.tint);
         if (entry.dim !== 1.0) m.color.multiplyScalar(entry.dim);
+        // A baked AO map without a matching uv2 channel darkens/discolors the whole
+        // surface incorrectly — drop it so the base color texture shows through as intended.
+        if (m.aoMap && !c.geometry.attributes.uv2) m.aoMap = null;
         // Avoid rendering both faces of every triangle — halves fill cost on heavy terrain
         m.side = THREE.FrontSide;
         m.needsUpdate = true;
