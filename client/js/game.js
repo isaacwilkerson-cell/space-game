@@ -1880,6 +1880,7 @@ function _spawnImpact(pos, normal, activeScene, hitColor) {
   const hole = new THREE.Mesh(_holeGeo, holeMat);
   hole.position.copy(pos).addScaledVector(normal, 0.3);
   hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  if (gameMode === 'planet_surface') hole.scale.setScalar(0.25); // terrain decals were way too big
   activeScene.add(hole);
   _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
   // Cap total decals so sustained auto-fire (shotgun pellets, AK bursts) can't pile up
