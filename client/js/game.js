@@ -2003,22 +2003,24 @@ function _updateSniperShots() {
 
   // Scope / aim zoom — sniper gets the full scope overlay + tight zoom; every other
   // weapon has iron sights on the model itself, so it just zooms in with no overlay.
+  // FOV eases toward its target each frame instead of snapping instantly.
+  let _targetFov = 75;
   if (_sniperScoped && _equippedWeaponId === 'sniper') {
-    camera.fov = 15;
-    camera.updateProjectionMatrix();
-    _scopeEl.style.display = 'block';
+    _targetFov = 15;
+    _scopeEl.style.display = Math.abs(camera.fov - 15) < 2 ? 'block' : 'none';
     _aimReticleEl.style.display = 'none';
   } else if (_sniperScoped) {
-    camera.fov = 55; // a bit of zoom, not a full scope
-    camera.updateProjectionMatrix();
+    _targetFov = 55; // a bit of zoom, not a full scope
     _scopeEl.style.display = 'none';
     _aimReticleEl.style.display = 'block';
   } else {
-    camera.fov = 75;
-    camera.updateProjectionMatrix();
+    _targetFov = 75;
     _scopeEl.style.display = 'none';
     _aimReticleEl.style.display = 'none';
   }
+  camera.fov += (_targetFov - camera.fov) * 0.15;
+  if (Math.abs(_targetFov - camera.fov) < 0.05) camera.fov = _targetFov;
+  camera.updateProjectionMatrix();
 }
 
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
