@@ -589,6 +589,7 @@ let _surfWalkMul = 1.0;    // per-terrain walk speed multiplier
 let _surfSprintMul = 1.0;  // per-terrain sprint speed multiplier
 let _surfJumpVelMul = 1.0; // per-terrain jump launch velocity multiplier
 let _surfGravityMul = 1.0; // per-terrain gravity multiplier
+let _surfClimbMul = 1.0;   // per-terrain obstacle-climb speed multiplier
 let _surfTerrainReady = false;
 let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
@@ -613,11 +614,11 @@ const INDUSTRIAL_NAMES = new Set([
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
-  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  mars:       { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  volcano:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  icy:        { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  desert:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddbb77, dim: 0.75, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 1.0 },
+  industrial: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x555566, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0, climbMul: 0.25 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -722,6 +723,7 @@ function _enterPlanetSurface(planet) {
     _surfSprintMul = terrainEntry.sprintMul || 1.0;
     _surfJumpVelMul = terrainEntry.jumpVelMul || 1.0;
     _surfGravityMul = terrainEntry.gravityMul || 1.0;
+    _surfClimbMul = terrainEntry.climbMul || 1.0;
   } else {
     if (_surfGround.parent !== _planetSurfScene) _planetSurfScene.add(_surfGround);
     _surfTerrainMesh = null;
@@ -729,6 +731,7 @@ function _enterPlanetSurface(planet) {
     _surfSprintMul = 1.0;
     _surfJumpVelMul = 1.0;
     _surfGravityMul = 1.0;
+    _surfClimbMul = 1.0;
   }
 
   if (atm) {
@@ -859,7 +862,7 @@ function _updatePlanetSurface() {
     // wall) get climbed at a capped speed instead of teleported through instantly,
     // so it reads as climbing rather than clipping. Real falls still snap immediately.
     const CLIMB_STEP = 6;
-    const CLIMB_SPEED = 5;
+    const CLIMB_SPEED = 5 * _surfClimbMul;
     const _groundGap = _groundY - _surfPos.y;
     if (_groundGap < CLIMB_STEP) {
       _surfPos.y += _groundGap * 0.4;
