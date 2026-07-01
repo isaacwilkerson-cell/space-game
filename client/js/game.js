@@ -1126,10 +1126,17 @@ for (let i = 0; i < INVENTORY_SIZE; i++) {
   num.textContent = i + 1;
   const icon = document.createElement('div');
   icon.style.cssText = 'font-size:22px;line-height:1;';
+  const label = document.createElement('div');
+  label.style.cssText = `
+    position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
+    color:#0ff; font-family:'Courier New',monospace; font-size:9px; letter-spacing:0.5px;
+    white-space:nowrap; text-shadow:0 0 4px #000; display:none;
+  `;
   slot.appendChild(icon);
   slot.appendChild(num);
+  slot.appendChild(label);
   _inventoryBar.appendChild(slot);
-  _invSlotEls.push({ el: slot, icon });
+  _invSlotEls.push({ el: slot, icon, label });
 }
 document.body.appendChild(_inventoryBar);
 
@@ -1184,6 +1191,11 @@ function _invAddItem(itemId) {
   _inventory[emptyIdx] = itemId;
   const def = _itemDefs[itemId];
   _invSlotEls[emptyIdx].icon.textContent = def ? def.icon : '?';
+  const wdef = WEAPON_DEFS[itemId];
+  if (wdef) {
+    _invSlotEls[emptyIdx].label.textContent = wdef.name;
+    _invSlotEls[emptyIdx].label.style.display = 'block';
+  }
   _invSetActive(emptyIdx); // auto-select the new item
 }
 
