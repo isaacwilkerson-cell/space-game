@@ -1145,8 +1145,8 @@ const WEAPON_DEFS = {
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 5, reloadTime: 90 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 60 },
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 60 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 80, recoil: 6 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 80, recoil: 6 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 80, recoil: 22, recoilMag: 0.5 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 80, recoil: 22, recoilMag: 0.5 },
   shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 100 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
@@ -2045,31 +2045,42 @@ function _updateSniperShots() {
       const dir   = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const right = new THREE.Vector3(1, 0,  0).applyQuaternion(camera.quaternion);
       const up    = new THREE.Vector3(0, 1,  0).applyQuaternion(camera.quaternion);
-      // Recoil — kick gun back and up, then recover
+      // Recoil — kick gun back and up, then recover. Duration comes from the weapon's own
+      // recoil value (not a fixed 12), so a weapon can have a slower/longer kick without
+      // necessarily being a bigger one — magnitude is scaled separately via recoilMag.
+      const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
+      const _recoilDuration = _wdef.recoil != null ? _wdef.recoil : 12;
+      const _recoilMag = _wdef.recoilMag != null ? _wdef.recoilMag : 1;
       if (_sniperRecoil > 0) _sniperRecoil--;
-      const recoilT = _sniperRecoil / 12;
+      const recoilT = (_sniperRecoil / _recoilDuration) * _recoilMag;
       const recoilBack = recoilT * 5;
       const recoilUp   = recoilT * 2;
-      const _wdef = WEAPON_DEFS[_equippedWeaponId];
-      const _viewFwd   = (_wdef && _wdef.viewFwd)   || 14;
-      const _viewRight = (_wdef && _wdef.viewRight != null) ? _wdef.viewRight : 8;
-      const _viewUp    = (_wdef && _wdef.viewUp    != null) ? _wdef.viewUp    : -6;
-      // Reload shake — random jitter that eases out as the reload finishes
-      let _shakeRight = 0, _shakeUp = 0, _shakeFwd = 0;
+      const _viewFwd   = (_wdef.viewFwd)   || 14;
+      const _viewRight = (_wdef.viewRight != null) ? _wdef.viewRight : 8;
+      const _viewUp    = (_wdef.viewUp    != null) ? _wdef.viewUp    : -6;
+
+      // Reload pose — instead of a shake, swing the gun to the side and down (like
+      // pulling it in to swap the mag), holding partway through, then easing back to
+      // the normal aim position as the reload finishes. reloadPose goes 0 -> 1 -> 0.
+      let _reloadPose = 0;
       if (_gunReloading) {
-        const _reloadT = _reloadTimer / _reloadDuration; // 1 -> 0 over the reload
-        const _shakeMag = 1.6 * _reloadT;
-        _shakeRight = (Math.random() - 0.5) * 2 * _shakeMag;
-        _shakeUp    = (Math.random() - 0.5) * 2 * _shakeMag;
-        _shakeFwd   = (Math.random() - 0.5) * _shakeMag;
+        const _reloadProgress = 1 - (_reloadTimer / _reloadDuration); // 0 -> 1 over the reload
+        _reloadPose = Math.sin(Math.PI * Math.min(_reloadProgress, 0.85) / 0.85);
       }
+      const _poseRight = -6 * _reloadPose;   // pull in toward center
+      const _poseDown   = -5 * _reloadPose;  // dip down
+      const _poseFwd    = -2 * _reloadPose;  // pull back in a bit
+      const _poseTiltZ  = 0.9 * _reloadPose; // roll the gun onto its side
+      const _poseTiltX  = 0.3 * _reloadPose;
+
       _sniperMesh.position.copy(camera.position)
-        .addScaledVector(dir,   _viewFwd - recoilBack + _shakeFwd)
-        .addScaledVector(right, _viewRight + _shakeRight)
-        .addScaledVector(up,    _viewUp + recoilUp + _shakeUp);
+        .addScaledVector(dir,   _viewFwd - recoilBack + _poseFwd)
+        .addScaledVector(right, _viewRight + _poseRight)
+        .addScaledVector(up,    _viewUp + recoilUp + _poseDown);
       _sniperMesh.quaternion.copy(camera.quaternion);
-      _sniperMesh.rotateY(Math.PI + ((WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewYaw) || 0));
-      _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
+      _sniperMesh.rotateY(Math.PI + ((_wdef.viewYaw) || 0));
+      _sniperMesh.rotateX(-0.1 - recoilT * 0.3 - _poseTiltX);
+      _sniperMesh.rotateZ(_poseTiltZ);
 
       if (_sniperLight) {
         _sniperLight.position.copy(camera.position)
