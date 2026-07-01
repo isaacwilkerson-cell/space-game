@@ -1934,9 +1934,10 @@ function _firePellet(dir, activeScene) {
 
   // Raycast for bullet impact
   const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
-  const collidables = gameMode === 'lobby'  ? _lobbyCollidables
-                    : gameMode === 'docked' ? _roomCollidables
-                    : gameMode === 'range'  ? _rangeCollidables
+  const collidables = gameMode === 'lobby'          ? _lobbyCollidables
+                    : gameMode === 'docked'         ? _roomCollidables
+                    : gameMode === 'range'          ? _rangeCollidables
+                    : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
                     : [];
   const hits = raycaster.intersectObjects(collidables, true);
   if (hits.length > 0) {
@@ -1967,7 +1968,7 @@ function _startReload() {
 }
 
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked || _surfLanding) return;
   if (_sniperCooldown > 0 || _gunReloading) return;
   if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
   _weaponAmmo[_equippedWeaponId]--;
@@ -1980,9 +1981,10 @@ function _fireSniper() {
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = _wdef.recoil != null ? _wdef.recoil : 12; // frames of recoil
 
-  const activeScene = gameMode === 'docked' ? interiorScene
-                    : gameMode === 'lobby'   ? lobbyScene
-                    : gameMode === 'range'   ? shootingRangeScene
+  const activeScene = gameMode === 'docked'         ? interiorScene
+                    : gameMode === 'lobby'           ? lobbyScene
+                    : gameMode === 'range'           ? shootingRangeScene
+                    : gameMode === 'planet_surface'  ? _planetSurfScene
                     : scene;
 
   const baseDir = new THREE.Vector3();
@@ -2056,7 +2058,7 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate && !_surfLanding;
     _sniperMesh.visible = show;
     if (show) {
       // Sniper always lives in _viewmodelScene — no reparenting needed
