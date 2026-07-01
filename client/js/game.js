@@ -1137,7 +1137,7 @@ document.body.appendChild(_inventoryBar);
 const WEAPON_DEFS = {
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: -Math.PI / 2 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14 },
   ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14 },
   shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16 },
@@ -1966,7 +1966,7 @@ function _updateSniperShots() {
         .addScaledVector(right,  8)
         .addScaledVector(up,    -6 + recoilUp);
       _sniperMesh.quaternion.copy(camera.quaternion);
-      _sniperMesh.rotateY(Math.PI);
+      _sniperMesh.rotateY(Math.PI + ((WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].viewYaw) || 0));
       _sniperMesh.rotateX(-0.1 - recoilT * 0.3);
 
       if (_sniperLight) {
