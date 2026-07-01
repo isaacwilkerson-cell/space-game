@@ -585,8 +585,10 @@ _surfBoardPrompt.textContent = '[ E ]  BOARD SHIP';
 document.body.appendChild(_surfBoardPrompt);
 
 let _surfTerrainMesh = null; // currently active terrain mesh for this landing, or null for flat ground
-let _surfSpeedMul = 1.0; // per-terrain movement speed multiplier
-let _surfJumpMul = 1.0;  // per-terrain jump height multiplier
+let _surfWalkMul = 1.0;    // per-terrain walk speed multiplier
+let _surfSprintMul = 1.0;  // per-terrain sprint speed multiplier
+let _surfJumpVelMul = 1.0; // per-terrain jump launch velocity multiplier
+let _surfGravityMul = 1.0; // per-terrain gravity multiplier
 let _surfTerrainReady = false;
 let _surfTerrainHalfX = 1400, _surfTerrainHalfZ = 1400;
 
@@ -601,9 +603,12 @@ const ICY_NAMES = new Set([
 
 // Generic terrain registry — each entry holds its own loaded mesh + extents
 const _surfTerrains = {
-  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
-  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, speedMul: 1.0, jumpMul: 1.0 },
-  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, speedMul: 3.0, jumpMul: 1.3 },
+  mars:    { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xc1440e, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  volcano: { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0x661a0a, dim: 1.0, walkMul: 1.0, sprintMul: 1.0, jumpVelMul: 1.0, gravityMul: 1.0 },
+  // Walk speed matches the old sprint speed; sprint is faster still.
+  // Jump: same peak height as normal (v^2/g unchanged) but higher gravity + higher launch
+  // velocity means less hang time, so landings feel snappy instead of floaty.
+  icy:     { mesh: null, ready: false, halfX: 1400, halfZ: 1400, tint: 0xddeeff, dim: 0.85, walkMul: 5.7, sprintMul: 7.5, jumpVelMul: 1.5, gravityMul: 2.25 },
 };
 
 function _terrainKeyForPlanet(planet) {
@@ -666,13 +671,17 @@ function _enterPlanetSurface(planet) {
     _surfTerrainMesh = terrainEntry.mesh;
     _surfTerrainHalfX = terrainEntry.halfX;
     _surfTerrainHalfZ = terrainEntry.halfZ;
-    _surfSpeedMul = terrainEntry.speedMul || 1.0;
-    _surfJumpMul = terrainEntry.jumpMul || 1.0;
+    _surfWalkMul = terrainEntry.walkMul || 1.0;
+    _surfSprintMul = terrainEntry.sprintMul || 1.0;
+    _surfJumpVelMul = terrainEntry.jumpVelMul || 1.0;
+    _surfGravityMul = terrainEntry.gravityMul || 1.0;
   } else {
     if (_surfGround.parent !== _planetSurfScene) _planetSurfScene.add(_surfGround);
     _surfTerrainMesh = null;
-    _surfSpeedMul = 1.0;
-    _surfJumpMul = 1.0;
+    _surfWalkMul = 1.0;
+    _surfSprintMul = 1.0;
+    _surfJumpVelMul = 1.0;
+    _surfGravityMul = 1.0;
   }
 
   if (atm) {
@@ -771,7 +780,8 @@ function _updatePlanetSurface() {
   const forward = new THREE.Vector3(-Math.sin(_surfYaw), 0, -Math.cos(_surfYaw));
   const right   = new THREE.Vector3(-Math.cos(_surfYaw), 0, Math.sin(_surfYaw));
 
-  const _accelAmt = (keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL) * _surfSpeedMul;
+  const _surfMoveMul = keys['shift'] ? _surfSprintMul : _surfWalkMul;
+  const _accelAmt = (keys['shift'] ? SURF_ACCEL * 4 : SURF_ACCEL) * _surfMoveMul;
   const accel = new THREE.Vector3();
   if (keys['w'] || keys['arrowup'])    accel.addScaledVector(forward,  _accelAmt);
   if (keys['s'] || keys['arrowdown'])  accel.addScaledVector(forward, -_accelAmt);
@@ -781,7 +791,7 @@ function _updatePlanetSurface() {
   _surfVel.add(accel);
   _surfVel.y = 0;
   _surfVel.multiplyScalar(SURF_FRICTION);
-  const _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfSpeedMul;
+  const _surfSpeedCap = (keys['shift'] ? SURF_SPRINT : SURF_SPEED) * _surfMoveMul;
   if (_surfVel.length() > _surfSpeedCap) _surfVel.setLength(_surfSpeedCap);
 
   // Raycast to find ground height beneath player
@@ -791,9 +801,9 @@ function _updatePlanetSurface() {
   const _groundY = _gHits.length > 0 ? _gHits[0].point.y + SURF_EYE_H : SURF_EYE_H;
 
   const onGround = _surfPos.y <= _groundY + 0.1;
-  if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpMul;
+  if (keys[' '] && onGround && _surfVertVel <= 0) _surfVertVel = SURF_JUMP_V * _surfJumpVelMul;
 
-  _surfVertVel -= SURF_GRAVITY;
+  _surfVertVel -= SURF_GRAVITY * _surfGravityMul;
   _surfPos.add(_surfVel);
   _surfPos.y += _surfVertVel;
   if (_surfPos.y < _groundY) { _surfPos.y = _groundY; _surfVertVel = 0; }
