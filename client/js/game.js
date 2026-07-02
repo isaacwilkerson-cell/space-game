@@ -2089,9 +2089,11 @@ function _firePellet(dir, activeScene) {
     playerTargets.forEach(m => {
       const other = m.children[0];
       const radius = (other && other.userData.collisionRadius) || 6;
-      const height = (other && other.userData.collisionHeight) || 24;
-      const center = m.position.clone();
-      center.y += height / 2;
+      // Center offset is in the model's own local space — rotate it by the wrapper's
+      // current facing so the hitbox turns with the character instead of staying fixed.
+      const localOffset = (other && other.userData.collisionCenterOffset) || new THREE.Vector3(0, 12, 0);
+      const worldOffset = localOffset.clone().applyQuaternion(m.quaternion);
+      const center = m.position.clone().add(worldOffset);
       const sphere = new THREE.Sphere(center, radius);
       const hitPoint = new THREE.Vector3();
       if (raycaster.ray.intersectSphere(sphere, hitPoint)) {
@@ -3067,7 +3069,10 @@ function updateFP() {
     _getRemotePlayerHitTargets().forEach(m => {
       const other = m.children[0]; // the actual astronaut clone (m is the wrapper group)
       if (!other || !other.userData.collisionRadius) return;
-      const dx = fpPos.x - m.position.x, dz = fpPos.z - m.position.z;
+      const localOffset = other.userData.collisionCenterOffset || new THREE.Vector3();
+      const worldOffset = localOffset.clone().applyQuaternion(m.quaternion);
+      const cx = m.position.x + worldOffset.x, cz = m.position.z + worldOffset.z;
+      const dx = fpPos.x - cx, dz = fpPos.z - cz;
       const dist = Math.sqrt(dx * dx + dz * dz);
       const minDist = PLAYER_RADIUS + other.userData.collisionRadius;
       if (dist > 0 && dist < minDist) {
@@ -3709,11 +3714,18 @@ function _cloneAstronaut(template) {
   clone.add(light);
   // Precise collision footprint measured directly from the actual geometry (not guessed) —
   // used both to block movement (can't walk through another player) and to know how far
-  // out a bullet raycast against this mesh is plausible.
+  // out a bullet raycast against this mesh is plausible. Box3 is computed BEFORE this
+  // clone has a parent, so it's in the clone's own local space — same frame as the
+  // wrapper group's origin. The model isn't necessarily centered on that origin (arms,
+  // backpack etc. can shift the true center off to one side), so store that offset too —
+  // without it the hitbox sphere was planted at the wrapper's origin, only ever lining
+  // up with whichever part of the model happened to be closest to that point.
   const _box = new THREE.Box3().setFromObject(clone);
   const _size = _box.getSize(new THREE.Vector3());
+  const _center = _box.getCenter(new THREE.Vector3());
   clone.userData.collisionRadius = Math.max(_size.x, _size.z) / 2;
   clone.userData.collisionHeight = _size.y;
+  clone.userData.collisionCenterOffset = _center;
   return clone;
 }
 
