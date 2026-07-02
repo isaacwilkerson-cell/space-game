@@ -3322,6 +3322,15 @@ function updateFP() {
     // Jump + gravity
     if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 3.5 : 1);
     _fpJumpVel -= FP_GRAVITY;
+    // Ceiling check — stop the ascent instead of letting the camera clip up into
+    // whatever geometry (platform underside, arch, roof) is directly overhead.
+    if (gameMode === 'tdm' && _fpJumpVel > 0 && _tdmArenaCollidables.length > 0) {
+      _tdmGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 2, fpPos.z), new THREE.Vector3(0, 1, 0));
+      const _ceilHits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
+      if (_ceilHits.length > 0 && _ceilHits[0].distance < _fpJumpVel + 2) {
+        _fpJumpVel = 0;
+      }
+    }
     fpPos.y += _fpJumpVel;
     if (fpPos.y < _fpFloor) { fpPos.y = _fpFloor; _fpJumpVel = 0; }
     camera.position.copy(fpPos);
