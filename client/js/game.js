@@ -522,7 +522,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   // above the spawn point instead — that finds the real floor you'd actually be standing on.
   const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
   const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
-  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 0.3;
+  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 0.15;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -3169,8 +3169,10 @@ function updateFP() {
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : gameMode === 'tdm' ? _tdmArenaCollidables : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = 2.5;
-    const origin = fpPos.clone();
-    origin.y += 1; // cast from mid-chest height
+    // Cast from several heights so low obstacles (crates, ledges) and geometry
+    // above chest height (arches, overhangs) both register — a single chest-height
+    // ray missed most of the arena's map geometry.
+    const _heightOffsets = gameMode === 'tdm' ? [0.2, 1, 1.8] : [1];
 
     // Try X and Z axes independently (slide)
     const axes = [
@@ -3180,13 +3182,18 @@ function updateFP() {
     for (const axisVel of axes) {
       if (axisVel.lengthSq() < 0.00001) continue;
       _fpRayDir.copy(axisVel).normalize();
-      _fpRaycaster.set(origin, _fpRayDir);
-      _fpRaycaster.far = PLAYER_RADIUS + axisVel.length();
-      const hits = _fpRaycaster.intersectObjects(_activeCollidables, false);
-      if (hits.length > 0 && hits[0].distance < PLAYER_RADIUS) {
-        // Zero out just this axis
-        if (axisVel.x !== 0) fpVel.x = 0;
-        if (axisVel.z !== 0) fpVel.z = 0;
+      for (const hOff of _heightOffsets) {
+        const origin = fpPos.clone();
+        origin.y += hOff;
+        _fpRaycaster.set(origin, _fpRayDir);
+        _fpRaycaster.far = PLAYER_RADIUS + axisVel.length();
+        const hits = _fpRaycaster.intersectObjects(_activeCollidables, false);
+        if (hits.length > 0 && hits[0].distance < PLAYER_RADIUS) {
+          // Zero out just this axis
+          if (axisVel.x !== 0) fpVel.x = 0;
+          if (axisVel.z !== 0) fpVel.z = 0;
+          break;
+        }
       }
     }
   }
@@ -3273,7 +3280,7 @@ function updateFP() {
     camera.position.copy(fpPos);
   } else if (_bobbyMode) {
     // Jump + gravity
-    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V;
+    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 1.6 : 1);
     _fpJumpVel -= FP_GRAVITY;
     fpPos.y += _fpJumpVel;
     if (fpPos.y < _fpFloor) { fpPos.y = _fpFloor; _fpJumpVel = 0; }
