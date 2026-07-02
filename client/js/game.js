@@ -457,17 +457,10 @@ function _updateTDMZone() {
     return;
   }
   _tdmEl.style.display = 'block';
-  if (count >= 2) {
-    if (_tdmCountdown === null) {
-      _tdmCountdown = 20;
-      _tdmCountdownLastTick = Date.now();
-    }
-    if (Date.now() - _tdmCountdownLastTick >= 1000) {
-      _tdmCountdown = Math.max(0, _tdmCountdown - 1);
-      _tdmCountdownLastTick = Date.now();
-    }
-    _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}`;
-    if (_tdmCountdown <= 0) enterTDMArena();
+  // TEMPORARY: insta-teleport with just 1 player for testing — revert to `count >= 2` +
+  // the 20s countdown below once that's confirmed working.
+  if (count >= 1) {
+    enterTDMArena();
   } else {
     _tdmCountdown = null;
     _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
@@ -487,11 +480,14 @@ tdmScene.add(_tdmDirLight2);
 
 let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
+let _tdmFloorY = 2; // real value comes from the map's own bounding box once it loads
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) { console.warn('TDM arena map GLB failed'); return; }
   model.traverse(c => { if (c.isMesh) _tdmArenaCollidables.push(c); });
   tdmScene.add(model);
   _tdmArenaBBox = new THREE.Box3().setFromObject(model);
+  _tdmFloorY = _tdmArenaBBox.min.y + 2; // eye height above the map's actual floor
+  if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
 const _tdmExitPrompt = document.createElement('div');
@@ -505,7 +501,7 @@ function enterTDMArena() {
   _killAllExteriorLights();
   lobbyScene.visible = false;
   interiorScene.visible = false;
-  fpPos.set(0, 5, 0);
+  fpPos.set(0, _tdmFloorY, 0);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
   camera.position.copy(fpPos);
@@ -3225,7 +3221,7 @@ function updateFP() {
     }
   }
   const moving = fpVel.lengthSq() > 0.01;
-  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : 2;
+  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmFloorY : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   const _fpSprinting2 = gameMode === 'lobby' && keys['shift'];
   // Bob: faster + bigger in lobby to feel like real footsteps
@@ -4355,7 +4351,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', e => {
   if (!pointerLocked) return;
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
     const cap = 40;
     _fpMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
