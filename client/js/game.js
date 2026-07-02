@@ -3824,7 +3824,23 @@ function addRemotePlayer(data) {
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
   const _rangeAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
-  _rangeAstronaut.scale.multiplyScalar(48 / 18); // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
+  const _rangeScaleXZ = 48 / 18; // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
+  _rangeAstronaut.scale.multiplyScalar(_rangeScaleXZ);
+  // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 3 units.
+  const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 18) * _rangeScaleXZ;
+  const _rangeScaleY = (_baseHeight + 5) / _baseHeight;
+  _rangeAstronaut.scale.y *= _rangeScaleY;
+  _rangeAstronaut.position.y -= 3;
+  // Hit-detection reads collisionRadius/collisionHeight/collisionCenterOffset directly as
+  // world-space values — keep them in sync with the extra scaling above, otherwise the
+  // range astronaut's hitbox stays sized for the original 18-unit template.
+  _rangeAstronaut.userData.collisionRadius *= _rangeScaleXZ;
+  _rangeAstronaut.userData.collisionHeight = _baseHeight + 5;
+  if (_rangeAstronaut.userData.collisionCenterOffset) {
+    _rangeAstronaut.userData.collisionCenterOffset.x *= _rangeScaleXZ;
+    _rangeAstronaut.userData.collisionCenterOffset.z *= _rangeScaleXZ;
+    _rangeAstronaut.userData.collisionCenterOffset.y = _rangeAstronaut.userData.collisionCenterOffset.y * _rangeScaleY - 3;
+  }
   rangeMesh.add(_rangeAstronaut);
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
