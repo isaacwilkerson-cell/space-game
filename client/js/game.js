@@ -3834,7 +3834,7 @@ function addRemotePlayer(data) {
   // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 5 units total.
   const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 18) * _rangeScaleXZ;
   const _rangeScaleY = (_baseHeight + 5) / _baseHeight;
-  const _rangeDropY = 5;
+  const _rangeDropY = 6.5;
   _rangeAstronaut.scale.y *= _rangeScaleY;
   _rangeAstronaut.position.y -= _rangeDropY;
   // Hit-detection reads collisionRadius/collisionHeight/collisionCenterOffset directly as
