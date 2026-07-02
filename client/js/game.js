@@ -529,6 +529,11 @@ function _tdmRaycastGroundY(x, z, fromY) {
   const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
   return hits.length > 0 ? hits[0].point.y : null;
 }
+// Mesh the player is currently standing on top of — excluded from the horizontal wall
+// collision check each frame, since a ray sampled near foot height can otherwise catch
+// the top edge/lip of that very mesh when walking toward its border, locking the player
+// in place until they jump clear of it.
+let _tdmStandingMesh = null;
 // Dynamic ground height at any XZ — lets the player stand on top of crates/platforms
 // instead of always snapping back to one fixed arena-wide floor height. If the exact
 // point has no geometry below it (e.g. a requested spawn point just outside the actual
@@ -579,6 +584,7 @@ function enterTDMArena() {
   _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
   _tdmLastFloor = _tdmFloorY; // reset step-up clamp for the new run
   _tdmWasGrounded = true;
+  _tdmStandingMesh = null;
   fpPos.set(_TDM_SPAWN_X, _tdmFloorY, _TDM_SPAWN_Z);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
@@ -3209,7 +3215,9 @@ function updateFP() {
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
-  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : gameMode === 'tdm' ? _tdmArenaCollidables : _roomCollidables;
+  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables
+    : gameMode === 'tdm' ? (_tdmStandingMesh ? _tdmArenaCollidables.filter(m => m !== _tdmStandingMesh) : _tdmArenaCollidables)
+    : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = gameMode === 'tdm' ? 4 : 2.5; // was 10 — too wide to fit through building doorways
     // Cast from several heights so low obstacles (crates, ledges) and geometry
@@ -3329,7 +3337,10 @@ function updateFP() {
   if (gameMode === 'lobby') _fpFloor = -7.5;
   else if (gameMode === 'range') _fpFloor = 0;
   else if (gameMode === 'tdm') {
-    const _rawGround = _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
+    _tdmGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 6, fpPos.z), new THREE.Vector3(0, -1, 0));
+    const _groundHits = _tdmArenaCollidables.length > 0 ? _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true) : [];
+    _tdmStandingMesh = _groundHits.length > 0 ? _groundHits[0].object : null;
+    const _rawGround = _groundHits.length > 0 ? _groundHits[0].point.y + _TDM_EYE_OFFSET : _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
     // Small rises (stairs, curbs) still auto-step. Bigger rises only get accepted while
     // airborne (landing on top of something you jumped onto) — while walking on the
     // ground, a big rise ahead is a wall/object edge and should block you, not carry you
