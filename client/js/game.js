@@ -478,6 +478,37 @@ const _tdmDirLight2 = new THREE.DirectionalLight(0xaaccff, 0.7);
 _tdmDirLight2.position.set(-1, 1, -1).normalize();
 tdmScene.add(_tdmDirLight2);
 
+// Light-blue sky with a few soft procedural clouds — drawn once onto a canvas texture,
+// no external asset needed, mapped onto the inside of a big dome around the whole map.
+const _tdmSkyDome = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 512;
+  const ctx = cv.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, cv.height);
+  grad.addColorStop(0, '#3fa9f5');
+  grad.addColorStop(1, '#bfe4ff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (let i = 0; i < 22; i++) {
+    const cx = Math.random() * cv.width, cy = Math.random() * cv.height * 0.55 + 20;
+    const puffs = 5 + Math.floor(Math.random() * 5);
+    for (let j = 0; j < puffs; j++) {
+      const r = 18 + Math.random() * 26;
+      ctx.beginPath();
+      ctx.arc(cx + (Math.random() - 0.5) * 60, cy + (Math.random() - 0.5) * 18, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(4000, 24, 16),
+    new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false })
+  );
+  return dome;
+})();
+tdmScene.add(_tdmSkyDome);
+
 let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
 let _tdmFloorY = 2; // real value comes from raycasting the map once it loads
@@ -491,7 +522,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   // above the spawn point instead — that finds the real floor you'd actually be standing on.
   const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
   const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
-  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 1.2;
+  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 0.3;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -2268,6 +2299,7 @@ function _fireSniper() {
   const activeScene = gameMode === 'docked'         ? interiorScene
                     : gameMode === 'lobby'           ? lobbyScene
                     : gameMode === 'range'           ? shootingRangeScene
+                    : gameMode === 'tdm'             ? tdmScene
                     : gameMode === 'planet_surface'  ? _planetSurfScene
                     : scene;
 
