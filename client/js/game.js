@@ -467,10 +467,66 @@ function _updateTDMZone() {
       _tdmCountdownLastTick = Date.now();
     }
     _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}`;
+    if (_tdmCountdown <= 0) enterTDMArena();
   } else {
     _tdmCountdown = null;
     _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
   }
+}
+
+// ── TDM Arena — teleported into when the lobby countdown hits 0 ────────────────
+const tdmScene = new THREE.Scene();
+const _tdmAmbient = new THREE.AmbientLight(0xffffff, 1.0);
+tdmScene.add(_tdmAmbient);
+const _tdmDirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+_tdmDirLight.position.set(1, 2, 0.5).normalize();
+tdmScene.add(_tdmDirLight);
+const _tdmDirLight2 = new THREE.DirectionalLight(0xaaccff, 0.7);
+_tdmDirLight2.position.set(-1, 1, -1).normalize();
+tdmScene.add(_tdmDirLight2);
+
+let _tdmArenaCollidables = [];
+let _tdmArenaBBox = null;
+loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
+  if (!model) { console.warn('TDM arena map GLB failed'); return; }
+  model.traverse(c => { if (c.isMesh) _tdmArenaCollidables.push(c); });
+  tdmScene.add(model);
+  _tdmArenaBBox = new THREE.Box3().setFromObject(model);
+});
+
+const _tdmExitPrompt = document.createElement('div');
+_tdmExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
+_tdmExitPrompt.textContent = '[ E ]  LEAVE ARENA';
+document.body.appendChild(_tdmExitPrompt);
+
+function enterTDMArena() {
+  if (gameMode === 'tdm') return; // already in
+  gameMode = 'tdm';
+  _killAllExteriorLights();
+  lobbyScene.visible = false;
+  interiorScene.visible = false;
+  fpPos.set(0, 5, 0);
+  fpVel.set(0, 0, 0);
+  fpYaw = 0; fpPitch = 0;
+  camera.position.copy(fpPos);
+  renderer.toneMappingExposure = 1.0;
+  _tdmEl.style.display = 'none';
+  if (_tdmArenaCollidables.length === 0) {
+    _showLoadingScreen('LOADING ARENA', () => _tdmArenaCollidables.length > 0, { timeoutMs: 15000, minShowMs: 150 });
+  }
+}
+
+function exitTDMArena() {
+  gameMode = 'lobby';
+  lobbyScene.visible = true;
+  _tdmExitPrompt.style.display = 'none';
+  fpPos.set(-115, -7.5, -2); // back in the TDM zone
+  fpVel.set(0, 0, 0);
+  camera.position.copy(fpPos);
+  _restoreSceneLights();
+  _lobbyAmbient.intensity = 1.2;
+  _lobbyLight.intensity = 1.0;
+  renderer.toneMappingExposure = 0.8;
 }
 
 function enterLobby() {
@@ -2070,6 +2126,7 @@ function _firePellet(dir, activeScene) {
     const collidables = gameMode === 'lobby'          ? _lobbyCollidables
                       : gameMode === 'docked'         ? _roomCollidables
                       : gameMode === 'range'          ? _rangeCollidables
+                      : gameMode === 'tdm'            ? _tdmArenaCollidables
                       : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
                       : [];
     const hits = raycaster.intersectObjects(collidables, true);
@@ -2176,7 +2233,7 @@ function _startReload() {
 }
 
 function _fireSniper() {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked || _surfLanding) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range' && gameMode !== 'tdm') || !pointerLocked || _surfLanding) return;
   if (!_weaponMeshes[_equippedWeaponId]) return; // model still downloading
   if (_sniperCooldown > 0 || _gunReloading) return;
   if ((_weaponAmmo[_equippedWeaponId] || 0) <= 0) { _startReload(); return; }
@@ -2283,7 +2340,7 @@ function _updateSniperShots() {
 
   // Position sniper model in lower-right of view when in planet_walk
   if (_sniperMesh) {
-    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range') && pointerLocked && !_heldCrate && !_surfLanding;
+    const show = _hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'ejected' || gameMode === 'range' || gameMode === 'tdm') && pointerLocked && !_heldCrate && !_surfLanding;
     _sniperMesh.visible = show;
     if (show) {
       // Sniper always lives in _viewmodelScene — no reparenting needed
@@ -2363,7 +2420,7 @@ function _updateSniperShots() {
 // Fire on left-click, scope on right-click — only in planet_walk with sniper
 let _gunMouseHeld = false;
 document.addEventListener('mousedown', e => {
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'ejected' && gameMode !== 'range' && gameMode !== 'tdm') || !pointerLocked) return;
   if (e.button === 0) { _gunMouseHeld = true; _fireSniper(); }
   if (e.button === 2) { e.preventDefault(); _sniperScoped = true; }
 });
@@ -2371,12 +2428,12 @@ document.addEventListener('mouseup', e => {
   if (e.button === 0) _gunMouseHeld = false;
   if (e.button === 2) _sniperScoped = false;
 });
-document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (_hasSniper && (gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'docked' || gameMode === 'ejected' || gameMode === 'range' || gameMode === 'tdm')) e.preventDefault(); });
 
 // R — manual reload
 document.addEventListener('keydown', e => {
   if (e.key !== 'r' && e.key !== 'R') return;
-  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range') || !pointerLocked) return;
+  if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range' && gameMode !== 'tdm') || !pointerLocked) return;
   _startReload();
 });
 
@@ -2943,6 +3000,7 @@ document.addEventListener('keydown', e => {
     }
     if (gameMode === 'hangar') { exitHangar(); return; }
     if (gameMode === 'range') { exitShootingRange(); return; }
+    if (gameMode === 'tdm') { exitTDMArena(); return; }
   }
   if (e.key === 'f' || e.key === 'F') {
     if (gameMode === 'landed_ship') { startTakeoff(); return; }
@@ -3027,7 +3085,7 @@ function updateFP() {
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
-  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : _roomCollidables;
+  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : gameMode === 'tdm' ? _tdmArenaCollidables : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = 2.5;
     const origin = fpPos.clone();
@@ -3073,6 +3131,9 @@ function updateFP() {
   } else if (gameMode === 'range') {
     _rangeExitPrompt.style.display = 'block';
     _tdmEl.style.display = 'none';
+  } else if (gameMode === 'tdm') {
+    _tdmExitPrompt.style.display = 'block';
+    _tdmEl.style.display = 'none';
   } else {
     _tdmEl.style.display = 'none';
   }
@@ -3104,7 +3165,7 @@ function updateFP() {
 
   if (!window._adminMode) {
     // Clamp to active scene bounding box
-    const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : _roomBBox;
+    const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : gameMode === 'tdm' ? _tdmArenaBBox : _roomBBox;
     if (_activeBBox) {
       const PAD = 2.5;
       fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
@@ -4902,7 +4963,7 @@ if (socket) {
 // ── Main loop ─────────────────────────────────────────────────────────────────
 function animate(t) {
   requestAnimationFrame(animate);
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
     updateFP();
     elPos.textContent = window._adminMode
       ? `X:${fpPos.x.toFixed(1)} Y:${fpPos.y.toFixed(1)} Z:${fpPos.z.toFixed(1)} ⚡ADMIN`
@@ -5018,7 +5079,7 @@ function animate(t) {
   // Stars update every frame except when docked, in shooting range, or on a planet
   // surface — the surface scene renders separately and never shows the starfield,
   // so updating it there was pure wasted work hurting surface framerate.
-  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'planet_surface' && window._updateStars) {
+  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'planet_surface' && window._updateStars) {
     if (window._setStarsVisible) window._setStarsVisible(true);
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
@@ -5027,6 +5088,8 @@ function animate(t) {
   }
   if (gameMode === 'range') {
     renderer.render(shootingRangeScene, camera);
+  } else if (gameMode === 'tdm') {
+    renderer.render(tdmScene, camera);
   } else if (gameMode === 'planet_surface') {
     const _surfAtm = _surfCurrentPlanet && _surfCurrentPlanet.userData.atmosphere;
     renderer.setClearColor(_surfAtm ? _surfAtm.skyColor : 0x88bbff, 1);
