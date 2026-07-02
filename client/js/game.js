@@ -1315,13 +1315,14 @@ document.body.appendChild(_inventoryBar);
 const WEAPON_DEFS = {
   // cooldown: frames between shots. auto: holding the trigger keeps firing. spread: random
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
-  // magSize: rounds per magazine. reloadTime: frames the reload shake takes.
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯' },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫' },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫' },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥' },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥' },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢' },
+  // magSize: rounds per magazine. reloadTime: frames the reload shake takes. damage: HP per
+  // projectile that lands on a player (shotgun pellets each do their own smaller damage).
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 18 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 18 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 16 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 18 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 11 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -2176,7 +2177,7 @@ function _firePellet(dir, activeScene) {
 
       const distance = camera.position.distanceTo(point);
       if (!bestPlayerHit || distance < bestPlayerHit.distance) {
-        bestPlayerHit = { point: point.clone(), normal, distance };
+        bestPlayerHit = { point: point.clone(), normal, distance, targetId: m.userData.playerId };
       }
     });
   } catch (err) {
@@ -2195,6 +2196,11 @@ function _firePellet(dir, activeScene) {
     _spawnImpact(bestHit.point, normal, activeScene, hitColor);
     if (bestIsPlayer) {
       _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
+      // Tell the server so it can apply damage authoritatively and notify the victim.
+      if (socket && bestHit.targetId) {
+        const dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
+        socket.emit('player_hit', { targetId: bestHit.targetId, damage: dmg });
+      }
     } else if (gameMode === 'range') {
       // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
       const faceNorm = bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld) : null;
@@ -2214,9 +2220,9 @@ function _getRemotePlayerHitTargets() {
                 : null;
   if (!meshKey) return [];
   const targets = [];
-  Object.values(remotePlayers).forEach(rp => {
+  Object.entries(remotePlayers).forEach(([id, rp]) => {
     const m = rp[meshKey];
-    if (m && m.visible) targets.push(m);
+    if (m && m.visible) { m.userData.playerId = id; targets.push(m); }
   });
   return targets;
 }
@@ -2510,6 +2516,47 @@ function _killAllExteriorLights() {
 }
 function _muteSceneLights()   { _sceneAmbient.intensity = 0; _dirLight.intensity = 0; }
 function _restoreSceneLights(){ _sceneAmbient.intensity = 2.5; _dirLight.intensity = 1.2; }
+
+// ── Health / damage ──────────────────────────────────────────────────────────
+const _healthEl = document.getElementById('health');
+function _updateHealthHUD() {
+  if (_healthEl) _healthEl.textContent = Math.round(self.health);
+}
+
+// Full-screen red vignette that flashes when you take damage
+const _damageVignetteEl = document.createElement('div');
+_damageVignetteEl.style.cssText = `
+  position:fixed; inset:0; z-index:60; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, transparent 55%, rgba(255,0,0,0.55) 100%);
+  transition:opacity 0.1s;
+`;
+document.body.appendChild(_damageVignetteEl);
+let _damageVignetteTimeout = null;
+function _flashDamageVignette() {
+  _damageVignetteEl.style.opacity = '1';
+  clearTimeout(_damageVignetteTimeout);
+  _damageVignetteTimeout = setTimeout(() => { _damageVignetteEl.style.opacity = '0'; }, 350);
+}
+
+// Die with any weapon equipped → wake up back in your room with nothing
+function _respawnInRoom() {
+  enterStation();
+  lobbyScene.visible = false;
+  for (let i = 0; i < INVENTORY_SIZE; i++) {
+    _inventory[i] = null;
+    _invSlotEls[i].icon.textContent = '';
+    _invSlotEls[i].label.style.display = 'none';
+  }
+  _equippedWeaponId = null;
+  _hasSniper = false;
+  if (_sniperMesh) _sniperMesh.visible = false;
+  _sniperMesh = null;
+  Object.keys(_weaponAmmo).forEach(k => delete _weaponAmmo[k]);
+  _gunReloading = false;
+  self.health = 100;
+  _updateHealthHUD();
+  _invSetActive(0);
+}
 
 function enterStation() {
   gameMode = 'docked';
@@ -3716,6 +3763,7 @@ const self = {
   position: new THREE.Vector3(0, 0, 150),
   velocity: new THREE.Vector3(),
   inSafeZone: true,
+  health: 100,
 };
 
 const selfMesh = createShipMesh(0x00ccff);
@@ -4916,7 +4964,18 @@ if (socket) {
     safeZoneRadius = data.safeZoneRadius;
     selfMesh.position.set(data.self.position.x, data.self.position.y, data.self.position.z);
     self.position.copy(selfMesh.position);
+    self.health = typeof data.self.health === 'number' ? data.self.health : 100;
+    _updateHealthHUD();
     data.players.forEach(addRemotePlayer);
+  });
+  socket.on('took_damage', ({ health }) => {
+    self.health = health;
+    _updateHealthHUD();
+    _flashDamageVignette();
+  });
+  socket.on('you_died', () => {
+    if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'You died — respawning in your room', false);
+    _respawnInRoom();
   });
   socket.on('player_joined', data => {
     addRemotePlayer(data);

@@ -81,6 +81,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('player_hit', (data) => {
+    try {
+      if (!data || typeof data.targetId !== 'string') return;
+      const target = players[data.targetId];
+      if (!target || data.targetId === socket.id) return; // no self-damage
+      const damage = typeof data.damage === 'number' && isFinite(data.damage)
+        ? Math.max(0, Math.min(100, data.damage)) : 10;
+      target.health = Math.max(0, target.health - damage);
+      io.to(data.targetId).emit('took_damage', { health: target.health, damage });
+      if (target.health <= 0) {
+        target.health = 100; // respawn full health
+        io.to(data.targetId).emit('you_died', { killerId: socket.id });
+      }
+    } catch(e) {
+      console.error('player_hit error:', e.message);
+    }
+  });
+
   socket.on('chat', (data) => {
     try {
       if (!data || typeof data.text !== 'string' || !data.text.trim()) return;
