@@ -491,7 +491,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   // above the spawn point instead — that finds the real floor you'd actually be standing on.
   const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
   const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
-  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 2;
+  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 1.2;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -3102,7 +3102,7 @@ function updateFP() {
   const _crouchKeyDown = !window._adminMode && (keys['c'] || keys['alt']);
   // Crouching while sprinting triggers a slide — a one-shot burst that decays back down.
   // Once triggered it plays out fully; you don't need to keep holding the key.
-  const _wasSprintingFP = gameMode === 'lobby' && keys['shift'] && fpVel.lengthSq() > 0.3;
+  const _wasSprintingFP = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'] && fpVel.lengthSq() > 0.3;
   if (_crouchKeyDown && !_prevCrouchKey && _wasSprintingFP) {
     _slideTimer = SLIDE_DURATION;
     fpVel.setLength(FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL); // launch the slide
@@ -3111,7 +3111,7 @@ function updateFP() {
   const _crouching = _crouchKeyDown || _slideTimer > 0; // stay low for the whole slide
   _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
 
-  const _fpSprinting = gameMode === 'lobby' && keys['shift'] && !_crouching;
+  const _fpSprinting = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'] && !_crouching;
   const _fpSpeedMul  = 1 - CROUCH_SPEED_MUL * _crouchAmount;
   let _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
   const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
@@ -3229,16 +3229,17 @@ function updateFP() {
   const moving = fpVel.lengthSq() > 0.01;
   const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmFloorY : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
-  const _fpSprinting2 = gameMode === 'lobby' && keys['shift'];
-  // Bob: faster + bigger in lobby to feel like real footsteps
-  const bobSpeed = gameMode === 'lobby' ? (_fpSprinting2 ? 0.16 : 0.11) : 0.08;
-  const bobAmp   = gameMode === 'lobby' ? 1.8 : 0.8;
-  if (moving && (gameMode !== 'lobby' || _fpGrounded)) fpBobT += bobSpeed;
+  const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
+  // Bob: faster + bigger in lobby/tdm to feel like real footsteps
+  const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm';
+  const bobSpeed = _bobbyMode ? (_fpSprinting2 ? 0.16 : 0.11) : 0.08;
+  const bobAmp   = _bobbyMode ? 1.8 : 0.8;
+  if (moving && (!_bobbyMode || _fpGrounded)) fpBobT += bobSpeed;
   else fpBobT += (Math.round(fpBobT / Math.PI) * Math.PI - fpBobT) * 0.12;
   const bob = Math.sin(fpBobT) * bobAmp * (moving ? 1 : Math.exp(-0.1));
   if (window._adminMode) {
     camera.position.copy(fpPos);
-  } else if (gameMode === 'lobby') {
+  } else if (_bobbyMode) {
     // Jump + gravity
     if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V;
     _fpJumpVel -= FP_GRAVITY;
