@@ -2080,6 +2080,10 @@ function _firePellet(dir, activeScene) {
   try {
     const playerTargets = _getRemotePlayerHitTargets();
     if (playerTargets.length > 0) {
+      // Remote player meshes get repositioned outside the normal render loop (from
+      // socket updates), so their matrixWorld can be stale when we raycast here —
+      // force it current so the ray tests against where they actually are right now.
+      playerTargets.forEach(m => m.updateMatrixWorld(true));
       const pHits = raycaster.intersectObjects(playerTargets, true);
       if (pHits.length > 0 && (!bestHit || pHits[0].distance < bestHit.distance)) {
         bestHit = pHits[0];
