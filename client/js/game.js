@@ -1023,8 +1023,10 @@ function _updatePlanetSurface() {
   if (_surfPos.z >  _surfTerrainHalfZ) { _surfPos.z =  _surfTerrainHalfZ; _surfVel.z = 0; }
   if (_surfPos.z < -_surfTerrainHalfZ) { _surfPos.z = -_surfTerrainHalfZ; _surfVel.z = 0; }
 
-  // Camera
-  const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch);
+  // Camera (recoil kick eases back on its own, same as in rooms/lobby/range)
+  _camRecoilPitch += (0 - _camRecoilPitch) * 0.12;
+  if (Math.abs(_camRecoilPitch) < 0.0005) _camRecoilPitch = 0;
+  const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), _surfPitch + _camRecoilPitch);
   const yawQ   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _surfYaw);
   camera.quaternion.multiplyQuaternions(yawQ, pitchQ);
   camera.position.copy(_surfPos);
@@ -1924,6 +1926,7 @@ Object.keys(WEAPON_DEFS).forEach(id => {
 // Recoil state
 let _sniperRecoil = 0;
 let _reticleKick = 0; // pixels the aim reticle jumps up on fire, eases back to 0
+let _camRecoilPitch = 0; // extra upward camera kick on fire, eases back to 0 (separate from aim so it doesn't fight mouse input)
 
 // Muzzle flash light (reused)
 const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
@@ -2168,8 +2171,10 @@ function _fireSniper() {
   const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = _wdef.recoil != null ? _wdef.recoil : 12; // frames of recoil
-  // Kick just the aim reticle up a bit — purely visual, camera/aim itself doesn't move
+  // Kick the aim reticle up a bit (purely visual) AND the actual camera view up a bit
   _reticleKick = Math.min(_reticleKick + 10 * (_wdef.recoilMag != null ? _wdef.recoilMag : 1), 22);
+  _camRecoilPitch += 0.035 * (_wdef.recoilMag != null ? _wdef.recoilMag : 1);
+  _camRecoilPitch = Math.min(_camRecoilPitch, 0.25); // cap so rapid auto-fire can't spiral the view off-screen
 
   const activeScene = gameMode === 'docked'         ? interiorScene
                     : gameMode === 'lobby'           ? lobbyScene
@@ -2953,7 +2958,12 @@ function updateFP() {
   _fpMouseDX = 0;
   _fpMouseDY = 0;
 
-  _fpEuler.set(fpPitch, fpYaw, 0, 'YXZ');
+  // Camera recoil kick — separate from fpPitch (actual aim) so it eases back on its own
+  // instead of the player having to fight it back down with the mouse.
+  _camRecoilPitch += (0 - _camRecoilPitch) * 0.12;
+  if (Math.abs(_camRecoilPitch) < 0.0005) _camRecoilPitch = 0;
+
+  _fpEuler.set(fpPitch + _camRecoilPitch, fpYaw, 0, 'YXZ');
   _fpQuat.setFromEuler(_fpEuler);
   camera.quaternion.copy(_fpQuat);
 
