@@ -3321,7 +3321,8 @@ function updateFP() {
   else if (gameMode === 'range') _fpFloor = 0;
   else if (gameMode === 'tdm') {
     const _rawGround = _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
-    const MAX_STEP_UP = 4;
+    // Essentially no auto-step — you must actually jump to get on top of anything.
+    const MAX_STEP_UP = 0.3;
     if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor) {
       _tdmLastFloor = _rawGround;
     }
