@@ -3221,7 +3221,10 @@ function updateFP() {
     // actual ground — offsets here must be measured from the ground, not from fpPos.y,
     // or every ray ends up sampling 15-24 units in the air, over doorways and short objects.
     const _tdmGroundRef = gameMode === 'tdm' ? fpPos.y - _TDM_EYE_OFFSET : fpPos.y;
-    const _heightOffsets = gameMode === 'tdm' ? [-1, 0, 1, 2, 3, 4, 5, 6, 8] : [1];
+    // Lowest sample must stay ABOVE the ground/feet level — a ray at or below foot height
+    // ends up cast from inside whatever solid object you're currently standing on top of,
+    // hitting its own wall at ~0 distance and blocking movement in every direction.
+    const _heightOffsets = gameMode === 'tdm' ? [0.5, 1, 2, 3, 4, 5, 6, 8] : [1];
 
     // Try X and Z axes independently (slide)
     const axes = [
