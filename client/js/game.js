@@ -511,7 +511,18 @@ tdmScene.add(_tdmSkyDome);
 
 let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
-let _tdmFloorY = 2; // real value comes from raycasting the map once it loads
+let _tdmFloorY = 2; // fallback value, real per-position height comes from _tdmGroundHeightAt()
+const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
+const _TDM_EYE_OFFSET = -16; // camera height below the raycasted ground surface
+const _tdmGroundRaycaster = new THREE.Raycaster();
+// Dynamic ground height at any XZ — lets the player stand on top of crates/platforms
+// instead of always snapping back to one fixed arena-wide floor height.
+function _tdmGroundHeightAt(x, z) {
+  if (_tdmArenaCollidables.length === 0) return _tdmFloorY;
+  _tdmGroundRaycaster.set(new THREE.Vector3(x, 5000, z), new THREE.Vector3(0, -1, 0));
+  const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
+  return (hits.length > 0 ? hits[0].point.y : _tdmArenaBBox ? _tdmArenaBBox.min.y : 0) + _TDM_EYE_OFFSET;
+}
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) { console.warn('TDM arena map GLB failed'); return; }
   model.traverse(c => {
@@ -525,12 +536,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   });
   tdmScene.add(model);
   _tdmArenaBBox = new THREE.Box3().setFromObject(model);
-  // The bbox minimum spans the WHOLE map (including any foundations/underground geometry),
-  // which put spawn well below the actual walkable surface. Raycast straight down from high
-  // above the spawn point instead — that finds the real floor you'd actually be standing on.
-  const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
-  const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
-  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) - 16;
+  _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -545,7 +551,8 @@ function enterTDMArena() {
   _killAllExteriorLights();
   lobbyScene.visible = false;
   interiorScene.visible = false;
-  fpPos.set(0, _tdmFloorY, 0);
+  _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
+  fpPos.set(_TDM_SPAWN_X, _tdmFloorY, _TDM_SPAWN_Z);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
   camera.position.copy(fpPos);
@@ -3276,7 +3283,7 @@ function updateFP() {
     }
   }
   const moving = fpVel.lengthSq() > 0.01;
-  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmFloorY : 2;
+  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmGroundHeightAt(fpPos.x, fpPos.z) : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
