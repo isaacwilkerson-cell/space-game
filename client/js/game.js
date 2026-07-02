@@ -480,13 +480,18 @@ tdmScene.add(_tdmDirLight2);
 
 let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
-let _tdmFloorY = 2; // real value comes from the map's own bounding box once it loads
+let _tdmFloorY = 2; // real value comes from raycasting the map once it loads
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) { console.warn('TDM arena map GLB failed'); return; }
   model.traverse(c => { if (c.isMesh) _tdmArenaCollidables.push(c); });
   tdmScene.add(model);
   _tdmArenaBBox = new THREE.Box3().setFromObject(model);
-  _tdmFloorY = _tdmArenaBBox.min.y + 2; // eye height above the map's actual floor
+  // The bbox minimum spans the WHOLE map (including any foundations/underground geometry),
+  // which put spawn well below the actual walkable surface. Raycast straight down from high
+  // above the spawn point instead — that finds the real floor you'd actually be standing on.
+  const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
+  const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
+  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) + 2;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -516,7 +521,8 @@ function exitTDMArena() {
   gameMode = 'lobby';
   lobbyScene.visible = true;
   _tdmExitPrompt.style.display = 'none';
-  fpPos.set(-115, -7.5, -2); // back in the TDM zone
+  fpPos.set(-115, -7.5, 40); // just outside the TDM zone bounds (was inside it, which — combined
+  // with the temporary insta-teleport-at-1-player — bounced you right back in immediately)
   fpVel.set(0, 0, 0);
   camera.position.copy(fpPos);
   _restoreSceneLights();
