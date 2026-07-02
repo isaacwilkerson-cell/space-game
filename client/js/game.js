@@ -2077,25 +2077,41 @@ function _firePellet(dir, activeScene) {
     console.warn('[fire] static hit-detection error (bullet still fired fine):', err);
   }
 
+  // Player hits: a direct ray-vs-sphere test against each player's known position +
+  // measured radius, instead of raycasting the actual mesh triangles. The mesh-based
+  // approach kept silently failing (stale matrixWorld, template-not-loaded-yet empty
+  // clones, nested group quirks) — this only needs position + radius, which we already
+  // track reliably, so it can't be broken by any of that.
+  let bestPlayerHit = null;
   try {
     const playerTargets = _getRemotePlayerHitTargets();
-    if (playerTargets.length > 0) {
-      // Remote player meshes get repositioned outside the normal render loop (from
-      // socket updates), so their matrixWorld can be stale when we raycast here —
-      // force it current so the ray tests against where they actually are right now.
-      playerTargets.forEach(m => m.updateMatrixWorld(true));
-      const pHits = raycaster.intersectObjects(playerTargets, true);
-      if (pHits.length > 0 && (!bestHit || pHits[0].distance < bestHit.distance)) {
-        bestHit = pHits[0];
-        bestIsPlayer = true;
+    playerTargets.forEach(m => {
+      const other = m.children[0];
+      const radius = (other && other.userData.collisionRadius) || 6;
+      const height = (other && other.userData.collisionHeight) || 24;
+      const center = m.position.clone();
+      center.y += height / 2;
+      const sphere = new THREE.Sphere(center, radius);
+      const hitPoint = new THREE.Vector3();
+      if (raycaster.ray.intersectSphere(sphere, hitPoint)) {
+        const distance = camera.position.distanceTo(hitPoint);
+        if (!bestPlayerHit || distance < bestPlayerHit.distance) {
+          bestPlayerHit = { point: hitPoint.clone(), normal: hitPoint.clone().sub(center).normalize(), distance };
+        }
       }
-    }
+    });
   } catch (err) {
     console.warn('[fire] player hit-detection error (bullet still fired fine):', err);
   }
+  if (bestPlayerHit && (!bestHit || bestPlayerHit.distance < bestHit.distance)) {
+    bestHit = bestPlayerHit;
+    bestIsPlayer = true;
+  }
 
   if (bestHit) {
-    const normal = bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld).normalize() : dir.clone().negate();
+    const normal = bestIsPlayer ? bestHit.normal
+      : bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld).normalize()
+      : dir.clone().negate();
     const hitColor = bestIsPlayer ? 'red' : _sampleHitColor(bestHit);
     _spawnImpact(bestHit.point, normal, activeScene, hitColor);
     if (bestIsPlayer) {
