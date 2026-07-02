@@ -1923,6 +1923,7 @@ Object.keys(WEAPON_DEFS).forEach(id => {
 
 // Recoil state
 let _sniperRecoil = 0;
+let _reticleKick = 0; // pixels the aim reticle jumps up on fire, eases back to 0
 
 // Muzzle flash light (reused)
 const _muzzleFlash = new THREE.PointLight(0x88ffcc, 0, 120);
@@ -2167,6 +2168,8 @@ function _fireSniper() {
   const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = _wdef.recoil != null ? _wdef.recoil : 12; // frames of recoil
+  // Kick just the aim reticle up a bit — purely visual, camera/aim itself doesn't move
+  _reticleKick = Math.min(_reticleKick + 10 * (_wdef.recoilMag != null ? _wdef.recoilMag : 1), 22);
 
   const activeScene = gameMode === 'docked'         ? interiorScene
                     : gameMode === 'lobby'           ? lobbyScene
@@ -2222,6 +2225,11 @@ function _updateSniperShots() {
       if (_equippedWeaponId && _wdef) _weaponAmmo[_equippedWeaponId] = _wdef.magSize;
     }
   }
+
+  // Ease the reticle kick back down toward center
+  _reticleKick += (0 - _reticleKick) * 0.15;
+  if (Math.abs(_reticleKick) < 0.05) _reticleKick = 0;
+  _aimReticleEl.style.transform = `translate(-50%, calc(-50% - ${_reticleKick.toFixed(1)}px))`;
 
   // Ammo HUD — also covers the case where the equipped weapon's (often large) model
   // is still downloading, so it's obvious you're not actually empty-handed.
