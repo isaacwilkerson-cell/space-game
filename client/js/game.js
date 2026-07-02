@@ -3215,6 +3215,10 @@ function updateFP() {
     // ray missed most of the arena's map geometry. TDM's map asset is loaded at a much
     // larger scale (targetSize 1400 vs ~400 elsewhere) so walls/obstacles are physically
     // bigger — sample a taller range accordingly.
+    // NOTE: in TDM, fpPos.y is EYE height, which sits _TDM_EYE_OFFSET (16) units above the
+    // actual ground — offsets here must be measured from the ground, not from fpPos.y,
+    // or every ray ends up sampling 15-24 units in the air, over doorways and short objects.
+    const _tdmGroundRef = gameMode === 'tdm' ? fpPos.y - _TDM_EYE_OFFSET : fpPos.y;
     const _heightOffsets = gameMode === 'tdm' ? [-1, 0, 1, 2, 3, 4, 5, 6, 8] : [1];
 
     // Try X and Z axes independently (slide)
@@ -3227,7 +3231,7 @@ function updateFP() {
       _fpRayDir.copy(axisVel).normalize();
       for (const hOff of _heightOffsets) {
         const origin = fpPos.clone();
-        origin.y += hOff;
+        origin.y = _tdmGroundRef + hOff;
         _fpRaycaster.set(origin, _fpRayDir);
         _fpRaycaster.far = PLAYER_RADIUS + axisVel.length();
         const hits = _fpRaycaster.intersectObjects(_activeCollidables, gameMode === 'tdm');
