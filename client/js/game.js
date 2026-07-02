@@ -514,7 +514,15 @@ let _tdmArenaBBox = null;
 let _tdmFloorY = 2; // real value comes from raycasting the map once it loads
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) { console.warn('TDM arena map GLB failed'); return; }
-  model.traverse(c => { if (c.isMesh) _tdmArenaCollidables.push(c); });
+  model.traverse(c => {
+    if (c.isMesh) {
+      _tdmArenaCollidables.push(c);
+      // Single-sided materials make the raycaster miss hits approached from the "back"
+      // face — force double-sided so wall/collision rays register from any direction.
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
+    }
+  });
   tdmScene.add(model);
   _tdmArenaBBox = new THREE.Box3().setFromObject(model);
   // The bbox minimum spans the WHOLE map (including any foundations/underground geometry),
@@ -522,7 +530,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   // above the spawn point instead — that finds the real floor you'd actually be standing on.
   const _floorRay = new THREE.Raycaster(new THREE.Vector3(0, 5000, 0), new THREE.Vector3(0, -1, 0));
   const _floorHits = _floorRay.intersectObjects(_tdmArenaCollidables, true);
-  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) - 2.5;
+  _tdmFloorY = (_floorHits.length > 0 ? _floorHits[0].point.y : _tdmArenaBBox.min.y) - 6.5;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -3168,7 +3176,7 @@ function updateFP() {
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : gameMode === 'tdm' ? _tdmArenaCollidables : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
-    const PLAYER_RADIUS = 2.5;
+    const PLAYER_RADIUS = gameMode === 'tdm' ? 4 : 2.5;
     // Cast from several heights so low obstacles (crates, ledges) and geometry
     // above chest height (arches, overhangs) both register — a single chest-height
     // ray missed most of the arena's map geometry.
