@@ -3820,17 +3820,23 @@ function addRemotePlayer(data) {
   scene.add(ejectedMesh);
   ejectedMesh.visible = false;
 
-  // Add astronaut clones
+  // Add astronaut clones. Mark each wrapper as already-populated — _updateRemoteFPMeshes
+  // has a self-heal path that adds an astronaut if a mesh looks empty, but it was
+  // checking a flag that only IT ever set, never this direct path, so it kept adding a
+  // second astronaut on top of this one every time a position update came in.
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  lobbyMesh.userData.hasAstronaut = true;
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
+  roomMesh.userData.hasAstronaut = true;
   const _rangeAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   const _rangeScaleXZ = 48 / 18; // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
   _rangeAstronaut.scale.multiplyScalar(_rangeScaleXZ);
-  // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 3 units.
+  // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 5 units total.
   const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 18) * _rangeScaleXZ;
   const _rangeScaleY = (_baseHeight + 5) / _baseHeight;
+  const _rangeDropY = 5;
   _rangeAstronaut.scale.y *= _rangeScaleY;
-  _rangeAstronaut.position.y -= 3;
+  _rangeAstronaut.position.y -= _rangeDropY;
   // Hit-detection reads collisionRadius/collisionHeight/collisionCenterOffset directly as
   // world-space values — keep them in sync with the extra scaling above, otherwise the
   // range astronaut's hitbox stays sized for the original 18-unit template.
@@ -3839,11 +3845,14 @@ function addRemotePlayer(data) {
   if (_rangeAstronaut.userData.collisionCenterOffset) {
     _rangeAstronaut.userData.collisionCenterOffset.x *= _rangeScaleXZ;
     _rangeAstronaut.userData.collisionCenterOffset.z *= _rangeScaleXZ;
-    _rangeAstronaut.userData.collisionCenterOffset.y = _rangeAstronaut.userData.collisionCenterOffset.y * _rangeScaleY - 3;
+    _rangeAstronaut.userData.collisionCenterOffset.y = _rangeAstronaut.userData.collisionCenterOffset.y * _rangeScaleY - _rangeDropY;
   }
   rangeMesh.add(_rangeAstronaut);
+  rangeMesh.userData.hasAstronaut = true;
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  planetMesh.userData.hasAstronaut = true;
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  ejectedMesh.userData.hasAstronaut = true;
 
   // Name tags
   const tagName = data.name || 'Pilot';
