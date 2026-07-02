@@ -513,7 +513,7 @@ let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
 let _tdmFloorY = 2; // fallback value, real per-position height comes from _tdmGroundHeightAt()
 const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
-const _TDM_EYE_OFFSET = -16; // camera height below the raycasted ground surface
+const _TDM_EYE_OFFSET = -6; // camera height below the raycasted ground surface
 const _tdmGroundRaycaster = new THREE.Raycaster();
 // Raw downward raycast at one XZ point — null if nothing is directly below (outside the
 // map footprint), instead of silently falling through to the map's basement/underside.
