@@ -2051,28 +2051,55 @@ function _firePellet(dir, activeScene) {
   // which is expensive to shade and was the main cause of the stutter on firing. The
   // tracer's own bright unlit material already reads as a glowing shot without one.
 
-  // Raycast for bullet impact
-  const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
-  const collidables = gameMode === 'lobby'          ? _lobbyCollidables
-                    : gameMode === 'docked'         ? _roomCollidables
-                    : gameMode === 'range'          ? _rangeCollidables
-                    : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
-                    : [];
-  const hits = raycaster.intersectObjects(collidables, true);
-  if (hits.length > 0) {
-    const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
-    const hitColor = _sampleHitColor(hits[0]);
-    _spawnImpact(hits[0].point, normal, activeScene, hitColor);
-    if (gameMode === 'range') {
-      // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
-      const faceNorm = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld) : null;
-      if (faceNorm && Math.abs(faceNorm.z) > 0.6) {
-        _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+  // Track the tracer first — if hit-detection below ever throws, the bullet still
+  // animates/expires normally instead of freezing in mid-air as an orphaned ray.
+  _sniperShots.push({ mesh, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
+
+  // Raycast for bullet impact — includes other players' astronaut meshes so shots
+  // actually register against them, using the exact mesh geometry (real triangle hit,
+  // not an approximate box) for a precise hit point.
+  try {
+    const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
+    const collidables = gameMode === 'lobby'          ? _lobbyCollidables
+                      : gameMode === 'docked'         ? _roomCollidables
+                      : gameMode === 'range'          ? _rangeCollidables
+                      : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
+                      : [];
+    const hits = raycaster.intersectObjects(collidables.concat(_getRemotePlayerHitTargets()), true);
+    if (hits.length > 0) {
+      const hitPlayer = !!(hits[0].object.userData && hits[0].object.userData.isPlayerHit);
+      const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
+      const hitColor = hitPlayer ? 'red' : _sampleHitColor(hits[0]);
+      _spawnImpact(hits[0].point, normal, activeScene, hitColor);
+      if (hitPlayer) {
+        _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
+      } else if (gameMode === 'range') {
+        // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
+        const faceNorm = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld) : null;
+        if (faceNorm && Math.abs(faceNorm.z) > 0.6) {
+          _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+        }
       }
     }
+  } catch (err) {
+    console.warn('[fire] hit-detection error (bullet still fired fine):', err);
   }
+}
 
-  _sniperShots.push({ mesh, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
+// Other players' astronaut meshes currently visible in the active scene/mode.
+function _getRemotePlayerHitTargets() {
+  const meshKey = gameMode === 'lobby'   ? 'lobbyMesh'
+                : gameMode === 'range'   ? 'rangeMesh'
+                : gameMode === 'planet_walk' ? 'planetMesh'
+                : gameMode === 'ejected' ? 'ejectedMesh'
+                : null;
+  if (!meshKey) return [];
+  const targets = [];
+  Object.values(remotePlayers).forEach(rp => {
+    const m = rp[meshKey];
+    if (m && m.visible) targets.push(m);
+  });
+  return targets;
 }
 
 // Starts the reload shake; refills ammo once _reloadDuration frames pass (see _updateSniperShots).
@@ -2974,6 +3001,27 @@ function updateFP() {
   }
 
   fpPos.add(fpVel);
+
+  // Player-vs-player collision — push back out of any other astronaut you'd otherwise
+  // walk into. Uses a simple circle test against each player's precise measured radius
+  // (see _cloneAstronaut) rather than a mesh raycast, so it's stable regardless of the
+  // humanoid model's actual triangle layout.
+  if (!window._adminMode) {
+    const PLAYER_RADIUS = 2.5;
+    _getRemotePlayerHitTargets().forEach(m => {
+      const other = m.children[0]; // the actual astronaut clone (m is the wrapper group)
+      if (!other || !other.userData.collisionRadius) return;
+      const dx = fpPos.x - m.position.x, dz = fpPos.z - m.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const minDist = PLAYER_RADIUS + other.userData.collisionRadius;
+      if (dist > 0 && dist < minDist) {
+        const push = (minDist - dist) / dist;
+        fpPos.x += dx * push;
+        fpPos.z += dz * push;
+      }
+    });
+  }
+
   if (!window._adminMode) {
     // Clamp to active scene bounding box
     const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : _roomBBox;
@@ -3587,6 +3635,7 @@ function _cloneAstronaut(template) {
   clone.rotation.y -= Math.PI / 2 + Math.PI; // face-forward correction — was 90° off, plus 180° flip
   clone.traverse(c => {
     if (c.isMesh && c.material) {
+      c.userData.isPlayerHit = true; // lets bullet raycasts identify "this is a player"
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => {
         m = m.clone();
@@ -3602,6 +3651,13 @@ function _cloneAstronaut(template) {
   const light = new THREE.PointLight(0xffffff, 0.6, 80);
   light.position.set(0, 20, 0);
   clone.add(light);
+  // Precise collision footprint measured directly from the actual geometry (not guessed) —
+  // used both to block movement (can't walk through another player) and to know how far
+  // out a bullet raycast against this mesh is plausible.
+  const _box = new THREE.Box3().setFromObject(clone);
+  const _size = _box.getSize(new THREE.Vector3());
+  clone.userData.collisionRadius = Math.max(_size.x, _size.z) / 2;
+  clone.userData.collisionHeight = _size.y;
   return clone;
 }
 
