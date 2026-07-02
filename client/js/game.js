@@ -519,6 +519,7 @@ const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
 // since the map kept spawning you underneath it otherwise.
 const _TDM_EYE_OFFSET = 16;
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
+let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
 // Raw downward raycast at one XZ point — null if nothing is directly below (outside the
 // map footprint), instead of silently falling through to the map's basement/underside.
@@ -577,6 +578,7 @@ function enterTDMArena() {
   interiorScene.visible = false;
   _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
   _tdmLastFloor = _tdmFloorY; // reset step-up clamp for the new run
+  _tdmWasGrounded = true;
   fpPos.set(_TDM_SPAWN_X, _tdmFloorY, _TDM_SPAWN_Z);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
@@ -3325,14 +3327,18 @@ function updateFP() {
   else if (gameMode === 'range') _fpFloor = 0;
   else if (gameMode === 'tdm') {
     const _rawGround = _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
-    // Essentially no auto-step — you must actually jump to get on top of anything.
-    const MAX_STEP_UP = 0.3;
-    if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor) {
+    // Small rises (stairs, curbs) still auto-step. Bigger rises only get accepted while
+    // airborne (landing on top of something you jumped onto) — while walking on the
+    // ground, a big rise ahead is a wall/object edge and should block you, not carry you
+    // up onto it.
+    const MAX_STEP_UP = 2;
+    if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor || !_tdmWasGrounded) {
       _tdmLastFloor = _rawGround;
     }
     _fpFloor = _tdmLastFloor;
   } else _fpFloor = 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
+  if (gameMode === 'tdm') _tdmWasGrounded = _fpGrounded;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
   const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm';
