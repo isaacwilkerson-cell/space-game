@@ -521,9 +521,9 @@ const _TDM_EYE_OFFSET = 16;
 const _tdmGroundRaycaster = new THREE.Raycaster();
 // Raw downward raycast at one XZ point — null if nothing is directly below (outside the
 // map footprint), instead of silently falling through to the map's basement/underside.
-function _tdmRaycastGroundY(x, z) {
+function _tdmRaycastGroundY(x, z, fromY) {
   if (_tdmArenaCollidables.length === 0) return null;
-  _tdmGroundRaycaster.set(new THREE.Vector3(x, 5000, z), new THREE.Vector3(0, -1, 0));
+  _tdmGroundRaycaster.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
   const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
   return hits.length > 0 ? hits[0].point.y : null;
 }
@@ -532,13 +532,13 @@ function _tdmRaycastGroundY(x, z) {
 // point has no geometry below it (e.g. a requested spawn point just outside the actual
 // mesh footprint), spirals outward to find the nearest real ground instead of falling
 // back to the whole map's absolute lowest point (which put spawns under the map).
-function _tdmGroundHeightAt(x, z) {
-  let y = _tdmRaycastGroundY(x, z);
+function _tdmGroundHeightAt(x, z, fromY = 5000) {
+  let y = _tdmRaycastGroundY(x, z, fromY);
   if (y === null) {
     for (let r = 10; r <= 200 && y === null; r += 10) {
       for (let a = 0; a < 8; a++) {
         const ang = (a / 8) * Math.PI * 2;
-        y = _tdmRaycastGroundY(x + Math.cos(ang) * r, z + Math.sin(ang) * r);
+        y = _tdmRaycastGroundY(x + Math.cos(ang) * r, z + Math.sin(ang) * r, fromY);
         if (y !== null) break;
       }
     }
@@ -2126,7 +2126,8 @@ function _spawnImpact(pos, normal, activeScene, hitColor) {
   const hole = new THREE.Mesh(_holeGeo, holeMat);
   hole.position.copy(pos).addScaledVector(normal, 0.3);
   hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
-  if (gameMode === 'planet_surface') hole.scale.setScalar(0.25); // terrain decals were way too big
+  hole.scale.setScalar(0.4); // bullet holes were too big
+  if (gameMode === 'planet_surface') hole.scale.setScalar(0.1); // terrain decals were way too big
   activeScene.add(hole);
   _bulletHoles.push({ mesh: hole, life: BULLET_HOLE_LIFE, scene: activeScene });
   // Cap total decals so sustained auto-fire (shotgun pellets, AK bursts) can't pile up
@@ -3306,7 +3307,10 @@ function updateFP() {
     }
   }
   const moving = fpVel.lengthSq() > 0.01;
-  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmGroundHeightAt(fpPos.x, fpPos.z) : 2;
+  // TDM ground check now casts down from just above the player's own head instead of
+  // from high in the sky — a cast from way up would hit the TOP of any platform/roof
+  // overhead and snap the player onto it even while they're walking underneath it.
+  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6) : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
