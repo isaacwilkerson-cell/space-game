@@ -2055,34 +2055,54 @@ function _firePellet(dir, activeScene) {
   // animates/expires normally instead of freezing in mid-air as an orphaned ray.
   _sniperShots.push({ mesh, vel: dir.clone().multiplyScalar(SNIPER_SPEED), life: SNIPER_LIFETIME, scene: activeScene });
 
-  // Raycast for bullet impact — includes other players' astronaut meshes so shots
-  // actually register against them, using the exact mesh geometry (real triangle hit,
-  // not an approximate box) for a precise hit point.
+  // Raycast for bullet impact. Static geometry (walls/targets) and player meshes are
+  // raycast SEPARATELY and each wrapped on their own — a bad/edge-case remote player
+  // mesh can no longer suppress normal wall/target hit detection (that's what was
+  // silently breaking bullet holes whenever another player was in the range: one
+  // shared try/catch meant a player-raycast failure skipped everything, including the
+  // completely unrelated wall/target hit).
+  const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
+  let bestHit = null;
+  let bestIsPlayer = false;
+
   try {
-    const raycaster = new THREE.Raycaster(camera.position.clone(), dir.clone(), 0, 2000);
     const collidables = gameMode === 'lobby'          ? _lobbyCollidables
                       : gameMode === 'docked'         ? _roomCollidables
                       : gameMode === 'range'          ? _rangeCollidables
                       : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
                       : [];
-    const hits = raycaster.intersectObjects(collidables.concat(_getRemotePlayerHitTargets()), true);
-    if (hits.length > 0) {
-      const hitPlayer = !!(hits[0].object.userData && hits[0].object.userData.isPlayerHit);
-      const normal = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize() : dir.clone().negate();
-      const hitColor = hitPlayer ? 'red' : _sampleHitColor(hits[0]);
-      _spawnImpact(hits[0].point, normal, activeScene, hitColor);
-      if (hitPlayer) {
-        _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
-      } else if (gameMode === 'range') {
-        // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
-        const faceNorm = hits[0].face ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld) : null;
-        if (faceNorm && Math.abs(faceNorm.z) > 0.6) {
-          _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
-        }
+    const hits = raycaster.intersectObjects(collidables, true);
+    if (hits.length > 0) bestHit = hits[0];
+  } catch (err) {
+    console.warn('[fire] static hit-detection error (bullet still fired fine):', err);
+  }
+
+  try {
+    const playerTargets = _getRemotePlayerHitTargets();
+    if (playerTargets.length > 0) {
+      const pHits = raycaster.intersectObjects(playerTargets, true);
+      if (pHits.length > 0 && (!bestHit || pHits[0].distance < bestHit.distance)) {
+        bestHit = pHits[0];
+        bestIsPlayer = true;
       }
     }
   } catch (err) {
-    console.warn('[fire] hit-detection error (bullet still fired fine):', err);
+    console.warn('[fire] player hit-detection error (bullet still fired fine):', err);
+  }
+
+  if (bestHit) {
+    const normal = bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld).normalize() : dir.clone().negate();
+    const hitColor = bestIsPlayer ? 'red' : _sampleHitColor(bestHit);
+    _spawnImpact(bestHit.point, normal, activeScene, hitColor);
+    if (bestIsPlayer) {
+      _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
+    } else if (gameMode === 'range') {
+      // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
+      const faceNorm = bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld) : null;
+      if (faceNorm && Math.abs(faceNorm.z) > 0.6) {
+        _hitMarker = { color: hitColor, life: HIT_MARKER_LIFE };
+      }
+    }
   }
 }
 
