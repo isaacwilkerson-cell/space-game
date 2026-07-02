@@ -515,13 +515,32 @@ let _tdmFloorY = 2; // fallback value, real per-position height comes from _tdmG
 const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
 const _TDM_EYE_OFFSET = -16; // camera height below the raycasted ground surface
 const _tdmGroundRaycaster = new THREE.Raycaster();
-// Dynamic ground height at any XZ — lets the player stand on top of crates/platforms
-// instead of always snapping back to one fixed arena-wide floor height.
-function _tdmGroundHeightAt(x, z) {
-  if (_tdmArenaCollidables.length === 0) return _tdmFloorY;
+// Raw downward raycast at one XZ point — null if nothing is directly below (outside the
+// map footprint), instead of silently falling through to the map's basement/underside.
+function _tdmRaycastGroundY(x, z) {
+  if (_tdmArenaCollidables.length === 0) return null;
   _tdmGroundRaycaster.set(new THREE.Vector3(x, 5000, z), new THREE.Vector3(0, -1, 0));
   const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
-  return (hits.length > 0 ? hits[0].point.y : _tdmArenaBBox ? _tdmArenaBBox.min.y : 0) + _TDM_EYE_OFFSET;
+  return hits.length > 0 ? hits[0].point.y : null;
+}
+// Dynamic ground height at any XZ — lets the player stand on top of crates/platforms
+// instead of always snapping back to one fixed arena-wide floor height. If the exact
+// point has no geometry below it (e.g. a requested spawn point just outside the actual
+// mesh footprint), spirals outward to find the nearest real ground instead of falling
+// back to the whole map's absolute lowest point (which put spawns under the map).
+function _tdmGroundHeightAt(x, z) {
+  let y = _tdmRaycastGroundY(x, z);
+  if (y === null) {
+    for (let r = 10; r <= 200 && y === null; r += 10) {
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        y = _tdmRaycastGroundY(x + Math.cos(ang) * r, z + Math.sin(ang) * r);
+        if (y !== null) break;
+      }
+    }
+  }
+  if (y === null) y = _tdmArenaBBox ? _tdmArenaBBox.max.y : 0; // last-resort: top of map, never the basement
+  return y + _TDM_EYE_OFFSET;
 }
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) { console.warn('TDM arena map GLB failed'); return; }
