@@ -2078,11 +2078,12 @@ function _firePellet(dir, activeScene) {
     console.warn('[fire] static hit-detection error (bullet still fired fine):', err);
   }
 
-  // Player hits: a direct ray-vs-sphere test against each player's known position +
-  // measured radius, instead of raycasting the actual mesh triangles. The mesh-based
-  // approach kept silently failing (stale matrixWorld, template-not-loaded-yet empty
-  // clones, nested group quirks) — this only needs position + radius, which we already
-  // track reliably, so it can't be broken by any of that.
+  // Player hits: a ray-vs-sphere test against each player's known position + measured
+  // radius decides WHETHER a shot hit them at all (reliable regardless of mesh/matrix/
+  // template timing issues that made pure mesh-raycasting flaky). Once we know a shot
+  // touched that sphere, we then raycast just that one player's actual mesh to place
+  // the bullet hole precisely on the real surface (any part of the model) instead of on
+  // the sphere's surface, which visibly floated off the model.
   let bestPlayerHit = null;
   try {
     const playerTargets = _getRemotePlayerHitTargets();
@@ -2095,12 +2096,30 @@ function _firePellet(dir, activeScene) {
       const worldOffset = localOffset.clone().applyQuaternion(m.quaternion);
       const center = m.position.clone().add(worldOffset);
       const sphere = new THREE.Sphere(center, radius);
-      const hitPoint = new THREE.Vector3();
-      if (raycaster.ray.intersectSphere(sphere, hitPoint)) {
-        const distance = camera.position.distanceTo(hitPoint);
-        if (!bestPlayerHit || distance < bestPlayerHit.distance) {
-          bestPlayerHit = { point: hitPoint.clone(), normal: hitPoint.clone().sub(center).normalize(), distance };
+      const spherePoint = new THREE.Vector3();
+      if (!raycaster.ray.intersectSphere(sphere, spherePoint)) return;
+
+      // Sphere says this shot touches this player — refine to the exact mesh surface.
+      let point = spherePoint;
+      let normal = spherePoint.clone().sub(center).normalize();
+      try {
+        if (other) {
+          other.updateMatrixWorld(true);
+          const meshHits = raycaster.intersectObject(other, true);
+          if (meshHits.length > 0) {
+            point = meshHits[0].point;
+            normal = meshHits[0].face
+              ? meshHits[0].face.normal.clone().transformDirection(meshHits[0].object.matrixWorld).normalize()
+              : normal;
+          }
         }
+      } catch (err) {
+        // Mesh refine failed — spherePoint is still a perfectly good fallback.
+      }
+
+      const distance = camera.position.distanceTo(point);
+      if (!bestPlayerHit || distance < bestPlayerHit.distance) {
+        bestPlayerHit = { point: point.clone(), normal, distance };
       }
     });
   } catch (err) {
