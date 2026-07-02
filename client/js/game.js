@@ -518,7 +518,6 @@ const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
 // fixed offset — puts "ground" at roughly where the top of a jump used to land you,
 // since the map kept spawning you underneath it otherwise.
 const _TDM_EYE_OFFSET = 16;
-let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 const _tdmGroundRaycaster = new THREE.Raycaster();
 // Raw downward raycast at one XZ point — null if nothing is directly below (outside the
 // map footprint), instead of silently falling through to the map's basement/underside.
@@ -576,7 +575,6 @@ function enterTDMArena() {
   lobbyScene.visible = false;
   interiorScene.visible = false;
   _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
-  _tdmLastFloor = _tdmFloorY; // reset step-up clamp for the new run
   fpPos.set(_TDM_SPAWN_X, _tdmFloorY, _TDM_SPAWN_Z);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
@@ -3209,7 +3207,7 @@ function updateFP() {
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables : gameMode === 'tdm' ? _tdmArenaCollidables : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
-    const PLAYER_RADIUS = gameMode === 'tdm' ? 4 : 2.5; // was 10 — too wide to fit through building doorways
+    const PLAYER_RADIUS = gameMode === 'tdm' ? 10 : 2.5;
     // Cast from several heights so low obstacles (crates, ledges) and geometry
     // above chest height (arches, overhangs) both register — a single chest-height
     // ray missed most of the arena's map geometry. TDM's map asset is loaded at a much
@@ -3312,21 +3310,7 @@ function updateFP() {
   // TDM ground check now casts down from just above the player's own head instead of
   // from high in the sky — a cast from way up would hit the TOP of any platform/roof
   // overhead and snap the player onto it even while they're walking underneath it.
-  // Also clamp how much the floor can jump UP in one frame: a small rise (stairs, a
-  // curb) is accepted as a step, but a big rise directly ahead means it's the top edge
-  // of an object/wall the player just walked into — treat that as a wall (blocked by
-  // the horizontal collision above) instead of snapping the player up onto it.
-  let _fpFloor;
-  if (gameMode === 'lobby') _fpFloor = -7.5;
-  else if (gameMode === 'range') _fpFloor = 0;
-  else if (gameMode === 'tdm') {
-    const _rawGround = _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
-    const MAX_STEP_UP = 4;
-    if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor) {
-      _tdmLastFloor = _rawGround;
-    }
-    _fpFloor = _tdmLastFloor;
-  } else _fpFloor = 2;
+  const _fpFloor = gameMode === 'lobby' ? -7.5 : gameMode === 'range' ? 0 : gameMode === 'tdm' ? _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6) : 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
