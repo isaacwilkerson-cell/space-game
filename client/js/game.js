@@ -3443,7 +3443,7 @@ function updateFP() {
     camera.position.copy(fpPos);
   } else if (_bobbyMode) {
     // Jump + gravity
-    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 2 : 1);
+    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 2.8 : 1);
     _fpJumpVel -= FP_GRAVITY;
     // Ceiling check — stop the ascent instead of letting the camera clip up into
     // whatever geometry (platform underside, arch, roof) is directly overhead.
