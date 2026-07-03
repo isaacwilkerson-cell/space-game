@@ -2840,7 +2840,7 @@ function _restoreSceneLights(){ _sceneAmbient.intensity = 2.5; _dirLight.intensi
 // ── Health / damage ──────────────────────────────────────────────────────────
 const _healthEl = document.getElementById('health');
 const _healthBarOuter = document.createElement('div');
-_healthBarOuter.style.cssText = 'position:fixed;bottom:70px;left:20px;width:160px;height:10px;border:1px solid rgba(255,255,255,0.6);border-radius:5px;overflow:hidden;background:rgba(0,0,0,0.4);z-index:45;';
+_healthBarOuter.style.cssText = 'position:fixed;bottom:30px;left:20px;width:160px;height:10px;border:1px solid rgba(255,255,255,0.6);border-radius:5px;overflow:hidden;background:rgba(0,0,0,0.4);z-index:45;';
 const _healthBarFill = document.createElement('div');
 _healthBarFill.style.cssText = 'width:100%;height:100%;background:#fff;box-shadow:0 0 6px #fff;transition:width 0.15s;';
 _healthBarOuter.appendChild(_healthBarFill);
