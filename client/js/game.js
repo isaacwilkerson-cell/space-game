@@ -486,13 +486,93 @@ function _updateTDMZone() {
       _tdmCountdownLastTick = now;
     }
     if (_tdmCountdown <= 0) {
-      enterTDMArena();
+      _startTDMIntro();
     } else {
       _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}...`;
     }
   } else {
     _tdmCountdown = null;
     _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
+  }
+}
+
+// ── Team intro screen — plays between the lobby countdown and the actual teleport ──
+// A camera orbit around the arena, gamertags split into two colored teams, and a 10s
+// countdown before gameplay actually starts.
+const _tdmTeamsEl = document.createElement('div');
+_tdmTeamsEl.style.cssText = 'position:fixed;inset:0;z-index:550;display:none;flex-direction:column;align-items:center;padding-top:8vh;font-family:monospace;color:#fff;pointer-events:none;';
+_tdmTeamsEl.innerHTML = `
+  <div style="font-size:30px;letter-spacing:10px;text-shadow:0 0 14px #000;">TEAMS</div>
+  <div id="tdm-teams-countdown" style="font-size:54px;color:#0ff;text-shadow:0 0 16px #000;margin:14px 0 30px;">10</div>
+  <div style="display:flex;gap:140px;">
+    <div style="text-align:center;">
+      <div style="font-size:20px;color:#3f9;letter-spacing:5px;margin-bottom:12px;text-shadow:0 0 8px #000;">GOOD</div>
+      <div id="tdm-good-list" style="font-size:16px;line-height:2;color:#3f9;text-shadow:0 0 6px #000;"></div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:20px;color:#f44;letter-spacing:5px;margin-bottom:12px;text-shadow:0 0 8px #000;">EVIL</div>
+      <div id="tdm-evil-list" style="font-size:16px;line-height:2;color:#f44;text-shadow:0 0 6px #000;"></div>
+    </div>
+  </div>
+`;
+document.body.appendChild(_tdmTeamsEl);
+const _tdmGoodListEl = _tdmTeamsEl.querySelector('#tdm-good-list');
+const _tdmEvilListEl = _tdmTeamsEl.querySelector('#tdm-evil-list');
+const _tdmTeamsCountdownEl = _tdmTeamsEl.querySelector('#tdm-teams-countdown');
+
+let _tdmIntroCountdown = 10;
+let _tdmIntroLastTick = 0;
+let _tdmIntroOrbitAngle = 0;
+window._tdmTeams = { good: [], evil: [] }; // { id, name } per side — exposed on window for later teammate/enemy logic
+
+function _startTDMIntro() {
+  if (gameMode === 'tdm_intro' || gameMode === 'tdm') return;
+  gameMode = 'tdm_intro';
+  _tdmEl.style.display = 'none';
+
+  // Same id on every client (self.id === the server's socket id for that player), so
+  // sorting by id gives every connected client the identical, deterministic split —
+  // no need to have the server broadcast team assignments separately.
+  const players = [{ id: self.id, name: self.name || 'You' }];
+  Object.entries(remotePlayers).forEach(([id, rp]) => {
+    if (rp.fpMode === 'lobby') players.push({ id, name: (rp.data && rp.data.name) || 'Pilot' });
+  });
+  players.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const half = Math.ceil(players.length / 2);
+  window._tdmTeams = { good: players.slice(0, half), evil: players.slice(half) };
+  window._tdmMyTeam = window._tdmTeams.good.some(p => p.id === self.id) ? 'good' : 'evil';
+
+  _tdmGoodListEl.innerHTML = window._tdmTeams.good.map(p => `<div>${p.name}</div>`).join('') || '<div>—</div>';
+  _tdmEvilListEl.innerHTML = window._tdmTeams.evil.map(p => `<div>${p.name}</div>`).join('') || '<div>—</div>';
+
+  _tdmIntroCountdown = 10;
+  _tdmIntroLastTick = Date.now();
+  _tdmIntroOrbitAngle = 0;
+  _tdmTeamsCountdownEl.textContent = String(_tdmIntroCountdown);
+  _tdmTeamsEl.style.display = 'flex';
+}
+
+function _updateTDMIntro() {
+  const center = _tdmArenaBBox ? _tdmArenaBBox.getCenter(new THREE.Vector3()) : new THREE.Vector3();
+  const radius = _tdmArenaBBox ? Math.max(_tdmArenaBBox.max.x - _tdmArenaBBox.min.x, _tdmArenaBBox.max.z - _tdmArenaBBox.min.z) * 0.6 : 400;
+  const height = _tdmArenaBBox ? _tdmArenaBBox.max.y + radius * 0.35 : 200;
+  _tdmIntroOrbitAngle += 0.0035;
+  camera.position.set(
+    center.x + Math.cos(_tdmIntroOrbitAngle) * radius,
+    center.y + height,
+    center.z + Math.sin(_tdmIntroOrbitAngle) * radius
+  );
+  camera.lookAt(center.x, center.y, center.z);
+
+  const now = Date.now();
+  if (now - _tdmIntroLastTick >= 1000) {
+    _tdmIntroCountdown = Math.max(0, _tdmIntroCountdown - Math.floor((now - _tdmIntroLastTick) / 1000));
+    _tdmIntroLastTick = now;
+    _tdmTeamsCountdownEl.textContent = String(_tdmIntroCountdown);
+  }
+  if (_tdmIntroCountdown <= 0) {
+    _tdmTeamsEl.style.display = 'none';
+    enterTDMArena();
   }
 }
 
@@ -5288,6 +5368,8 @@ function animate(t) {
     elPos.textContent = window._adminMode
       ? `X:${fpPos.x.toFixed(1)} Y:${fpPos.y.toFixed(1)} Z:${fpPos.z.toFixed(1)} ⚡ADMIN`
       : `${fpPos.x.toFixed(1)}, ${fpPos.z.toFixed(1)} (fp)`;
+  } else if (gameMode === 'tdm_intro') {
+    _updateTDMIntro();
   } else if (gameMode === 'ejected') {
     updateEjected();
     updateAtmosphere();
@@ -5399,7 +5481,7 @@ function animate(t) {
   // Stars update every frame except when docked, in shooting range, or on a planet
   // surface — the surface scene renders separately and never shows the starfield,
   // so updating it there was pure wasted work hurting surface framerate.
-  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'planet_surface' && window._updateStars) {
+  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'tdm_intro' && gameMode !== 'planet_surface' && window._updateStars) {
     if (window._setStarsVisible) window._setStarsVisible(true);
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
@@ -5408,7 +5490,7 @@ function animate(t) {
   }
   if (gameMode === 'range') {
     renderer.render(shootingRangeScene, camera);
-  } else if (gameMode === 'tdm') {
+  } else if (gameMode === 'tdm' || gameMode === 'tdm_intro') {
     renderer.render(tdmScene, camera);
   } else if (gameMode === 'planet_surface') {
     const _surfAtm = _surfCurrentPlanet && _surfCurrentPlanet.userData.atmosphere;
