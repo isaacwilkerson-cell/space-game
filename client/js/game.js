@@ -346,6 +346,8 @@ let _slideTimer = 0;
 let _prevCrouchKey = false;
 const SLIDE_DURATION = 55;
 const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the slide
+const SLIDE_COOLDOWN = 45; // frames after a slide ends before another can be triggered — stops spam-sliding
+let _slideCooldownTimer = 0;
 let fpBobT = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -618,6 +620,7 @@ const _TDM_EYE_OFFSET = 16;
 // which means the horizontal collision must never sample within this range, or it'll
 // block you from ever walking into (and therefore auto-stepping onto) short objects.
 const _TDM_MAX_STEP_UP = 7;
+const _TDM_ASTRONAUT_SCALE = 2; // was 6 — way too big relative to other players
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
@@ -731,7 +734,6 @@ function enterTDMArena() {
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 1.0;
   _tdmEl.style.display = 'none';
-  _tdmDebugEl.style.display = 'block';
   // Real wait: stays up until the 32MB map has actually finished downloading/parsing
   // AND had a real chance to compile shaders + upload textures to the GPU (the warm-up
   // render pass). The old 15s timeoutMs was force-hiding this before a slow download
@@ -2764,8 +2766,16 @@ function _restoreSceneLights(){ _sceneAmbient.intensity = 2.5; _dirLight.intensi
 
 // ── Health / damage ──────────────────────────────────────────────────────────
 const _healthEl = document.getElementById('health');
+const _healthBarOuter = document.createElement('div');
+_healthBarOuter.style.cssText = 'position:fixed;bottom:70px;left:20px;width:160px;height:10px;border:1px solid rgba(255,255,255,0.6);border-radius:5px;overflow:hidden;background:rgba(0,0,0,0.4);z-index:45;';
+const _healthBarFill = document.createElement('div');
+_healthBarFill.style.cssText = 'width:100%;height:100%;background:#fff;box-shadow:0 0 6px #fff;transition:width 0.15s;';
+_healthBarOuter.appendChild(_healthBarFill);
+document.body.appendChild(_healthBarOuter);
+
 function _updateHealthHUD() {
   if (_healthEl) _healthEl.textContent = Math.round(self.health);
+  _healthBarFill.style.width = Math.max(0, Math.min(100, self.health)) + '%';
 }
 
 // Full-screen red vignette that flashes when you take damage
@@ -2781,6 +2791,34 @@ function _flashDamageVignette() {
   _damageVignetteEl.style.opacity = '1';
   clearTimeout(_damageVignetteTimeout);
   _damageVignetteTimeout = setTimeout(() => { _damageVignetteEl.style.opacity = '0'; }, 350);
+  _lastDamageTime = Date.now(); // regen only kicks in a few seconds after the last hit
+}
+
+// Full-screen white vignette shown continuously while health is passively regenerating
+// — same shape as the damage flash, just white and only visible during regen (not a
+// one-shot flash).
+const _regenVignetteEl = document.createElement('div');
+_regenVignetteEl.style.cssText = `
+  position:fixed; inset:0; z-index:59; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, transparent 55%, rgba(255,255,255,0.35) 100%);
+  transition:opacity 0.3s;
+`;
+document.body.appendChild(_regenVignetteEl);
+
+const HEALTH_REGEN_DELAY_MS = 3000; // time since last damage before regen starts
+const HEALTH_REGEN_PER_SEC = 8;
+let _lastDamageTime = 0;
+function _updateHealthRegen() {
+  if (self.health <= 0 || self.health >= 100) {
+    _regenVignetteEl.style.opacity = '0';
+    return;
+  }
+  const regenerating = Date.now() - _lastDamageTime >= HEALTH_REGEN_DELAY_MS;
+  _regenVignetteEl.style.opacity = regenerating ? '1' : '0';
+  if (regenerating) {
+    self.health = Math.min(100, self.health + HEALTH_REGEN_PER_SEC / 60); // called once per frame (~60fps)
+    _updateHealthHUD();
+  }
 }
 
 // Die with any weapon equipped → wake up back in your room with nothing
@@ -3346,10 +3384,12 @@ function updateFP() {
   // Crouching while sprinting triggers a slide — a one-shot burst that decays back down.
   // Once triggered it plays out fully; you don't need to keep holding the key.
   const _wasSprintingFP = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'] && fpVel.lengthSq() > 0.3;
-  if (_crouchKeyDown && !_prevCrouchKey && _wasSprintingFP) {
+  if (_crouchKeyDown && !_prevCrouchKey && _wasSprintingFP && _slideCooldownTimer <= 0) {
     _slideTimer = SLIDE_DURATION;
+    _slideCooldownTimer = SLIDE_DURATION + SLIDE_COOLDOWN;
     fpVel.setLength(FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL); // launch the slide
   }
+  if (_slideCooldownTimer > 0) _slideCooldownTimer--;
   _prevCrouchKey = _crouchKeyDown;
   const _crouching = _crouchKeyDown || _slideTimer > 0; // stay low for the whole slide
   _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
@@ -4191,7 +4231,7 @@ function _updateSelfAstronaut() {
     wantScene.add(_selfAstronautMesh);
   }
   _selfAstronautMesh.visible = true;
-  _selfAstronautMesh.scale.setScalar(gameMode === 'tdm' ? 6 : 1); // arena map is huge-scale, astronaut needs to match
+  _selfAstronautMesh.scale.setScalar(gameMode === 'tdm' ? _TDM_ASTRONAUT_SCALE : 1); // arena map is huge-scale, astronaut needs to match
   _selfAstronautMesh.position.set(fpPos.x, fpPos.y, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
 }
@@ -4282,11 +4322,11 @@ function addRemotePlayer(data) {
   // collisionRadius/collisionCenterOffset directly as world-space values, so they need
   // to be rescaled by the same factor — same fix as the range astronaut above.
   const _tdmAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
-  _tdmAstronaut.scale.multiplyScalar(6);
+  _tdmAstronaut.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE);
   if (_astronautLobbyTemplate) {
-    _tdmAstronaut.userData.collisionRadius *= 6;
-    _tdmAstronaut.userData.collisionHeight *= 6;
-    if (_tdmAstronaut.userData.collisionCenterOffset) _tdmAstronaut.userData.collisionCenterOffset.multiplyScalar(6);
+    _tdmAstronaut.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
+    _tdmAstronaut.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
+    if (_tdmAstronaut.userData.collisionCenterOffset) _tdmAstronaut.userData.collisionCenterOffset.multiplyScalar(_TDM_ASTRONAUT_SCALE);
   }
   tdmMesh.add(_tdmAstronaut);
   tdmMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
@@ -4300,7 +4340,7 @@ function addRemotePlayer(data) {
   const lobbyTag   = _makeNameTag(tagName); lobbyTag.scale.set(14, 3.5, 1);  lobbyTag.position.set(0, 24, 0);   lobbyMesh.add(lobbyTag);
   const roomTag    = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);    roomTag.position.set(0, 115, 0);   roomMesh.add(roomTag);
   const rangeTag   = _makeNameTag(tagName); rangeTag.scale.set(14, 3.5, 1);  rangeTag.position.set(0, 24, 0);   rangeMesh.add(rangeTag);
-  const tdmTag     = _makeNameTag(tagName); tdmTag.scale.set(84, 21, 1);     tdmTag.position.set(0, 144, 0);    tdmMesh.add(tdmTag);
+  const tdmTag     = _makeNameTag(tagName); tdmTag.scale.set(14 * _TDM_ASTRONAUT_SCALE, 3.5 * _TDM_ASTRONAUT_SCALE, 1); tdmTag.position.set(0, 24 * _TDM_ASTRONAUT_SCALE, 0); tdmMesh.add(tdmTag);
   const planetTag  = _makeNameTag(tagName, false); planetTag.scale.set(0.12, 0.03, 1);  planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
   const ejectedTag = _makeNameTag(tagName, false); ejectedTag.scale.set(0.12, 0.03, 1); ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
 
@@ -4357,10 +4397,10 @@ function _updateRemoteFPMeshes(p) {
         const _astro = _cloneAstronaut(tmpl);
         if (fpMode === 'range') _astro.scale.multiplyScalar(48 / 18); // 30 units bigger in the range
         if (fpMode === 'tdm') {
-          _astro.scale.multiplyScalar(6); // matches _selfAstronautMesh's tdm scale
-          _astro.userData.collisionRadius *= 6;
-          _astro.userData.collisionHeight *= 6;
-          if (_astro.userData.collisionCenterOffset) _astro.userData.collisionCenterOffset.multiplyScalar(6);
+          _astro.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE); // matches _selfAstronautMesh's tdm scale
+          _astro.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
+          _astro.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
+          if (_astro.userData.collisionCenterOffset) _astro.userData.collisionCenterOffset.multiplyScalar(_TDM_ASTRONAUT_SCALE);
         }
         target.add(_astro);
         target.userData.hasAstronaut = true;
@@ -4591,7 +4631,7 @@ function drawReticle() {
     rCtx.fillText(_coordStr, cx + 14, cy - 10);
   }
 
-  if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'range' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
+  if (!pointerLocked || gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'hangar' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'ejected' || gameMode === 'planet_walk' || gameMode === 'landing_anim' || gameMode === 'takeoff_anim') return;
 
   // Outer boundary ring
   rCtx.beginPath();
@@ -5382,6 +5422,7 @@ if (socket) {
 // ── Main loop ─────────────────────────────────────────────────────────────────
 function animate(t) {
   requestAnimationFrame(animate);
+  _updateHealthRegen();
   if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
     updateFP();
     elPos.textContent = window._adminMode
