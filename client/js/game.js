@@ -4486,7 +4486,18 @@ function _updateRemoteFPMeshes(p) {
 
 // ── Input ─────────────────────────────────────────────────────────────────────
 const keys = {};
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'F11') {
+    // The blanket preventDefault() below blocks the browser's own F11 fullscreen toggle
+    // (it swallows every key), so handle it explicitly instead of just skipping it.
+    e.preventDefault();
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+    return;
+  }
+  keys[e.key.toLowerCase()] = true;
+  e.preventDefault();
+});
 window.addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
 
 // Pointer lock + NMS-style reticle steering
