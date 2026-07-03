@@ -1634,11 +1634,11 @@ const WEAPON_DEFS = {
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes. damage: HP per
   // projectile that lands on a player (shotgun pellets each do their own smaller damage).
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 18 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 18 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 16 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 18 },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 11 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -2535,6 +2535,7 @@ function _getRemotePlayerHitTargets() {
                 : gameMode === 'range'   ? 'rangeMesh'
                 : gameMode === 'tdm'     ? 'tdmMesh'
                 : gameMode === 'planet_walk' ? 'planetMesh'
+                : gameMode === 'planet_surface' ? 'planetSurfMesh'
                 : gameMode === 'ejected' ? 'ejectedMesh'
                 : null;
   if (!meshKey) return [];
@@ -4351,6 +4352,13 @@ function addRemotePlayer(data) {
   scene.add(planetMesh);
   planetMesh.visible = false;
 
+  // FP mesh for the terrain-based planet surface walk (separate scene/mode from the
+  // older spherical planet_walk above — this is the one actually reachable from landing
+  // on a planet's GLB terrain).
+  const planetSurfMesh = new THREE.Group();
+  _planetSurfScene.add(planetSurfMesh);
+  planetSurfMesh.visible = false;
+
   // FP mesh for ejected (floating astronaut in main scene)
   const ejectedMesh = new THREE.Group();
   scene.add(ejectedMesh);
@@ -4406,6 +4414,8 @@ function addRemotePlayer(data) {
   tdmMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   planetMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
+  planetSurfMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  planetSurfMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   ejectedMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
 
@@ -4416,9 +4426,10 @@ function addRemotePlayer(data) {
   const rangeTag   = _makeNameTag(tagName); rangeTag.scale.set(14, 3.5, 1);  rangeTag.position.set(0, 24, 0);   rangeMesh.add(rangeTag);
   const tdmTag     = _makeNameTag(tagName); tdmTag.scale.set(14 * _TDM_ASTRONAUT_SCALE, 3.5 * _TDM_ASTRONAUT_SCALE, 1); tdmTag.position.set(0, 24 * _TDM_ASTRONAUT_SCALE, 0); tdmMesh.add(tdmTag);
   const planetTag  = _makeNameTag(tagName, false); planetTag.scale.set(0.12, 0.03, 1);  planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
+  const planetSurfTag = _makeNameTag(tagName); planetSurfTag.scale.set(14, 3.5, 1); planetSurfTag.position.set(0, 24, 0); planetSurfMesh.add(planetSurfTag);
   const ejectedTag = _makeNameTag(tagName, false); ejectedTag.scale.set(0.12, 0.03, 1); ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
 
-  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, tdmMesh, planetMesh, ejectedMesh, data, fpMode: null };
+  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, tdmMesh, planetMesh, planetSurfMesh, ejectedMesh, data, fpMode: null };
 }
 
 function removeRemotePlayer(id) {
@@ -4430,6 +4441,7 @@ function removeRemotePlayer(id) {
   shootingRangeScene.remove(rp.rangeMesh);
   tdmScene.remove(rp.tdmMesh);
   scene.remove(rp.planetMesh);
+  _planetSurfScene.remove(rp.planetSurfMesh);
   scene.remove(rp.ejectedMesh);
   delete remotePlayers[id];
 }
@@ -4450,6 +4462,7 @@ function _updateRemoteFPMeshes(p) {
   rp.rangeMesh.visible    = fpMode === 'range';
   rp.tdmMesh.visible      = fpMode === 'tdm';
   rp.planetMesh.visible   = fpMode === 'planet_walk';
+  rp.planetSurfMesh.visible = fpMode === 'planet_surface';
   rp.ejectedMesh.visible  = fpMode === 'ejected';
 
   if (fpMode && p.fpPos) {
@@ -4457,6 +4470,7 @@ function _updateRemoteFPMeshes(p) {
                  : fpMode === 'range'       ? rp.rangeMesh
                  : fpMode === 'tdm'         ? rp.tdmMesh
                  : fpMode === 'planet_walk' ? rp.planetMesh
+                 : fpMode === 'planet_surface' ? rp.planetSurfMesh
                  : fpMode === 'ejected'     ? rp.ejectedMesh
                  : rp.roomMesh;
     target.position.set(p.fpPos.x, p.fpPos.y, p.fpPos.z);
@@ -5507,11 +5521,13 @@ if (socket) {
 
   setInterval(() => {
     if (!self.id) return;
-    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk' || gameMode === 'ejected' || gameMode === 'tdm';
+    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk' || gameMode === 'planet_surface' || gameMode === 'ejected' || gameMode === 'tdm';
     const _fpBroadcastPos = (gameMode === 'planet_walk' || gameMode === 'ejected')
       ? { x: camera.position.x, y: camera.position.y, z: camera.position.z }
+      : gameMode === 'planet_surface'
+      ? { x: _surfPos.x, y: _surfPos.y, z: _surfPos.z }
       : { x: fpPos.x, y: fpPos.y, z: fpPos.z };
-    const _fpBroadcastYaw = gameMode === 'planet_walk' ? _pwYaw : fpYaw;
+    const _fpBroadcastYaw = gameMode === 'planet_walk' ? _pwYaw : gameMode === 'planet_surface' ? _surfYaw : fpYaw;
     socket.emit('player_update', {
       position: { x: self.position.x, y: self.position.y, z: self.position.z },
       rotation: { x: selfMesh.rotation.x, y: selfMesh.rotation.y, z: selfMesh.rotation.z },
