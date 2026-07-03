@@ -512,7 +512,7 @@ tdmScene.add(_tdmSkyDome);
 let _tdmArenaCollidables = [];
 let _tdmArenaBBox = null;
 let _tdmFloorY = 2; // fallback value, real per-position height comes from _tdmGroundHeightAt()
-const _TDM_SPAWN_X = -35, _TDM_SPAWN_Z = -555;
+let _tdmSpawnX = -35, _tdmSpawnZ = -555; // clamped into the map's real footprint once it loads (see below)
 // Ground reference = raycasted surface height + the apex height of a TDM jump
 // (v^2 / 2g with FP_JUMP_V * 3.5 initial velocity, ~22 units) instead of a small
 // fixed offset — puts "ground" at roughly where the top of a jump used to land you,
@@ -577,7 +577,15 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   });
   tdmScene.add(model);
   _tdmArenaBBox = new THREE.Box3().setFromObject(model);
-  _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
+  // The requested spawn point (-35, -555) may sit entirely outside the model's real
+  // footprint (its actual extent depends on the asset's own aspect ratio, which we don't
+  // know ahead of time) — clamp it into the bbox so the player never ends up floating
+  // over empty space with nothing but sky around them.
+  const _PAD = 20;
+  _tdmSpawnX = Math.max(_tdmArenaBBox.min.x + _PAD, Math.min(_tdmArenaBBox.max.x - _PAD, _tdmSpawnX));
+  _tdmSpawnZ = Math.max(_tdmArenaBBox.min.z + _PAD, Math.min(_tdmArenaBBox.max.z - _PAD, _tdmSpawnZ));
+  _tdmFloorY = _tdmGroundHeightAt(_tdmSpawnX, _tdmSpawnZ);
+  console.log('[TDM] map bbox:', _tdmArenaBBox.min, _tdmArenaBBox.max, 'clamped spawn:', _tdmSpawnX, _tdmSpawnZ, 'floorY:', _tdmFloorY, 'meshes:', _tdmArenaCollidables.length);
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -592,11 +600,11 @@ function enterTDMArena() {
   _killAllExteriorLights();
   lobbyScene.visible = false;
   interiorScene.visible = false;
-  _tdmFloorY = _tdmGroundHeightAt(_TDM_SPAWN_X, _TDM_SPAWN_Z);
+  _tdmFloorY = _tdmGroundHeightAt(_tdmSpawnX, _tdmSpawnZ);
   _tdmLastFloor = _tdmFloorY; // reset step-up clamp for the new run
   _tdmWasGrounded = true;
   _tdmStandingMesh = null;
-  fpPos.set(_TDM_SPAWN_X, _tdmFloorY, _TDM_SPAWN_Z);
+  fpPos.set(_tdmSpawnX, _tdmFloorY, _tdmSpawnZ);
   fpVel.set(0, 0, 0);
   fpYaw = 0; fpPitch = 0;
   camera.position.copy(fpPos);
