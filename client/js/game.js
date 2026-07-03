@@ -4302,7 +4302,7 @@ function addRemotePlayer(data) {
   // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 5 units total.
   const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 18) * _rangeScaleXZ;
   const _rangeScaleY = (_baseHeight + 5) / _baseHeight;
-  const _rangeDropY = 6.5;
+  const _rangeDropY = 7.5;
   _rangeAstronaut.scale.y *= _rangeScaleY;
   _rangeAstronaut.position.y -= _rangeDropY;
   // Hit-detection reads collisionRadius/collisionHeight/collisionCenterOffset directly as
@@ -4323,6 +4323,7 @@ function addRemotePlayer(data) {
   // to be rescaled by the same factor — same fix as the range astronaut above.
   const _tdmAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   _tdmAstronaut.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE);
+  _tdmAstronaut.position.y += 1;
   if (_astronautLobbyTemplate) {
     _tdmAstronaut.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
     _tdmAstronaut.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
@@ -4398,6 +4399,7 @@ function _updateRemoteFPMeshes(p) {
         if (fpMode === 'range') _astro.scale.multiplyScalar(48 / 18); // 30 units bigger in the range
         if (fpMode === 'tdm') {
           _astro.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE); // matches _selfAstronautMesh's tdm scale
+          _astro.position.y += 1;
           _astro.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
           _astro.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
           if (_astro.userData.collisionCenterOffset) _astro.userData.collisionCenterOffset.multiplyScalar(_TDM_ASTRONAUT_SCALE);
@@ -5222,6 +5224,7 @@ const elZone   = document.getElementById('zone-indicator');
 const elPcount = document.getElementById('pcount');
 const elName   = document.getElementById('pilot-name');
 const elHud    = document.getElementById('hud');
+const elControls = document.getElementById('controls');
 
 function updateHUD() {
   // HUD shake mirrors camera shake
@@ -5423,6 +5426,8 @@ if (socket) {
 function animate(t) {
   requestAnimationFrame(animate);
   _updateHealthRegen();
+  // Ship flight-control legend only makes sense while actually piloting the ship.
+  elControls.style.display = gameMode === 'flight' ? 'block' : 'none';
   if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
     updateFP();
     elPos.textContent = window._adminMode
