@@ -536,6 +536,11 @@ let _tdmSpawnX = -35, _tdmSpawnZ = -555; // clamped into the map's real footprin
 // fixed offset — puts "ground" at roughly where the top of a jump used to land you,
 // since the map kept spawning you underneath it otherwise.
 const _TDM_EYE_OFFSET = 16;
+// Shared between the floor step-up logic and the horizontal wall-collision height
+// sampling below — anything at or under this height should always be auto-climbable,
+// which means the horizontal collision must never sample within this range, or it'll
+// block you from ever walking into (and therefore auto-stepping onto) short objects.
+const _TDM_MAX_STEP_UP = 14;
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
@@ -3307,10 +3312,12 @@ function updateFP() {
     // actual ground — offsets here must be measured from the ground, not from fpPos.y,
     // or every ray ends up sampling 15-24 units in the air, over doorways and short objects.
     const _tdmGroundRef = gameMode === 'tdm' ? fpPos.y - _TDM_EYE_OFFSET : fpPos.y;
-    // Lowest sample must stay ABOVE the ground/feet level — a ray at or below foot height
-    // ends up cast from inside whatever solid object you're currently standing on top of,
-    // hitting its own wall at ~0 distance and blocking movement in every direction.
-    const _heightOffsets = gameMode === 'tdm' ? [0.5, 1, 2, 3, 4, 5, 6, 8] : [1];
+    // Lowest sample must stay ABOVE _TDM_MAX_STEP_UP — anything shorter than that is meant
+    // to be auto-climbed by the floor step-up logic, not blocked here. Sampling any lower
+    // both (a) fights the step-up logic, since you can never walk into a climbable object
+    // to begin with, and (b) can catch the top edge/lip of whatever you're currently
+    // standing on when you try to walk off it.
+    const _heightOffsets = gameMode === 'tdm' ? [_TDM_MAX_STEP_UP + 1, _TDM_MAX_STEP_UP + 3, _TDM_MAX_STEP_UP + 6, _TDM_MAX_STEP_UP + 10] : [1];
 
     // Try X and Z axes independently (slide)
     const axes = [
@@ -3423,7 +3430,7 @@ function updateFP() {
     // airborne (landing on top of something you jumped onto) — while walking on the
     // ground, a big rise ahead is a wall/object edge and should block you, not carry you
     // up onto it.
-    const MAX_STEP_UP = 14;
+    const MAX_STEP_UP = _TDM_MAX_STEP_UP;
     if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor || !_tdmWasGrounded) {
       _tdmLastFloor = _rawGround;
     }
