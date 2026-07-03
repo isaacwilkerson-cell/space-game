@@ -593,10 +593,13 @@ function enterTDMArena() {
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 1.0;
   _tdmEl.style.display = 'none';
-  // Short warm-up (not the full ~1.5s version) so the map's shaders/textures are at
-  // least partly ready before the overlay drops, without reintroducing the long wait.
+  // Real wait: stays up until the 32MB map has actually finished downloading/parsing
+  // AND had a real chance to compile shaders + upload textures to the GPU (the warm-up
+  // render pass). The old 15s timeoutMs was force-hiding this before a slow download
+  // finished, dropping the player into an arena that wasn't actually ready yet — give it
+  // a much longer safety cap instead so it only ever cuts off in a genuinely broken load.
   let _tdmWarmFrames = 0;
-  const _tdmWarmTarget = 20;
+  const _tdmWarmTarget = 90;
   _showLoadingScreen('LOADING ARENA', () => {
     if (_tdmArenaCollidables.length === 0) return false;
     if (_tdmWarmFrames < _tdmWarmTarget) {
@@ -605,7 +608,7 @@ function enterTDMArena() {
       return false;
     }
     return true;
-  }, { timeoutMs: 15000, minShowMs: 150 });
+  }, { timeoutMs: 120000, minShowMs: 150 });
 }
 
 function exitTDMArena() {
