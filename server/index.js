@@ -39,6 +39,9 @@ function inTDMZone(pos) {
 }
 let _tdmCountdownEndsAt = null;
 let _tdmParticipants = [];
+const TDM_MATCH_DURATION_MS = 3 * 60 * 1000;
+let _tdmMatchEndsAt = null;
+let _tdmMatchParticipants = [];
 
 function isValidVec(v) {
   return v && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.z === 'number'
@@ -68,6 +71,8 @@ io.on('connection', (socket) => {
     fpMode: null,
     fpPos: null,
     fpYaw: null,
+    tdmKills: 0,
+    tdmDeaths: 0,
   };
 
   socket.emit('init', {
@@ -100,6 +105,7 @@ io.on('connection', (socket) => {
     try {
       if (!data || typeof data.targetId !== 'string') return;
       const target = players[data.targetId];
+      const killer = players[socket.id];
       if (!target || data.targetId === socket.id) return; // no self-damage
       const damage = typeof data.damage === 'number' && isFinite(data.damage)
         ? Math.max(0, Math.min(100, data.damage)) : 10;
@@ -108,6 +114,14 @@ io.on('connection', (socket) => {
       if (target.health <= 0) {
         target.health = 100; // respawn full health
         io.to(data.targetId).emit('you_died', { killerId: socket.id });
+        // In an active TDM match (both players currently in the arena), the kill counts
+        // toward the running match stats and both players respawn at their team's spawn
+        // point instead of the normal "eject back to your room" flow.
+        if (killer && killer.fpMode === 'tdm' && target.fpMode === 'tdm') {
+          killer.tdmKills++;
+          target.tdmDeaths++;
+          io.emit('tdm_kill', { killerId: socket.id, victimId: data.targetId });
+        }
       }
     } catch(e) {
       console.error('player_hit error:', e.message);
@@ -151,6 +165,12 @@ setInterval(() => {
     }
     if (Date.now() >= _tdmCountdownEndsAt) {
       io.emit('tdm_go', { participants: _tdmParticipants });
+      // Start the match clock and reset each participant's running kill/death tally.
+      _tdmMatchEndsAt = Date.now() + TDM_MATCH_DURATION_MS;
+      _tdmMatchParticipants = _tdmParticipants;
+      _tdmMatchParticipants.forEach(id => {
+        if (players[id]) { players[id].tdmKills = 0; players[id].tdmDeaths = 0; }
+      });
       _tdmCountdownEndsAt = null;
       _tdmParticipants = [];
     }
@@ -158,6 +178,18 @@ setInterval(() => {
     _tdmCountdownEndsAt = null;
     _tdmParticipants = [];
     io.emit('tdm_countdown_cancel');
+  }
+
+  if (_tdmMatchEndsAt !== null && Date.now() >= _tdmMatchEndsAt) {
+    const stats = _tdmMatchParticipants.map(id => ({
+      id,
+      name: players[id] ? players[id].name : 'Pilot',
+      kills: players[id] ? players[id].tdmKills : 0,
+      deaths: players[id] ? players[id].tdmDeaths : 0,
+    }));
+    io.emit('tdm_match_end', { participants: _tdmMatchParticipants, stats });
+    _tdmMatchEndsAt = null;
+    _tdmMatchParticipants = [];
   }
 }, 500);
 

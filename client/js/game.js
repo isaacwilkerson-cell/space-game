@@ -561,6 +561,66 @@ function _updateTDMIntro() {
   }
 }
 
+// ── Match-end stats screen ──────────────────────────────────────────────────
+const _tdmEndEl = document.createElement('div');
+_tdmEndEl.style.cssText = 'position:fixed;inset:0;z-index:560;display:none;flex-direction:column;align-items:center;justify-content:center;font-family:monospace;color:#fff;background:rgba(0,0,0,0.75);';
+_tdmEndEl.innerHTML = `
+  <div style="font-size:30px;letter-spacing:8px;text-shadow:0 0 14px #000;margin-bottom:6px;">MATCH OVER</div>
+  <div id="tdm-end-winner" style="font-size:22px;letter-spacing:4px;margin-bottom:24px;text-shadow:0 0 10px #000;"></div>
+  <div id="tdm-end-personal" style="font-size:17px;letter-spacing:2px;margin-bottom:10px;color:#0ff;text-shadow:0 0 6px #000;"></div>
+  <div id="tdm-end-scoreboard" style="font-size:13px;line-height:1.7;margin-bottom:30px;text-align:center;color:#ccc;"></div>
+  <div style="display:flex;gap:24px;">
+    <button id="tdm-end-again" style="font-family:monospace;font-size:15px;letter-spacing:2px;padding:10px 22px;background:#0af;color:#000;border:none;border-radius:4px;cursor:pointer;">PLAY AGAIN</button>
+    <button id="tdm-end-lobby" style="font-family:monospace;font-size:15px;letter-spacing:2px;padding:10px 22px;background:#333;color:#fff;border:1px solid #888;border-radius:4px;cursor:pointer;">BACK TO LOBBY</button>
+  </div>
+`;
+document.body.appendChild(_tdmEndEl);
+_tdmEndEl.querySelector('#tdm-end-again').addEventListener('click', () => {
+  _tdmEndEl.style.display = 'none';
+  exitTDMArena();
+});
+_tdmEndEl.querySelector('#tdm-end-lobby').addEventListener('click', () => {
+  _tdmEndEl.style.display = 'none';
+  exitTDMArena();
+});
+
+function _showTDMMatchEnd(stats) {
+  if (gameMode !== 'tdm') return; // don't yank someone who already left back into a results screen
+  document.exitPointerLock(); // release the mouse so the buttons below are actually clickable
+  const list = Array.isArray(stats) ? stats : [];
+  const goodIds = new Set((window._tdmTeams.good || []).map(p => p.id));
+  const evilIds = new Set((window._tdmTeams.evil || []).map(p => p.id));
+  let goodKills = 0, evilKills = 0;
+  list.forEach(s => {
+    if (goodIds.has(s.id)) goodKills += s.kills;
+    else if (evilIds.has(s.id)) evilKills += s.kills;
+  });
+  const winnerEl = _tdmEndEl.querySelector('#tdm-end-winner');
+  if (goodKills === evilKills) {
+    winnerEl.textContent = 'DRAW';
+    winnerEl.style.color = '#fff';
+  } else if (goodKills > evilKills) {
+    winnerEl.textContent = `GOOD TEAM WINS  ${goodKills} — ${evilKills}`;
+    winnerEl.style.color = '#3f9';
+  } else {
+    winnerEl.textContent = `EVIL TEAM WINS  ${evilKills} — ${goodKills}`;
+    winnerEl.style.color = '#f44';
+  }
+
+  const mine = list.find(s => s.id === self.id) || { kills: 0, deaths: 0 };
+  const kd = mine.deaths > 0 ? (mine.kills / mine.deaths).toFixed(2) : mine.kills.toFixed(2);
+  _tdmEndEl.querySelector('#tdm-end-personal').textContent = `YOUR KILLS: ${mine.kills}   DEATHS: ${mine.deaths}   K/D: ${kd}`;
+
+  const sorted = list.slice().sort((a, b) => b.kills - a.kills);
+  _tdmEndEl.querySelector('#tdm-end-scoreboard').innerHTML = sorted.map(s => {
+    const team = goodIds.has(s.id) ? 'GOOD' : evilIds.has(s.id) ? 'EVIL' : '?';
+    const color = team === 'GOOD' ? '#3f9' : team === 'EVIL' ? '#f44' : '#ccc';
+    return `<div style="color:${color}">${s.name} [${team}] — ${s.kills}K / ${s.deaths}D</div>`;
+  }).join('');
+
+  _tdmEndEl.style.display = 'flex';
+}
+
 // ── TDM Arena — teleported into when the lobby countdown hits 0 ────────────────
 const tdmScene = new THREE.Scene();
 const _tdmAmbient = new THREE.AmbientLight(0xffffff, 1.0);
@@ -621,6 +681,8 @@ const _TDM_EYE_OFFSET = 16;
 // block you from ever walking into (and therefore auto-stepping onto) short objects.
 const _TDM_MAX_STEP_UP = 7;
 const _TDM_ASTRONAUT_SCALE = 2; // was 6 — way too big relative to other players
+const TDM_DAMAGE_MUL = 0.35; // weapons hit significantly softer in TDM so a 3-minute match doesn't end in seconds
+const TDM_MATCH_DURATION_MS = 3 * 60 * 1000;
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
@@ -712,15 +774,11 @@ _tdmExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:tr
 _tdmExitPrompt.textContent = '[ E ]  LEAVE ARENA';
 document.body.appendChild(_tdmExitPrompt);
 
-function enterTDMArena() {
-  if (gameMode === 'tdm') return; // already in
-  gameMode = 'tdm';
-  _killAllExteriorLights();
-  lobbyScene.visible = false;
-  interiorScene.visible = false;
-  // Good team spawns at the original spawn point, evil team spawns on the other side of
-  // the map. Default to good if a team was never assigned (e.g. entering without going
-  // through the intro screen).
+// Good team spawns at the original spawn point, evil team spawns on the other side of
+// the map. Default to good if a team was never assigned (e.g. entering without going
+// through the intro screen). Used both for the initial teleport and for respawning after
+// a kill mid-match.
+function _tdmRespawnAtTeamSpawn() {
   const _onEvil = window._tdmMyTeam === 'evil';
   const _spawnX = _onEvil ? _tdmSpawnEvilX : _tdmSpawnGoodX;
   const _spawnZ = _onEvil ? _tdmSpawnEvilZ : _tdmSpawnGoodZ;
@@ -730,10 +788,20 @@ function enterTDMArena() {
   _tdmStandingMesh = null;
   fpPos.set(_spawnX, _tdmFloorY, _spawnZ);
   fpVel.set(0, 0, 0);
-  fpYaw = 0; fpPitch = 0;
   camera.position.copy(fpPos);
+}
+
+function enterTDMArena() {
+  if (gameMode === 'tdm') return; // already in
+  gameMode = 'tdm';
+  _killAllExteriorLights();
+  lobbyScene.visible = false;
+  interiorScene.visible = false;
+  _tdmRespawnAtTeamSpawn();
+  fpYaw = 0; fpPitch = 0;
   renderer.toneMappingExposure = 1.0;
   _tdmEl.style.display = 'none';
+  _tdmEndEl.style.display = 'none';
   // Real wait: stays up until the 32MB map has actually finished downloading/parsing
   // AND had a real chance to compile shaders + upload textures to the GPU (the warm-up
   // render pass). The old 15s timeoutMs was force-hiding this before a slow download
@@ -2443,7 +2511,8 @@ function _firePellet(dir, activeScene) {
       _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
       // Tell the server so it can apply damage authoritatively and notify the victim.
       if (socket && bestHit.targetId) {
-        const dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
+        let dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
+        if (gameMode === 'tdm') dmg *= TDM_DAMAGE_MUL; // fights should last longer in a 3-minute match
         socket.emit('player_hit', { targetId: bestHit.targetId, damage: dmg });
       }
     } else if (gameMode === 'range') {
@@ -5363,8 +5432,25 @@ if (socket) {
     _flashDamageVignette();
   });
   socket.on('you_died', () => {
+    if (gameMode === 'tdm') {
+      // Server already reset health to 100 server-side before sending this, but the
+      // 'took_damage' just before it carried the damaged (possibly 0) value — apply the
+      // healed value locally. Actual respawn positioning happens via 'tdm_kill' below,
+      // which fires for both the killer and victim at once.
+      self.health = 100;
+      _updateHealthHUD();
+      return;
+    }
     if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'You died — respawning in your room', false);
     _respawnInRoom();
+  });
+  socket.on('tdm_kill', ({ killerId, victimId }) => {
+    if (self.id === killerId || self.id === victimId) {
+      if (gameMode === 'tdm') _tdmRespawnAtTeamSpawn();
+    }
+  });
+  socket.on('tdm_match_end', ({ stats }) => {
+    _showTDMMatchEnd(stats);
   });
   socket.on('player_joined', data => {
     addRemotePlayer(data);
