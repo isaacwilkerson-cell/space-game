@@ -4305,19 +4305,25 @@ function _buildProceduralAvatar(H) {
   return root;
 }
 
-// Preload astronaut models — different sizes for lobby vs room. Built synchronously (no
-// GLB fetch/parse), so unlike the old loadModel()-based templates these are available
-// immediately with no load race to worry about.
+// Preload astronaut models — different sizes for lobby vs room. Start with the procedural
+// box-humanoid immediately (no load wait), then swap in the nicer Blender-built model
+// (same node names/hierarchy — legL/legR/armL/armR/torso/head/gunSocket — so the exact
+// same _poseAvatar()/_setAvatarHeldWeapon() code keeps working unchanged) once it loads.
 let _astronautLobbyTemplate = _buildProceduralAvatar(18);
 let _astronautRoomTemplate  = _buildProceduralAvatar(100);
+loadModel('assets/avatar_blender.glb', 18, m => { if (m) _astronautLobbyTemplate = m; });
+loadModel('assets/avatar_blender.glb', 100, m => { if (m) _astronautRoomTemplate = m; });
 
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
   const clone = template.clone(true);
   // The old astronaut GLB had a baked-in 270° facing quirk this correction compensated
-  // for. The procedural avatar is built facing forward correctly from the start, so it
-  // doesn't need it — skip the correction for avatarRoot-based clones specifically.
-  if (template.name !== 'avatarRoot') clone.rotation.y -= Math.PI / 2 + Math.PI;
+  // for. Our own avatar (procedural or the Blender-built GLB, which nests an "avatarRoot"
+  // object rather than being one) is built facing forward correctly from the start, so it
+  // doesn't need it. getObjectByName searches descendants too, so this matches both the
+  // procedural root itself and a loaded GLB's "Scene" wrapper containing avatarRoot.
+  const _isOwnAvatar = template.name === 'avatarRoot' || (template.getObjectByName && template.getObjectByName('avatarRoot'));
+  if (!_isOwnAvatar) clone.rotation.y -= Math.PI / 2 + Math.PI;
   // Cache references to the animatable limb groups + hand socket so _poseAvatar() doesn't
   // need to re-traverse the hierarchy by name every frame for every visible player.
   clone.userData.avatarParts = {
