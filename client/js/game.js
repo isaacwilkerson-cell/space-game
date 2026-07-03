@@ -2373,6 +2373,7 @@ function _firePellet(dir, activeScene) {
 function _getRemotePlayerHitTargets() {
   const meshKey = gameMode === 'lobby'   ? 'lobbyMesh'
                 : gameMode === 'range'   ? 'rangeMesh'
+                : gameMode === 'tdm'     ? 'tdmMesh'
                 : gameMode === 'planet_walk' ? 'planetMesh'
                 : gameMode === 'ejected' ? 'ejectedMesh'
                 : null;
@@ -4142,6 +4143,11 @@ function addRemotePlayer(data) {
   shootingRangeScene.add(rangeMesh);
   rangeMesh.visible = false;
 
+  // FP mesh for TDM arena
+  const tdmMesh = new THREE.Group();
+  tdmScene.add(tdmMesh);
+  tdmMesh.visible = false;
+
   // FP mesh for planet walk (world space, lives in main scene)
   const planetMesh = new THREE.Group();
   scene.add(planetMesh);
@@ -4181,6 +4187,17 @@ function addRemotePlayer(data) {
   }
   rangeMesh.add(_rangeAstronaut);
   rangeMesh.userData.hasAstronaut = true;
+  // TDM arena's map is loaded at a much larger scale than other scenes (see
+  // _selfAstronautMesh's own 6x scale for the same reason). Hit-detection reads
+  // collisionRadius/collisionCenterOffset directly as world-space values, so they need
+  // to be rescaled by the same factor — same fix as the range astronaut above.
+  const _tdmAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
+  _tdmAstronaut.scale.multiplyScalar(6);
+  _tdmAstronaut.userData.collisionRadius *= 6;
+  _tdmAstronaut.userData.collisionHeight *= 6;
+  if (_tdmAstronaut.userData.collisionCenterOffset) _tdmAstronaut.userData.collisionCenterOffset.multiplyScalar(6);
+  tdmMesh.add(_tdmAstronaut);
+  tdmMesh.userData.hasAstronaut = true;
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   planetMesh.userData.hasAstronaut = true;
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
@@ -4191,10 +4208,11 @@ function addRemotePlayer(data) {
   const lobbyTag   = _makeNameTag(tagName); lobbyTag.scale.set(14, 3.5, 1);  lobbyTag.position.set(0, 24, 0);   lobbyMesh.add(lobbyTag);
   const roomTag    = _makeNameTag(tagName); roomTag.scale.set(60, 15, 1);    roomTag.position.set(0, 115, 0);   roomMesh.add(roomTag);
   const rangeTag   = _makeNameTag(tagName); rangeTag.scale.set(14, 3.5, 1);  rangeTag.position.set(0, 24, 0);   rangeMesh.add(rangeTag);
+  const tdmTag     = _makeNameTag(tagName); tdmTag.scale.set(84, 21, 1);     tdmTag.position.set(0, 144, 0);    tdmMesh.add(tdmTag);
   const planetTag  = _makeNameTag(tagName, false); planetTag.scale.set(0.12, 0.03, 1);  planetTag.position.set(0, 30, 0);  planetMesh.add(planetTag);
   const ejectedTag = _makeNameTag(tagName, false); ejectedTag.scale.set(0.12, 0.03, 1); ejectedTag.position.set(0, 20, 0); ejectedMesh.add(ejectedTag);
 
-  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, planetMesh, ejectedMesh, data, fpMode: null };
+  remotePlayers[data.id] = { mesh, lobbyMesh, roomMesh, rangeMesh, tdmMesh, planetMesh, ejectedMesh, data, fpMode: null };
 }
 
 function removeRemotePlayer(id) {
@@ -4204,6 +4222,7 @@ function removeRemotePlayer(id) {
   lobbyScene.remove(rp.lobbyMesh);
   interiorScene.remove(rp.roomMesh);
   shootingRangeScene.remove(rp.rangeMesh);
+  tdmScene.remove(rp.tdmMesh);
   scene.remove(rp.planetMesh);
   scene.remove(rp.ejectedMesh);
   delete remotePlayers[id];
@@ -4219,12 +4238,14 @@ function _updateRemoteFPMeshes(p) {
   rp.lobbyMesh.visible    = fpMode === 'lobby';
   rp.roomMesh.visible     = false; // room is private
   rp.rangeMesh.visible    = fpMode === 'range';
+  rp.tdmMesh.visible      = fpMode === 'tdm';
   rp.planetMesh.visible   = fpMode === 'planet_walk';
   rp.ejectedMesh.visible  = fpMode === 'ejected';
 
   if (fpMode && p.fpPos) {
     const target = fpMode === 'lobby'      ? rp.lobbyMesh
                  : fpMode === 'range'       ? rp.rangeMesh
+                 : fpMode === 'tdm'         ? rp.tdmMesh
                  : fpMode === 'planet_walk' ? rp.planetMesh
                  : fpMode === 'ejected'     ? rp.ejectedMesh
                  : rp.roomMesh;
@@ -4239,6 +4260,12 @@ function _updateRemoteFPMeshes(p) {
       if (tmpl) {
         const _astro = _cloneAstronaut(tmpl);
         if (fpMode === 'range') _astro.scale.multiplyScalar(48 / 18); // 30 units bigger in the range
+        if (fpMode === 'tdm') {
+          _astro.scale.multiplyScalar(6); // matches _selfAstronautMesh's tdm scale
+          _astro.userData.collisionRadius *= 6;
+          _astro.userData.collisionHeight *= 6;
+          if (_astro.userData.collisionCenterOffset) _astro.userData.collisionCenterOffset.multiplyScalar(6);
+        }
         target.add(_astro);
         target.userData.hasAstronaut = true;
       }
@@ -5226,7 +5253,7 @@ if (socket) {
 
   setInterval(() => {
     if (!self.id) return;
-    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk' || gameMode === 'ejected';
+    const inFP = gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'planet_walk' || gameMode === 'ejected' || gameMode === 'tdm';
     const _fpBroadcastPos = (gameMode === 'planet_walk' || gameMode === 'ejected')
       ? { x: camera.position.x, y: camera.position.y, z: camera.position.z }
       : { x: fpPos.x, y: fpPos.y, z: fpPos.z };
