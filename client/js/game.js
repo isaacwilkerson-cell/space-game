@@ -4316,7 +4316,7 @@ let _astronautRoomTemplate  = _buildProceduralAvatar(100);
 // procedural fallback's own convention) so it stands ON the floor instead of being
 // vertically centered ON it (half sunk into the ground). Shift back up by half the
 // model's own height to compensate, same fix the old astronaut.glb needed.
-loadModel('assets/avatar_blender.glb', 18, m => { if (m) { m.position.y += 7.4; _astronautLobbyTemplate = m; } });
+loadModel('assets/avatar_blender.glb', 18, m => { if (m) { m.position.y += -1.9; _astronautLobbyTemplate = m; } });
 loadModel('assets/avatar_blender.glb', 100, m => { if (m) { m.position.y += 50; _astronautRoomTemplate = m; } });
 
 function _cloneAstronaut(template) {
