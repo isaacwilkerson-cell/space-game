@@ -26,6 +26,20 @@ const TICK_RATE = 50; // ms per server tick (was 20 — 20ms floods slow connect
 
 const players = {};
 
+// ── TDM zone arbitration ────────────────────────────────────────────────────
+// Countdown/teleport used to be decided independently by each client's own clock, so one
+// client's local timer could hit zero a moment before another's — only that one player
+// would actually teleport. The server is now the single source of truth: it tracks who's
+// standing in the zone, runs the one real countdown, and broadcasts a single 'tdm_go'
+// event so every client starts the intro/teleport at the exact same instant.
+const TDM_ZONE = { minX: -147, maxX: -82, minZ: -26, maxZ: 22 };
+const TDM_COUNTDOWN_MS = 20000;
+function inTDMZone(pos) {
+  return pos && pos.x > TDM_ZONE.minX && pos.x < TDM_ZONE.maxX && pos.z > TDM_ZONE.minZ && pos.z < TDM_ZONE.maxZ;
+}
+let _tdmCountdownEndsAt = null;
+let _tdmParticipants = [];
+
 function isValidVec(v) {
   return v && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.z === 'number'
     && isFinite(v.x) && isFinite(v.y) && isFinite(v.z);
@@ -76,6 +90,7 @@ io.on('connection', (socket) => {
       player.fpMode = data.fpMode || null;
       player.fpPos  = isValidVec(data.fpPos) ? data.fpPos : null;
       player.fpYaw  = typeof data.fpYaw === 'number' && isFinite(data.fpYaw) ? data.fpYaw : null;
+      player.tdmZone = player.fpMode === 'lobby' && inTDMZone(player.fpPos);
     } catch(e) {
       console.error('player_update error:', e.message);
     }
@@ -113,6 +128,7 @@ io.on('connection', (socket) => {
     io.emit('player_left', socket.id);
   });
 
+
   socket.on('error', (err) => {
     console.error(`Socket error for ${socket.id}:`, err.message);
   });
@@ -123,6 +139,27 @@ setInterval(() => {
   const list = Object.values(players);
   if (list.length > 0) io.emit('world_state', list);
 }, TICK_RATE);
+
+// TDM zone countdown — single authoritative timer, ticked/broadcast every 500ms.
+setInterval(() => {
+  const inZoneIds = Object.values(players).filter(p => p.tdmZone).map(p => p.id);
+  if (inZoneIds.length >= 2) {
+    if (_tdmCountdownEndsAt === null) {
+      _tdmCountdownEndsAt = Date.now() + TDM_COUNTDOWN_MS;
+      _tdmParticipants = inZoneIds;
+      io.emit('tdm_countdown_start', { endsAt: _tdmCountdownEndsAt, participants: _tdmParticipants });
+    }
+    if (Date.now() >= _tdmCountdownEndsAt) {
+      io.emit('tdm_go', { participants: _tdmParticipants });
+      _tdmCountdownEndsAt = null;
+      _tdmParticipants = [];
+    }
+  } else if (_tdmCountdownEndsAt !== null) {
+    _tdmCountdownEndsAt = null;
+    _tdmParticipants = [];
+    io.emit('tdm_countdown_cancel');
+  }
+}, 500);
 
 // Keep process alive on unhandled errors
 process.on('uncaughtException', (err) => {

@@ -454,44 +454,26 @@ function _posInTDMZone(x, z) {
 function _inTDMZone() {
   return gameMode === 'lobby' && _posInTDMZone(fpPos.x, fpPos.z);
 }
-function _tdmPlayerCount() {
-  let n = _inTDMZone() ? 1 : 0;
-  Object.values(remotePlayers).forEach(rp => {
-    if (rp.fpMode === 'lobby' && rp.data && rp.data.fpPos && _posInTDMZone(rp.data.fpPos.x, rp.data.fpPos.z)) n++;
-  });
-  return n;
-}
 const _tdmEl = document.createElement('div');
 _tdmEl.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);color:#0ff;font-family:monospace;font-size:20px;letter-spacing:3px;text-align:center;text-shadow:0 0 8px #000;pointer-events:none;display:none;z-index:40;';
 document.body.appendChild(_tdmEl);
-let _tdmCountdown = null;
-let _tdmCountdownLastTick = 0;
+// The countdown itself is decided by the server (see 'tdm_countdown_start'/'tdm_go' socket
+// handlers below) — each client used to run its own independent local timer, so one
+// player's clock could reach zero a moment before another's and only THEY would actually
+// teleport. This function is now purely a display: it renders whatever the server most
+// recently said, and shows/hides based on whether the local player is in the zone.
+let _tdmServerEndsAt = null; // ms epoch from the server, or null if no countdown running
 function _updateTDMZone() {
-  const count = _tdmPlayerCount();
   const localInZone = _inTDMZone();
   if (!localInZone) {
     _tdmEl.style.display = 'none';
-    _tdmCountdown = null;
     return;
   }
   _tdmEl.style.display = 'block';
-  if (count >= 2) {
-    if (_tdmCountdown === null) {
-      _tdmCountdown = 20;
-      _tdmCountdownLastTick = Date.now();
-    }
-    const now = Date.now();
-    if (now - _tdmCountdownLastTick >= 1000) {
-      _tdmCountdown = Math.max(0, _tdmCountdown - Math.floor((now - _tdmCountdownLastTick) / 1000));
-      _tdmCountdownLastTick = now;
-    }
-    if (_tdmCountdown <= 0) {
-      _startTDMIntro();
-    } else {
-      _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}...`;
-    }
+  if (_tdmServerEndsAt !== null) {
+    const secsLeft = Math.max(0, Math.ceil((_tdmServerEndsAt - Date.now()) / 1000));
+    _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${secsLeft}...`;
   } else {
-    _tdmCountdown = null;
     _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
   }
 }
@@ -525,17 +507,18 @@ let _tdmIntroLastTick = 0;
 let _tdmIntroOrbitAngle = 0;
 window._tdmTeams = { good: [], evil: [] }; // { id, name } per side — exposed on window for later teammate/enemy logic
 
-function _startTDMIntro() {
+function _startTDMIntro(participantIds) {
   if (gameMode === 'tdm_intro' || gameMode === 'tdm') return;
   gameMode = 'tdm_intro';
   _tdmEl.style.display = 'none';
 
-  // Same id on every client (self.id === the server's socket id for that player), so
-  // sorting by id gives every connected client the identical, deterministic split —
-  // no need to have the server broadcast team assignments separately.
-  const players = [{ id: self.id, name: self.name || 'You' }];
-  Object.entries(remotePlayers).forEach(([id, rp]) => {
-    if (rp.fpMode === 'lobby') players.push({ id, name: (rp.data && rp.data.name) || 'Pilot' });
+  // participantIds comes from the server's 'tdm_go' broadcast — every client gets the
+  // exact same list, so sorting it the same way everywhere gives an identical team split
+  // without the server needing to assign teams itself.
+  const players = participantIds.map(id => {
+    if (id === self.id) return { id, name: self.name || 'You' };
+    const rp = remotePlayers[id];
+    return { id, name: (rp && rp.data && rp.data.name) || 'Pilot' };
   });
   players.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const half = Math.ceil(players.length / 2);
@@ -3553,7 +3536,7 @@ function updateFP() {
     camera.position.copy(fpPos);
   } else if (_bobbyMode) {
     // Jump + gravity
-    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 2.8 : 1);
+    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 2.8 : gameMode === 'lobby' ? 1.8 : 1);
     _fpJumpVel -= FP_GRAVITY;
     // Ceiling check — stop the ascent instead of letting the camera clip up into
     // whatever geometry (platform underside, arch, roof) is directly overhead.
@@ -4264,10 +4247,15 @@ function addRemotePlayer(data) {
   // has a self-heal path that adds an astronaut if a mesh looks empty, but it was
   // checking a flag that only IT ever set, never this direct path, so it kept adding a
   // second astronaut on top of this one every time a position update came in.
+  // IMPORTANT: only mark hasAstronaut true if the template actually existed — if a remote
+  // player joins before this client's own astronaut GLB has finished loading, _cloneAstronaut
+  // silently returns an empty group, and marking it "done" anyway meant the self-heal path
+  // never got a chance to retry once the template did load — leaving only the name tag
+  // visible forever.
   lobbyMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
-  lobbyMesh.userData.hasAstronaut = true;
+  lobbyMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   roomMesh.add(_cloneAstronaut(_astronautRoomTemplate));
-  roomMesh.userData.hasAstronaut = true;
+  roomMesh.userData.hasAstronaut = !!_astronautRoomTemplate;
   const _rangeAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   const _rangeScaleXZ = 48 / 18; // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
   _rangeAstronaut.scale.multiplyScalar(_rangeScaleXZ);
@@ -4288,22 +4276,24 @@ function addRemotePlayer(data) {
     _rangeAstronaut.userData.collisionCenterOffset.y = _rangeAstronaut.userData.collisionCenterOffset.y * _rangeScaleY - _rangeDropY;
   }
   rangeMesh.add(_rangeAstronaut);
-  rangeMesh.userData.hasAstronaut = true;
+  rangeMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   // TDM arena's map is loaded at a much larger scale than other scenes (see
   // _selfAstronautMesh's own 6x scale for the same reason). Hit-detection reads
   // collisionRadius/collisionCenterOffset directly as world-space values, so they need
   // to be rescaled by the same factor — same fix as the range astronaut above.
   const _tdmAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   _tdmAstronaut.scale.multiplyScalar(6);
-  _tdmAstronaut.userData.collisionRadius *= 6;
-  _tdmAstronaut.userData.collisionHeight *= 6;
-  if (_tdmAstronaut.userData.collisionCenterOffset) _tdmAstronaut.userData.collisionCenterOffset.multiplyScalar(6);
+  if (_astronautLobbyTemplate) {
+    _tdmAstronaut.userData.collisionRadius *= 6;
+    _tdmAstronaut.userData.collisionHeight *= 6;
+    if (_tdmAstronaut.userData.collisionCenterOffset) _tdmAstronaut.userData.collisionCenterOffset.multiplyScalar(6);
+  }
   tdmMesh.add(_tdmAstronaut);
-  tdmMesh.userData.hasAstronaut = true;
+  tdmMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   planetMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
-  planetMesh.userData.hasAstronaut = true;
+  planetMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
-  ejectedMesh.userData.hasAstronaut = true;
+  ejectedMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
 
   // Name tags
   const tagName = data.name || 'Pilot';
@@ -5345,6 +5335,20 @@ if (socket) {
     const leaveName = rp ? (rp.data && rp.data.name) : null;
     removeRemotePlayer(id);
     if (leaveName && window._chatAddMsg) window._chatAddMsg('🛸 SERVER', `${leaveName} left the game`, false);
+  });
+  // Server-authoritative TDM countdown — see server/index.js. Every client gets the same
+  // endsAt timestamp and the same 'tdm_go' event at the same time, so everyone actually
+  // teleports together instead of each client racing its own local timer.
+  socket.on('tdm_countdown_start', ({ endsAt }) => { _tdmServerEndsAt = endsAt; });
+  socket.on('tdm_countdown_cancel', () => { _tdmServerEndsAt = null; });
+  socket.on('tdm_go', ({ participants }) => {
+    _tdmServerEndsAt = null;
+    // 'tdm_go' is broadcast to every connected client, not just the ones who were in the
+    // zone — only actually start the intro for players who were among the participants
+    // the server counted, so someone docked/shopping elsewhere doesn't get yanked in.
+    if (Array.isArray(participants) && participants.length > 0 && participants.includes(self.id)) {
+      _startTDMIntro(participants);
+    }
   });
   socket.on('world_state', (players) => {
     players.forEach(p => {
