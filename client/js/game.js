@@ -387,6 +387,18 @@ let _lobbyCollidables = [];
 let _lobbyBBox = null;
 let _lobbyExitPos = new THREE.Vector3(0, 0, 0); // updated after GLB loads
 
+// Dynamic floor height at a given XZ — the lobby's real floor geometry sits at a
+// different height than the fpPos movement convention (-7.5) assumes, and isn't flat
+// everywhere, so avatars positioned directly off fpPos.y could float or sink depending on
+// where they stood. Raycast straight down to find the real surface instead.
+const _lobbyGroundRaycaster = new THREE.Raycaster();
+function _lobbyGroundHeightAt(x, z, fallbackY) {
+  if (_lobbyCollidables.length === 0) return fallbackY;
+  _lobbyGroundRaycaster.set(new THREE.Vector3(x, fallbackY + 50, z), new THREE.Vector3(0, -1, 0));
+  const hits = _lobbyGroundRaycaster.intersectObjects(_lobbyCollidables, false);
+  return hits.length > 0 ? hits[0].point.y : fallbackY;
+}
+
 loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
   if (!model) { console.warn('Lobby GLB failed'); return; }
   model.traverse(c => {
@@ -4305,19 +4317,36 @@ function _buildProceduralAvatar(H) {
   return root;
 }
 
-// Preload astronaut models — different sizes for lobby vs room. Start with the procedural
-// box-humanoid immediately (no load wait), then swap in the nicer Blender-built model
-// (same node names/hierarchy — legL/legR/armL/armR/torso/head/gunSocket — so the exact
-// same _poseAvatar()/_setAvatarHeldWeapon() code keeps working unchanged) once it loads.
-let _astronautLobbyTemplate = _buildProceduralAvatar(18);
-let _astronautRoomTemplate  = _buildProceduralAvatar(100);
+// Preload astronaut models — different sizes for lobby vs room.
+// IMPORTANT: these start out null (not the procedural fallback) — every clone-creation
+// path already checks "does this wrapper have an astronaut yet?" and retries later if not,
+// so leaving these null until the real GLB loads means only ONE model ever gets built per
+// player. Eagerly building the procedural placeholder here used to create a SECOND model
+// once the GLB loaded afterward (the procedural one never got removed), which is why two
+// overlapping avatars — one correctly grounded, one floating — could show up at once.
+// The procedural builder is now only used as a genuine last-resort if the GLB fails to load.
+let _astronautLobbyTemplate = null;
+let _astronautRoomTemplate  = null;
 // loadModel() always recenters a model's bounding box on its own origin — fine for most
-// assets, but wrong for a character, where we need the FEET at local y=0 (matching the
-// procedural fallback's own convention) so it stands ON the floor instead of being
-// vertically centered ON it (half sunk into the ground). Shift back up by half the
-// model's own height to compensate, same fix the old astronaut.glb needed.
-loadModel('assets/avatar_blender.glb', 18, m => { if (m) { m.position.y += -1.9; _astronautLobbyTemplate = m; } });
-loadModel('assets/avatar_blender.glb', 100, m => { if (m) { m.position.y += 50; _astronautRoomTemplate = m; } });
+// assets, but wrong for a character, where we need the FEET at local y=0 so it stands ON
+// the floor instead of being vertically centered ON it. The lobby's real floor mesh sits
+// at a different height than the fpPos convention assumes, and isn't flat everywhere, so a
+// single fixed offset constant kept being wrong — positioning is now handled dynamically
+// per-frame via a floor raycast (see _lobbyGroundHeightAt) instead of a baked-in number.
+function _fixFeetToOrigin(m) {
+  // Shift up by exactly its own measured lowest point (not a guessed constant), so the
+  // feet land at local y=0 regardless of the model's exact proportions.
+  const box = new THREE.Box3().setFromObject(m);
+  m.position.y -= box.min.y;
+}
+loadModel('assets/avatar_blender.glb', 18, m => {
+  if (m) _fixFeetToOrigin(m);
+  _astronautLobbyTemplate = m || _buildProceduralAvatar(18);
+});
+loadModel('assets/avatar_blender.glb', 100, m => {
+  if (m) _fixFeetToOrigin(m);
+  _astronautRoomTemplate = m || _buildProceduralAvatar(100);
+});
 
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
@@ -4480,7 +4509,11 @@ function _updateSelfAstronaut() {
   }
   _selfAstronautMesh.visible = true;
   _selfAstronautMesh.scale.setScalar(gameMode === 'tdm' ? _TDM_ASTRONAUT_SCALE : 1); // arena map is huge-scale, astronaut needs to match
-  _selfAstronautMesh.position.set(fpPos.x, fpPos.y, fpPos.z);
+  // In the lobby specifically, stand on the real floor geometry (raycast) rather than
+  // trusting fpPos.y — the FP movement's floor convention (-7.5) doesn't match the actual
+  // floor mesh height, and the floor isn't flat everywhere either.
+  const _selfGroundY = gameMode === 'lobby' ? _lobbyGroundHeightAt(fpPos.x, fpPos.z, fpPos.y) : fpPos.y;
+  _selfAstronautMesh.position.set(fpPos.x, _selfGroundY, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
   // Drive the walk/jump/slide animation from real movement state, so toggling third
   // person is a direct way to check the animations are actually working.
@@ -4660,7 +4693,10 @@ function _updateRemoteFPMeshes(p) {
                  : fpMode === 'planet_surface' ? rp.planetSurfMesh
                  : fpMode === 'ejected'     ? rp.ejectedMesh
                  : rp.roomMesh;
-    target.position.set(p.fpPos.x, p.fpPos.y, p.fpPos.z);
+    // Same lobby floor-mismatch fix as the self avatar — don't trust the broadcast fpPos.y
+    // there, raycast the real floor at that XZ instead.
+    const _targetGroundY = fpMode === 'lobby' ? _lobbyGroundHeightAt(p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
+    target.position.set(p.fpPos.x, _targetGroundY, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
 
     // The name tag is always already a child of `target` (added at player creation), so
