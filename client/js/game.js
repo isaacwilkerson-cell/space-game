@@ -3423,7 +3423,7 @@ function updateFP() {
     // airborne (landing on top of something you jumped onto) — while walking on the
     // ground, a big rise ahead is a wall/object edge and should block you, not carry you
     // up onto it.
-    const MAX_STEP_UP = 2;
+    const MAX_STEP_UP = 8;
     if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor || !_tdmWasGrounded) {
       _tdmLastFloor = _rawGround;
     }
@@ -3443,7 +3443,7 @@ function updateFP() {
     camera.position.copy(fpPos);
   } else if (_bobbyMode) {
     // Jump + gravity
-    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 3.5 : 1);
+    if (keys[' '] && _fpGrounded && _fpJumpVel <= 0) _fpJumpVel = FP_JUMP_V * (gameMode === 'tdm' ? 2 : 1);
     _fpJumpVel -= FP_GRAVITY;
     // Ceiling check — stop the ascent instead of letting the camera clip up into
     // whatever geometry (platform underside, arch, roof) is directly overhead.
