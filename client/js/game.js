@@ -4239,16 +4239,95 @@ function _makeNameTag(name, sizeAttenuation = true) {
   return sprite;
 }
 
-// Preload astronaut models — different sizes for lobby vs room
-let _astronautLobbyTemplate = null;
-let _astronautRoomTemplate  = null;
-loadModel('assets/astronaught.glb', 18, m => { if (m) { m.position.y -= 2.7; } _astronautLobbyTemplate = m; });
-loadModel('assets/astronaught.glb', 100, m => { if (m) { m.position.y -= 25; } _astronautRoomTemplate  = m; });
+// ── Procedural avatar ────────────────────────────────────────────────────────
+// No 3D modeling/rigging tool is available in this environment, so instead of a hand-
+// authored animated GLB, this builds a simple box-humanoid entirely in code and animates
+// it procedurally (limb rotations driven by real movement state each frame) rather than
+// playing back baked keyframes. Built at an exact target height directly (no bounding-box
+// normalization needed like loadModel() does for GLBs), so it drops into the existing
+// _cloneAstronaut()/collision/scaling pipeline unchanged.
+function _buildProceduralAvatar(H) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.6, metalness: 0.1 });
+  const jointMat = new THREE.MeshStandardMaterial({ color: 0x9099a6, roughness: 0.6, metalness: 0.1 });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xf2c9a0, roughness: 0.7 });
+
+  const legLen = H * 0.45, torsoLen = H * 0.35, headSize = H * 0.15, armLen = H * 0.4;
+  const limbThick = H * 0.11, torsoWidth = H * 0.26, torsoDepth = H * 0.14;
+
+  function limbMesh(len, thick, material) {
+    const geo = new THREE.BoxGeometry(thick, len, thick);
+    geo.translate(0, -len / 2, 0); // pivot at the TOP of the box (the joint), hangs down from there
+    return new THREE.Mesh(geo, material);
+  }
+
+  const root = new THREE.Group();
+  root.name = 'avatarRoot';
+
+  const hips = new THREE.Group();
+  hips.name = 'hips';
+  hips.position.y = legLen;
+  root.add(hips);
+
+  const legL = new THREE.Group(); legL.name = 'legL'; legL.position.set(torsoWidth * 0.28, 0, 0);
+  const legR = new THREE.Group(); legR.name = 'legR'; legR.position.set(-torsoWidth * 0.28, 0, 0);
+  legL.add(limbMesh(legLen, limbThick, mat));
+  legR.add(limbMesh(legLen, limbThick, mat));
+  hips.add(legL, legR);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth, torsoLen, torsoDepth), mat);
+  torso.name = 'torso';
+  torso.position.y = torsoLen / 2;
+  hips.add(torso);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), headMat);
+  head.name = 'head';
+  // torso is a centered box, so its own top edge (in torso-local space) is at +torsoLen/2,
+  // not torsoLen — head/shoulders are children of torso, so they need to be measured from
+  // that center, not from the hips-space value used for torso's own placement above.
+  head.position.y = torsoLen / 2 + headSize / 2 + headSize * 0.1;
+  torso.add(head);
+
+  const shoulderY = torsoLen / 2 - limbThick * 0.3;
+  const armL = new THREE.Group(); armL.name = 'armL'; armL.position.set(torsoWidth / 2 + limbThick * 0.15, shoulderY, 0);
+  const armR = new THREE.Group(); armR.name = 'armR'; armR.position.set(-(torsoWidth / 2 + limbThick * 0.15), shoulderY, 0);
+  armL.add(limbMesh(armLen, limbThick * 0.85, jointMat));
+  armR.add(limbMesh(armLen, limbThick * 0.85, jointMat));
+  torso.add(armL, armR);
+
+  // Empty anchor at the right hand for attaching a held weapon mesh.
+  const gunSocket = new THREE.Object3D();
+  gunSocket.name = 'gunSocket';
+  gunSocket.position.set(0, -armLen, 0);
+  armR.add(gunSocket);
+
+  root.userData.legLen = legLen;
+  root.userData.armLen = armLen;
+  return root;
+}
+
+// Preload astronaut models — different sizes for lobby vs room. Built synchronously (no
+// GLB fetch/parse), so unlike the old loadModel()-based templates these are available
+// immediately with no load race to worry about.
+let _astronautLobbyTemplate = _buildProceduralAvatar(18);
+let _astronautRoomTemplate  = _buildProceduralAvatar(100);
 
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
   const clone = template.clone(true);
-  clone.rotation.y -= Math.PI / 2 + Math.PI; // face-forward correction — was 90° off, plus 180° flip
+  // The old astronaut GLB had a baked-in 270° facing quirk this correction compensated
+  // for. The procedural avatar is built facing forward correctly from the start, so it
+  // doesn't need it — skip the correction for avatarRoot-based clones specifically.
+  if (template.name !== 'avatarRoot') clone.rotation.y -= Math.PI / 2 + Math.PI;
+  // Cache references to the animatable limb groups + hand socket so _poseAvatar() doesn't
+  // need to re-traverse the hierarchy by name every frame for every visible player.
+  clone.userData.avatarParts = {
+    legL: clone.getObjectByName('legL'),
+    legR: clone.getObjectByName('legR'),
+    armL: clone.getObjectByName('armL'),
+    armR: clone.getObjectByName('armR'),
+    torso: clone.getObjectByName('torso'),
+    gunSocket: clone.getObjectByName('gunSocket'),
+  };
   clone.traverse(c => {
     if (c.isMesh && c.material) {
       c.userData.isPlayerHit = true; // lets bullet raycasts identify "this is a player"
@@ -4284,6 +4363,67 @@ function _cloneAstronaut(template) {
   return clone;
 }
 
+// Poses a procedural avatar clone's limbs based on real movement state. `speed` is
+// 0-1 normalized (0 = standing still, 1 = full sprint) and drives both walk-cycle speed
+// and swing amplitude, so the animation actually reflects how fast the player is moving
+// rather than just an on/off walk toggle.
+function _poseAvatar(clone, state) {
+  const parts = clone.userData.avatarParts;
+  if (!parts || !parts.legL || !parts.legR || !parts.armL || !parts.armR || !parts.torso) return;
+  const speed = Math.max(0, Math.min(1, (state && state.speed) || 0));
+  if (clone.userData.walkPhase === undefined) clone.userData.walkPhase = 0;
+  clone.userData.walkPhase += speed * 0.25;
+  const swing = Math.sin(clone.userData.walkPhase) * 0.6 * speed;
+  const armSwing = Math.sin(clone.userData.walkPhase) * 0.5 * speed;
+
+  const ease = (obj, x, z, lerp) => {
+    obj.rotation.x += (x - obj.rotation.x) * lerp;
+    obj.rotation.z += (z - obj.rotation.z) * lerp;
+  };
+
+  if (state && state.sliding) {
+    ease(parts.legL, -0.9, 0, 0.3);
+    ease(parts.legR, -0.5, 0, 0.3);
+    ease(parts.armL, -0.3, 0.15, 0.3);
+    ease(parts.armR, -0.3, -0.15, 0.3);
+    ease(parts.torso, -0.35, 0, 0.3);
+  } else if (state && state.jumping) {
+    ease(parts.legL, -0.6, 0, 0.25);
+    ease(parts.legR, -0.6, 0, 0.25);
+    ease(parts.armL, -0.4, 0.1, 0.25);
+    ease(parts.armR, -0.4, -0.1, 0.25);
+    ease(parts.torso, 0, 0, 0.25);
+  } else {
+    ease(parts.legL, swing, 0, 0.3);
+    ease(parts.legR, -swing, 0, 0.3);
+    ease(parts.armL, -armSwing, 0, 0.3);
+    ease(parts.armR, armSwing, 0, 0.3);
+    ease(parts.torso, 0, 0, 0.3);
+  }
+}
+
+// Attaches a simple representative gun shape to an avatar's hand socket. The real FP
+// weapon viewmodels each have custom offsets tuned specifically for camera-relative first-
+// person placement, not third-person hand placement, so re-using them accurately here
+// would need a separate per-weapon tuning pass — this is a deliberately simple stand-in
+// that shows *a* gun in hand, not the exact equipped model.
+const _heldGunGeo = new THREE.BoxGeometry(1, 1, 1);
+const _heldGunMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4, metalness: 0.6 });
+function _setAvatarHeldWeapon(clone, weaponId) {
+  const parts = clone.userData.avatarParts;
+  if (!parts || !parts.gunSocket) return;
+  if (clone.userData.heldWeaponId === (weaponId || null)) return; // no change
+  clone.userData.heldWeaponId = weaponId || null;
+  if (clone.userData.heldGunMesh) { parts.gunSocket.remove(clone.userData.heldGunMesh); clone.userData.heldGunMesh = null; }
+  if (!weaponId) return;
+  const len = (weaponId === 'shotgun' || weaponId === 'ak105' || weaponId === 'ak47' || weaponId === 'sniper') ? 9 : 5;
+  const mesh = new THREE.Mesh(_heldGunGeo, _heldGunMat);
+  mesh.scale.set(1.2, 1.2, len);
+  mesh.position.set(0.6, 1.2, -len * 0.4);
+  parts.gunSocket.add(mesh);
+  clone.userData.heldGunMesh = mesh;
+}
+
 // ── Third-person mode (toggle via /qwertyuiop in chat) ─────────────────────────
 // One shared self-astronaut mesh, reparented into whichever FP scene is currently
 // active and only shown while third-person is on.
@@ -4314,6 +4454,18 @@ function _updateSelfAstronaut() {
   _selfAstronautMesh.scale.setScalar(gameMode === 'tdm' ? _TDM_ASTRONAUT_SCALE : 1); // arena map is huge-scale, astronaut needs to match
   _selfAstronautMesh.position.set(fpPos.x, fpPos.y, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
+  // Drive the walk/jump/slide animation from real movement state, so toggling third
+  // person is a direct way to check the animations are actually working.
+  const _selfAvatar = _selfAstronautMesh.children[0];
+  if (_selfAvatar) {
+    const _maxSpeed = FP_SPEED * FP_SPRINT_MUL;
+    _poseAvatar(_selfAvatar, {
+      speed: fpVel.length() / _maxSpeed,
+      jumping: _fpJumpVel !== 0, // nonzero exactly while airborne — 0 the instant updateFP() detects landing
+      sliding: _slideTimer > 0,
+    });
+    _setAvatarHeldWeapon(_selfAvatar, _equippedWeaponId);
+  }
 }
 
 function addRemotePlayer(data) {
@@ -4500,6 +4652,14 @@ function _updateRemoteFPMeshes(p) {
         target.add(_astro);
         target.userData.hasAstronaut = true;
       }
+    }
+
+    // Drive this remote player's procedural avatar and held-weapon display from the
+    // movement state they broadcast, and update the hit-target list to reflect it.
+    const _avatar = target.children[0];
+    if (_avatar) {
+      _poseAvatar(_avatar, p.fpAnim);
+      _setAvatarHeldWeapon(_avatar, p.equippedWeaponId);
     }
   }
 }
@@ -5538,6 +5698,17 @@ if (socket) {
       ? { x: _surfPos.x, y: _surfPos.y, z: _surfPos.z }
       : { x: fpPos.x, y: fpPos.y, z: fpPos.z };
     const _fpBroadcastYaw = gameMode === 'planet_walk' ? _pwYaw : gameMode === 'planet_surface' ? _surfYaw : fpYaw;
+    // Movement state for other clients to animate this player's procedural avatar with —
+    // real speed/jump/slide, not just position deltas, which would lag a frame behind and
+    // couldn't distinguish "airborne" from "walking on a ledge" at all.
+    const _fpAnimSpeed = gameMode === 'planet_surface' ? _surfVel.length() / SURF_SPRINT
+      : (gameMode === 'lobby' || gameMode === 'docked' || gameMode === 'range' || gameMode === 'tdm') ? fpVel.length() / (FP_SPEED * FP_SPRINT_MUL)
+      : 0;
+    const _fpAnim = {
+      speed: Math.max(0, Math.min(1, _fpAnimSpeed)),
+      jumping: gameMode === 'planet_surface' ? _surfVertVel !== 0 : _fpJumpVel !== 0,
+      sliding: _slideTimer > 0,
+    };
     socket.emit('player_update', {
       position: { x: self.position.x, y: self.position.y, z: self.position.z },
       rotation: { x: selfMesh.rotation.x, y: selfMesh.rotation.y, z: selfMesh.rotation.z },
@@ -5545,6 +5716,8 @@ if (socket) {
       fpMode: inFP ? gameMode : null,
       fpPos:  inFP ? _fpBroadcastPos : null,
       fpYaw:  inFP ? _fpBroadcastYaw : null,
+      fpAnim: inFP ? _fpAnim : null,
+      equippedWeaponId: inFP ? _equippedWeaponId : null,
     });
   }, 50);
 }

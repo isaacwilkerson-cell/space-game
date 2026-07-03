@@ -95,6 +95,12 @@ io.on('connection', (socket) => {
       player.fpMode = data.fpMode || null;
       player.fpPos  = isValidVec(data.fpPos) ? data.fpPos : null;
       player.fpYaw  = typeof data.fpYaw === 'number' && isFinite(data.fpYaw) ? data.fpYaw : null;
+      player.fpAnim = (data.fpAnim && typeof data.fpAnim === 'object') ? {
+        speed: typeof data.fpAnim.speed === 'number' && isFinite(data.fpAnim.speed) ? data.fpAnim.speed : 0,
+        jumping: !!data.fpAnim.jumping,
+        sliding: !!data.fpAnim.sliding,
+      } : null;
+      player.equippedWeaponId = typeof data.equippedWeaponId === 'string' ? data.equippedWeaponId : null;
       player.tdmZone = player.fpMode === 'lobby' && inTDMZone(player.fpPos);
     } catch(e) {
       console.error('player_update error:', e.message);
