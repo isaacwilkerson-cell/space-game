@@ -577,7 +577,7 @@ let _tdmLoadFailed = false;
 // On-screen debug readout — shows live download progress and, once loaded, the map's
 // real size, so this is diagnosable from a screenshot without needing dev tools.
 const _tdmDebugEl = document.createElement('div');
-_tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:block;z-index:600;max-width:90vw;';
+_tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:none;z-index:600;max-width:90vw;';
 _tdmDebugEl.textContent = 'TDM DEBUG — waiting for map to load...';
 document.body.appendChild(_tdmDebugEl);
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
