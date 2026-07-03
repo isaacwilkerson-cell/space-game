@@ -586,6 +586,7 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   _tdmSpawnZ = Math.max(_tdmArenaBBox.min.z + _PAD, Math.min(_tdmArenaBBox.max.z - _PAD, _tdmSpawnZ));
   _tdmFloorY = _tdmGroundHeightAt(_tdmSpawnX, _tdmSpawnZ);
   console.log('[TDM] map bbox:', _tdmArenaBBox.min, _tdmArenaBBox.max, 'clamped spawn:', _tdmSpawnX, _tdmSpawnZ, 'floorY:', _tdmFloorY, 'meshes:', _tdmArenaCollidables.length);
+  _tdmDebugEl.textContent = `TDM DEBUG — meshes:${_tdmArenaCollidables.length} bbox min:(${_tdmArenaBBox.min.x.toFixed(0)},${_tdmArenaBBox.min.y.toFixed(0)},${_tdmArenaBBox.min.z.toFixed(0)}) max:(${_tdmArenaBBox.max.x.toFixed(0)},${_tdmArenaBBox.max.y.toFixed(0)},${_tdmArenaBBox.max.z.toFixed(0)}) spawn:(${_tdmSpawnX.toFixed(0)},${_tdmSpawnZ.toFixed(0)}) floorY:${_tdmFloorY.toFixed(1)}`;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
 });
 
@@ -593,6 +594,13 @@ const _tdmExitPrompt = document.createElement('div');
 _tdmExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
 _tdmExitPrompt.textContent = '[ E ]  LEAVE ARENA';
 document.body.appendChild(_tdmExitPrompt);
+
+// Temporary on-screen debug readout — shows the map's real size once it loads, so we can
+// see straight from a screenshot why the map isn't appearing instead of needing dev tools.
+const _tdmDebugEl = document.createElement('div');
+_tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:none;z-index:600;max-width:90vw;';
+_tdmDebugEl.textContent = 'TDM DEBUG — waiting for map to load...';
+document.body.appendChild(_tdmDebugEl);
 
 function enterTDMArena() {
   if (gameMode === 'tdm') return; // already in
@@ -610,6 +618,7 @@ function enterTDMArena() {
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 1.0;
   _tdmEl.style.display = 'none';
+  _tdmDebugEl.style.display = 'block';
   // Real wait: stays up until the 32MB map has actually finished downloading/parsing
   // AND had a real chance to compile shaders + upload textures to the GPU (the warm-up
   // render pass). The old 15s timeoutMs was force-hiding this before a slow download
@@ -638,6 +647,7 @@ function exitTDMArena() {
   gameMode = 'lobby';
   lobbyScene.visible = true;
   _tdmExitPrompt.style.display = 'none';
+  _tdmDebugEl.style.display = 'none';
   fpPos.set(-115, -7.5, 40); // just outside the TDM zone bounds (was inside it, which — combined
   // with the temporary insta-teleport-at-1-player — bounced you right back in immediately)
   fpVel.set(0, 0, 0);
