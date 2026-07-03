@@ -2096,11 +2096,17 @@ function openHub() {
   roomHubEl.style.pointerEvents = 'auto';
   roomHubEl.style.display = 'block';
   document.exitPointerLock();
+  // exitPointerLock() only fires 'pointerlockchange' (which restores the cursor) if the
+  // pointer was actually locked — if it wasn't, the cursor stayed invisible (cursor:none
+  // on body) even though the hub is open and clickable. Set it directly instead of relying
+  // on that event.
+  document.body.style.cursor = 'auto';
 }
 function closeHub() {
   hubOpen = false;
   roomHubEl.style.display = 'none';
   hubApproachPrompt.style.display = 'none';
+  document.body.style.cursor = 'none';
   // do NOT re-lock — let the click-to-play overlay handle it
 }
 function renderHub() {
@@ -4837,6 +4843,10 @@ document.addEventListener('pointerlockchange', () => {
   const menuOpen = hubOpen || shopOpen || roomCustomOpen || shipUpgradeOpen || mapIsOpen || (window._chatOpen && window._chatOpen()) || gameMode === 'hangar';
   if (!menuOpen) overlay.classList.toggle('hidden', pointerLocked);
   if (!pointerLocked) { reticleX = 0; reticleY = 0; }
+  // body has cursor:none globally so the game can draw its own reticle instead of the OS
+  // cursor — but real DOM menus (room hub, shop, etc.) need the actual cursor visible so
+  // you can see what you're clicking on.
+  document.body.style.cursor = menuOpen ? 'auto' : 'none';
 });
 
 document.addEventListener('mousemove', e => {
