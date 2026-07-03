@@ -593,21 +593,9 @@ function enterTDMArena() {
   camera.position.copy(fpPos);
   renderer.toneMappingExposure = 1.0;
   _tdmEl.style.display = 'none';
-  // Mesh being in the scene isn't the same as it being ready to draw — shader compile +
-  // GPU texture upload for this 32MB map still has to happen on first real render. Warm
-  // it up behind the loading overlay (same fix already applied to the shooting range)
-  // instead of letting that stall show up as a stutter on the first frame you see.
-  let _tdmWarmFrames = 0;
-  const _tdmWarmTarget = 90;
-  _showLoadingScreen('LOADING ARENA', () => {
-    if (_tdmArenaCollidables.length === 0) return false;
-    if (_tdmWarmFrames < _tdmWarmTarget) {
-      renderer.render(tdmScene, camera);
-      _tdmWarmFrames++;
-      return false;
-    }
-    return true;
-  }, { timeoutMs: 15000, minShowMs: 150 });
+  if (_tdmArenaCollidables.length === 0) {
+    _showLoadingScreen('LOADING ARENA', () => _tdmArenaCollidables.length > 0, { timeoutMs: 15000, minShowMs: 150 });
+  }
 }
 
 function exitTDMArena() {
