@@ -3423,7 +3423,7 @@ function updateFP() {
     // airborne (landing on top of something you jumped onto) — while walking on the
     // ground, a big rise ahead is a wall/object edge and should block you, not carry you
     // up onto it.
-    const MAX_STEP_UP = 8;
+    const MAX_STEP_UP = 14;
     if (_tdmLastFloor === null || _rawGround <= _tdmLastFloor + MAX_STEP_UP || _rawGround < _tdmLastFloor || !_tdmWasGrounded) {
       _tdmLastFloor = _rawGround;
     }
