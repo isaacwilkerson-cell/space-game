@@ -4333,6 +4333,10 @@ function removeRemotePlayer(id) {
 function _updateRemoteFPMeshes(p) {
   const rp = remotePlayers[p.id];
   if (!rp) return;
+  // rp.data was only ever set once at connect time and never refreshed — anything reading
+  // rp.data.fpPos (like the TDM zone player-count check) saw permanently stale/null data,
+  // so a second player was never actually detected as being in the zone.
+  rp.data = p;
   const fpMode = p.fpMode; // 'lobby' | 'docked' | 'range' | null
   rp.fpMode = fpMode;
 
