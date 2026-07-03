@@ -615,6 +615,19 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   _tdmSpawnX = Math.max(_tdmArenaBBox.min.x + _PAD, Math.min(_tdmArenaBBox.max.x - _PAD, _tdmSpawnX));
   _tdmSpawnZ = Math.max(_tdmArenaBBox.min.z + _PAD, Math.min(_tdmArenaBBox.max.z - _PAD, _tdmSpawnZ));
   _tdmFloorY = _tdmGroundHeightAt(_tdmSpawnX, _tdmSpawnZ);
+  // Invisible barrier: X=280, spanning Z -114 to 280, 200 units tall — blocks movement
+  // but never renders.
+  {
+    const wallZLen = 280 - (-114);
+    const wallCenterZ = (280 + -114) / 2;
+    const wallBaseY = _tdmArenaBBox.min.y;
+    const wallGeo = new THREE.BoxGeometry(2, 200, wallZLen);
+    const wallMat = new THREE.MeshBasicMaterial({ visible: false });
+    const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+    wallMesh.position.set(280, wallBaseY + 100, wallCenterZ);
+    tdmScene.add(wallMesh);
+    _tdmArenaCollidables.push(wallMesh);
+  }
   console.log('[TDM] map bbox:', _tdmArenaBBox.min, _tdmArenaBBox.max, 'clamped spawn:', _tdmSpawnX, _tdmSpawnZ, 'floorY:', _tdmFloorY, 'meshes:', _tdmArenaCollidables.length);
   _tdmDebugEl.textContent = `TDM DEBUG — meshes:${_tdmArenaCollidables.length} bbox min:(${_tdmArenaBBox.min.x.toFixed(0)},${_tdmArenaBBox.min.y.toFixed(0)},${_tdmArenaBBox.min.z.toFixed(0)}) max:(${_tdmArenaBBox.max.x.toFixed(0)},${_tdmArenaBBox.max.y.toFixed(0)},${_tdmArenaBBox.max.z.toFixed(0)}) spawn:(${_tdmSpawnX.toFixed(0)},${_tdmSpawnZ.toFixed(0)}) floorY:${_tdmFloorY.toFixed(1)}`;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
