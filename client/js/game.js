@@ -475,10 +475,21 @@ function _updateTDMZone() {
     return;
   }
   _tdmEl.style.display = 'block';
-  // TEMPORARY: insta-teleport with just 1 player for testing — revert to `count >= 2` +
-  // the 20s countdown below once that's confirmed working.
-  if (count >= 1) {
-    enterTDMArena();
+  if (count >= 2) {
+    if (_tdmCountdown === null) {
+      _tdmCountdown = 20;
+      _tdmCountdownLastTick = Date.now();
+    }
+    const now = Date.now();
+    if (now - _tdmCountdownLastTick >= 1000) {
+      _tdmCountdown = Math.max(0, _tdmCountdown - Math.floor((now - _tdmCountdownLastTick) / 1000));
+      _tdmCountdownLastTick = now;
+    }
+    if (_tdmCountdown <= 0) {
+      enterTDMArena();
+    } else {
+      _tdmEl.textContent = `TEAM DEATHMATCH STARTING IN ${_tdmCountdown}...`;
+    }
   } else {
     _tdmCountdown = null;
     _tdmEl.textContent = 'TEAM DEATHMATCH — AT LEAST 2 PLAYERS NEEDED TO START';
