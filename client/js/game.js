@@ -540,7 +540,7 @@ const _TDM_EYE_OFFSET = 16;
 // sampling below — anything at or under this height should always be auto-climbable,
 // which means the horizontal collision must never sample within this range, or it'll
 // block you from ever walking into (and therefore auto-stepping onto) short objects.
-const _TDM_MAX_STEP_UP = 9;
+const _TDM_MAX_STEP_UP = 7;
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
