@@ -32,11 +32,29 @@ const ASSETS = {
 // total, so it correctly reflects "how much is left" no matter when each load started.
 const _loadStats = { pending: 0 };
 
-function loadModel(path, targetSize, onLoaded) {
+function loadModel(path, targetSize, onLoaded, onProgress) {
   _loadStats.pending++;
   const _done = () => { _loadStats.pending = Math.max(0, _loadStats.pending - 1); };
   fetch(path)
-    .then(r => { if (!r.ok) { _done(); onLoaded(null); return null; } return r.blob(); })
+    .then(r => {
+      if (!r.ok) { _done(); onLoaded(null); return null; }
+      if (!onProgress || !r.body) return r.blob();
+      // Manually read the stream so we can report bytes-downloaded progress for large
+      // assets instead of just an indeterminate wait.
+      const total = Number(r.headers.get('Content-Length')) || 0;
+      const reader = r.body.getReader();
+      const chunks = [];
+      let received = 0;
+      return (function pump() {
+        return reader.read().then(({ done, value }) => {
+          if (done) return new Blob(chunks);
+          chunks.push(value);
+          received += value.length;
+          onProgress(received, total);
+          return pump();
+        });
+      })();
+    })
     .then(blob => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -556,10 +574,17 @@ function _tdmGroundHeightAt(x, z, fromY = 5000) {
   return y + _TDM_EYE_OFFSET;
 }
 let _tdmLoadFailed = false;
+// On-screen debug readout — shows live download progress and, once loaded, the map's
+// real size, so this is diagnosable from a screenshot without needing dev tools.
+const _tdmDebugEl = document.createElement('div');
+_tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:block;z-index:600;max-width:90vw;';
+_tdmDebugEl.textContent = 'TDM DEBUG — waiting for map to load...';
+document.body.appendChild(_tdmDebugEl);
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) {
     console.warn('TDM arena map GLB failed');
     _tdmLoadFailed = true;
+    _tdmDebugEl.textContent = 'TDM DEBUG — LOAD FAILED (fetch or parse error)';
     if (gameMode === 'tdm') {
       _tdmEl.style.display = 'block';
       _tdmEl.textContent = 'ARENA MAP FAILED TO LOAD — check your connection and press E to leave';
@@ -588,19 +613,17 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   console.log('[TDM] map bbox:', _tdmArenaBBox.min, _tdmArenaBBox.max, 'clamped spawn:', _tdmSpawnX, _tdmSpawnZ, 'floorY:', _tdmFloorY, 'meshes:', _tdmArenaCollidables.length);
   _tdmDebugEl.textContent = `TDM DEBUG — meshes:${_tdmArenaCollidables.length} bbox min:(${_tdmArenaBBox.min.x.toFixed(0)},${_tdmArenaBBox.min.y.toFixed(0)},${_tdmArenaBBox.min.z.toFixed(0)}) max:(${_tdmArenaBBox.max.x.toFixed(0)},${_tdmArenaBBox.max.y.toFixed(0)},${_tdmArenaBBox.max.z.toFixed(0)}) spawn:(${_tdmSpawnX.toFixed(0)},${_tdmSpawnZ.toFixed(0)}) floorY:${_tdmFloorY.toFixed(1)}`;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
+}, (received, total) => {
+  const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+  _tdmDebugEl.textContent = total > 0
+    ? `TDM DEBUG — downloading map: ${mb(received)}MB / ${mb(total)}MB (${Math.round(received / total * 100)}%)`
+    : `TDM DEBUG — downloading map: ${mb(received)}MB (size unknown)`;
 });
 
 const _tdmExitPrompt = document.createElement('div');
 _tdmExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
 _tdmExitPrompt.textContent = '[ E ]  LEAVE ARENA';
 document.body.appendChild(_tdmExitPrompt);
-
-// Temporary on-screen debug readout — shows the map's real size once it loads, so we can
-// see straight from a screenshot why the map isn't appearing instead of needing dev tools.
-const _tdmDebugEl = document.createElement('div');
-_tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:none;z-index:600;max-width:90vw;';
-_tdmDebugEl.textContent = 'TDM DEBUG — waiting for map to load...';
-document.body.appendChild(_tdmDebugEl);
 
 function enterTDMArena() {
   if (gameMode === 'tdm') return; // already in
