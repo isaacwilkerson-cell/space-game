@@ -955,6 +955,10 @@ function enterShootingRange() {
   // still hidden, instead of bleeding into the first frame the player sees.
   let _rangeWarmFrames = 0;
   const _rangeWarmTarget = 90;
+  // 10s was fine before, but the page now has a lot more to load overall (the TDM system's
+  // 32MB map among other things) — that 10s cap was force-hiding this screen before the
+  // range genuinely finished loading, dropping the player into an unready range. Give it
+  // the same much longer safety cap TDM's loading screen already got.
   _showLoadingScreen('LOADING SHOOTING RANGE', () => {
     if (_rangeCollidables.length === 0) return false;
     if (_rangeWarmFrames < _rangeWarmTarget) {
@@ -963,7 +967,7 @@ function enterShootingRange() {
       return false;
     }
     return true;
-  }, { timeoutMs: 10000, minShowMs: 150 });
+  }, { timeoutMs: 120000, minShowMs: 150 });
 }
 
 function exitShootingRange() {
