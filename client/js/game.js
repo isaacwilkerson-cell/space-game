@@ -555,8 +555,17 @@ function _tdmGroundHeightAt(x, z, fromY = 5000) {
   if (y === null) y = _tdmArenaBBox ? _tdmArenaBBox.max.y : 0; // last-resort: top of map, never the basement
   return y + _TDM_EYE_OFFSET;
 }
+let _tdmLoadFailed = false;
 loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
-  if (!model) { console.warn('TDM arena map GLB failed'); return; }
+  if (!model) {
+    console.warn('TDM arena map GLB failed');
+    _tdmLoadFailed = true;
+    if (gameMode === 'tdm') {
+      _tdmEl.style.display = 'block';
+      _tdmEl.textContent = 'ARENA MAP FAILED TO LOAD — check your connection and press E to leave';
+    }
+    return;
+  }
   model.traverse(c => {
     if (c.isMesh) {
       _tdmArenaCollidables.push(c);
@@ -600,7 +609,13 @@ function enterTDMArena() {
   // a much longer safety cap instead so it only ever cuts off in a genuinely broken load.
   let _tdmWarmFrames = 0;
   const _tdmWarmTarget = 90;
+  console.log('[TDM] entering arena — collidables so far:', _tdmArenaCollidables.length, 'load failed:', _tdmLoadFailed);
   _showLoadingScreen('LOADING ARENA', () => {
+    if (_tdmLoadFailed) {
+      _tdmEl.style.display = 'block';
+      _tdmEl.textContent = 'ARENA MAP FAILED TO LOAD — check your connection and press E to leave';
+      return true; // stop waiting, nothing more will arrive
+    }
     if (_tdmArenaCollidables.length === 0) return false;
     if (_tdmWarmFrames < _tdmWarmTarget) {
       renderer.render(tdmScene, camera);
