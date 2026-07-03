@@ -4239,42 +4239,11 @@ function _makeNameTag(name, sizeAttenuation = true) {
   return sprite;
 }
 
-// Preload astronaut models — different sizes for lobby vs room.
-// TEMPORARY: swapped from assets/astronaught.glb to assets/man_player.glb, which has a
-// baked animation clip — using a dedicated loader (not the shared loadModel()) because
-// that one discards gltf.animations, which we need to actually play the clip per clone.
+// Preload astronaut models — different sizes for lobby vs room
 let _astronautLobbyTemplate = null;
 let _astronautRoomTemplate  = null;
-const _activeMixers = [];
-function _loadAnimatedModel(path, targetSize, onLoaded) {
-  _loadStats.pending++;
-  const _done = () => { _loadStats.pending = Math.max(0, _loadStats.pending - 1); };
-  fetch(path)
-    .then(r => r.ok ? r.blob() : null)
-    .then(blob => {
-      if (!blob) { _done(); onLoaded(null); return; }
-      const url = URL.createObjectURL(blob);
-      new THREE.GLTFLoader().load(url, gltf => {
-        URL.revokeObjectURL(url);
-        const model = gltf.scene;
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 0) {
-          const s = targetSize / maxDim;
-          model.scale.setScalar(s);
-          const center = box.getCenter(new THREE.Vector3());
-          model.position.set(-center.x * s, -center.y * s, -center.z * s);
-        }
-        model.userData.gltfAnimations = gltf.animations || [];
-        _done();
-        onLoaded(model);
-      }, undefined, () => { URL.revokeObjectURL(url); _done(); onLoaded(null); });
-    })
-    .catch(() => { _done(); onLoaded(null); });
-}
-_loadAnimatedModel('assets/man_player.glb', 18, m => { if (m) { m.position.y -= 2.7; } _astronautLobbyTemplate = m; });
-_loadAnimatedModel('assets/man_player.glb', 100, m => { if (m) { m.position.y -= 25; } _astronautRoomTemplate  = m; });
+loadModel('assets/astronaught.glb', 18, m => { if (m) { m.position.y -= 2.7; } _astronautLobbyTemplate = m; });
+loadModel('assets/astronaught.glb', 100, m => { if (m) { m.position.y -= 25; } _astronautRoomTemplate  = m; });
 
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
@@ -4312,15 +4281,6 @@ function _cloneAstronaut(template) {
   clone.userData.collisionRadius = Math.max(_size.x, _size.z) / 2;
   clone.userData.collisionHeight = _size.y;
   clone.userData.collisionCenterOffset = _center;
-  // Play the template's baked animation clip(s) on this clone specifically — each clone
-  // needs its own AnimationMixer bound to its own cloned hierarchy, not a shared one,
-  // otherwise every astronaut in the scene would animate in lockstep off one instance.
-  if (template.userData.gltfAnimations && template.userData.gltfAnimations.length) {
-    const mixer = new THREE.AnimationMixer(clone);
-    template.userData.gltfAnimations.forEach(clip => mixer.clipAction(clip).play());
-    clone.userData.mixer = mixer;
-    _activeMixers.push(mixer);
-  }
   return clone;
 }
 
@@ -5590,12 +5550,9 @@ if (socket) {
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
-const _animClock = new THREE.Clock();
 function animate(t) {
   requestAnimationFrame(animate);
   _updateHealthRegen();
-  const _animDelta = _animClock.getDelta();
-  for (let i = 0; i < _activeMixers.length; i++) _activeMixers[i].update(_animDelta);
   // Ship flight-control legend only makes sense while actually piloting the ship.
   elControls.style.display = gameMode === 'flight' ? 'block' : 'none';
   if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
