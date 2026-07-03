@@ -526,7 +526,7 @@ const _tdmGroundRaycaster = new THREE.Raycaster();
 function _tdmRaycastGroundY(x, z, fromY) {
   if (_tdmArenaCollidables.length === 0) return null;
   _tdmGroundRaycaster.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
-  const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
+  const hits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, false);
   return hits.length > 0 ? hits[0].point.y : null;
 }
 // Mesh the player is currently standing on top of — excluded from the horizontal wall
@@ -534,6 +534,8 @@ function _tdmRaycastGroundY(x, z, fromY) {
 // the top edge/lip of that very mesh when walking toward its border, locking the player
 // in place until they jump clear of it.
 let _tdmStandingMesh = null;
+let _tdmLastFilteredStandingMesh = undefined;
+let _tdmFilteredCollidables = _tdmArenaCollidables;
 // Dynamic ground height at any XZ — lets the player stand on top of crates/platforms
 // instead of always snapping back to one fixed arena-wide floor height. If the exact
 // point has no geometry below it (e.g. a requested spawn point just outside the actual
@@ -3215,8 +3217,15 @@ function updateFP() {
   if (fpVel.length() > _fpSpeedCap) fpVel.setLength(_fpSpeedCap);
 
   // Precise mesh collision — slide along walls (skipped in admin/noclip mode)
+  // (TDM's collidables-minus-standing-mesh array is only rebuilt when the standing mesh
+  // actually changes, not every frame — rebuilding via .filter() on a big GLB's full mesh
+  // list every frame was tanking performance.)
+  if (gameMode === 'tdm' && _tdmStandingMesh !== _tdmLastFilteredStandingMesh) {
+    _tdmLastFilteredStandingMesh = _tdmStandingMesh;
+    _tdmFilteredCollidables = _tdmStandingMesh ? _tdmArenaCollidables.filter(m => m !== _tdmStandingMesh) : _tdmArenaCollidables;
+  }
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables
-    : gameMode === 'tdm' ? (_tdmStandingMesh ? _tdmArenaCollidables.filter(m => m !== _tdmStandingMesh) : _tdmArenaCollidables)
+    : gameMode === 'tdm' ? _tdmFilteredCollidables
     : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = gameMode === 'tdm' ? 4 : 2.5; // was 10 — too wide to fit through building doorways
@@ -3247,7 +3256,7 @@ function updateFP() {
         origin.y = _tdmGroundRef + hOff;
         _fpRaycaster.set(origin, _fpRayDir);
         _fpRaycaster.far = PLAYER_RADIUS + axisVel.length();
-        const hits = _fpRaycaster.intersectObjects(_activeCollidables, gameMode === 'tdm');
+        const hits = _fpRaycaster.intersectObjects(_activeCollidables, false); // already a flat leaf-mesh list
         if (hits.length > 0 && hits[0].distance < PLAYER_RADIUS) {
           // Zero out just this axis
           if (axisVel.x !== 0) fpVel.x = 0;
@@ -3338,7 +3347,7 @@ function updateFP() {
   else if (gameMode === 'range') _fpFloor = 0;
   else if (gameMode === 'tdm') {
     _tdmGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 6, fpPos.z), new THREE.Vector3(0, -1, 0));
-    const _groundHits = _tdmArenaCollidables.length > 0 ? _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true) : [];
+    const _groundHits = _tdmArenaCollidables.length > 0 ? _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, false) : [];
     _tdmStandingMesh = _groundHits.length > 0 ? _groundHits[0].object : null;
     const _rawGround = _groundHits.length > 0 ? _groundHits[0].point.y + _TDM_EYE_OFFSET : _tdmGroundHeightAt(fpPos.x, fpPos.z, fpPos.y + 6);
     // Small rises (stairs, curbs) still auto-step. Bigger rises only get accepted while
@@ -3371,7 +3380,7 @@ function updateFP() {
     // whatever geometry (platform underside, arch, roof) is directly overhead.
     if (gameMode === 'tdm' && _fpJumpVel > 0 && _tdmArenaCollidables.length > 0) {
       _tdmGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 2, fpPos.z), new THREE.Vector3(0, 1, 0));
-      const _ceilHits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, true);
+      const _ceilHits = _tdmGroundRaycaster.intersectObjects(_tdmArenaCollidables, false);
       if (_ceilHits.length > 0 && _ceilHits[0].distance < _fpJumpVel + 2) {
         _fpJumpVel = 0;
       }
