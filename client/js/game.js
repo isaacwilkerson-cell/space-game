@@ -387,16 +387,31 @@ let _lobbyCollidables = [];
 let _lobbyBBox = null;
 let _lobbyExitPos = new THREE.Vector3(0, 0, 0); // updated after GLB loads
 
-// Dynamic floor height at a given XZ — the lobby's real floor geometry sits at a
-// different height than the fpPos movement convention (-7.5) assumes, and isn't flat
-// everywhere, so avatars positioned directly off fpPos.y could float or sink depending on
-// where they stood. Raycast straight down to find the real surface instead.
-const _lobbyGroundRaycaster = new THREE.Raycaster();
-function _lobbyGroundHeightAt(x, z, fallbackY) {
-  if (_lobbyCollidables.length === 0) return fallbackY;
-  _lobbyGroundRaycaster.set(new THREE.Vector3(x, fallbackY + 50, z), new THREE.Vector3(0, -1, 0));
-  const hits = _lobbyGroundRaycaster.intersectObjects(_lobbyCollidables, false);
+// Dynamic floor height at a given XZ — each scene's real floor geometry sits at a
+// different height than the fpPos movement convention assumes, and isn't flat everywhere,
+// so avatars positioned directly off fpPos.y could float or sink depending on where they
+// stood. Raycast straight down against that scene's own collidables to find the real
+// surface instead. Shared across every FP-avatar scene (lobby, room, range, TDM), not
+// just the lobby — same bug, same fix, everywhere an avatar can stand.
+const _groundRaycaster = new THREE.Raycaster();
+function _groundHeightAt(collidables, x, z, fallbackY) {
+  if (!collidables || collidables.length === 0) return fallbackY;
+  // Cast from just above head height, not from way up near the ceiling — a high-up cast
+  // can hit a roof/light fixture/overhang first and mistake it for the floor.
+  _groundRaycaster.set(new THREE.Vector3(x, fallbackY + 8, z), new THREE.Vector3(0, -1, 0));
+  const hits = _groundRaycaster.intersectObjects(collidables, false);
   return hits.length > 0 ? hits[0].point.y : fallbackY;
+}
+// Which collidables array backs "the ground" for a given FP mode — used to pick which
+// scene's geometry an avatar's feet should be raycast against.
+// TDM is deliberately excluded — its fpPos.y already bakes in a large eye-height offset
+// (_TDM_EYE_OFFSET) rather than being a raw floor value, and has its own dedicated ground
+// system (_tdmGroundHeightAt) already. Mixing conventions here would misplace it, not fix it.
+function _avatarGroundCollidables(mode) {
+  return mode === 'lobby' ? _lobbyCollidables
+       : mode === 'docked' ? _roomCollidables
+       : mode === 'range' ? _rangeCollidables
+       : null;
 }
 
 loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
@@ -4332,7 +4347,7 @@ let _astronautRoomTemplate  = null;
 // the floor instead of being vertically centered ON it. The lobby's real floor mesh sits
 // at a different height than the fpPos convention assumes, and isn't flat everywhere, so a
 // single fixed offset constant kept being wrong — positioning is now handled dynamically
-// per-frame via a floor raycast (see _lobbyGroundHeightAt) instead of a baked-in number.
+// per-frame via a floor raycast (see _groundHeightAt) instead of a baked-in number.
 function _fixFeetToOrigin(m) {
   // Shift up by exactly its own measured lowest point (not a guessed constant), so the
   // feet land at local y=0 regardless of the model's exact proportions.
@@ -4509,10 +4524,15 @@ function _updateSelfAstronaut() {
   }
   _selfAstronautMesh.visible = true;
   _selfAstronautMesh.scale.setScalar(gameMode === 'tdm' ? _TDM_ASTRONAUT_SCALE : 1); // arena map is huge-scale, astronaut needs to match
-  // In the lobby specifically, stand on the real floor geometry (raycast) rather than
-  // trusting fpPos.y — the FP movement's floor convention (-7.5) doesn't match the actual
-  // floor mesh height, and the floor isn't flat everywhere either.
-  const _selfGroundY = gameMode === 'lobby' ? _lobbyGroundHeightAt(fpPos.x, fpPos.z, fpPos.y) : fpPos.y;
+  // Stand on the real floor geometry (raycast) rather than trusting fpPos.y directly — the
+  // FP movement's per-mode floor constant doesn't always match the actual floor mesh
+  // height, and floors aren't flat everywhere either. Same fix as the lobby, now applied
+  // to every FP scene an avatar can stand in. TDM is excluded: its fpPos.y already bakes
+  // in a large eye-height offset (_TDM_EYE_OFFSET) rather than being a raw floor value, so
+  // it has its own dedicated ground system instead (_tdmGroundHeightAt) — mixing the two
+  // conventions here would put the avatar at the wrong height, not fix it.
+  const _selfGroundCollidables = _avatarGroundCollidables(gameMode);
+  const _selfGroundY = _selfGroundCollidables ? _groundHeightAt(_selfGroundCollidables, fpPos.x, fpPos.z, fpPos.y) : fpPos.y;
   _selfAstronautMesh.position.set(fpPos.x, _selfGroundY, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
   // Drive the walk/jump/slide animation from real movement state, so toggling third
@@ -4693,9 +4713,10 @@ function _updateRemoteFPMeshes(p) {
                  : fpMode === 'planet_surface' ? rp.planetSurfMesh
                  : fpMode === 'ejected'     ? rp.ejectedMesh
                  : rp.roomMesh;
-    // Same lobby floor-mismatch fix as the self avatar — don't trust the broadcast fpPos.y
-    // there, raycast the real floor at that XZ instead.
-    const _targetGroundY = fpMode === 'lobby' ? _lobbyGroundHeightAt(p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
+    // Same floor-mismatch fix as the self avatar, across every applicable mode — don't
+    // trust the broadcast fpPos.y directly, raycast the real floor at that XZ instead.
+    const _targetGroundCollidables = _avatarGroundCollidables(fpMode);
+    const _targetGroundY = _targetGroundCollidables ? _groundHeightAt(_targetGroundCollidables, p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
     target.position.set(p.fpPos.x, _targetGroundY, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
 
