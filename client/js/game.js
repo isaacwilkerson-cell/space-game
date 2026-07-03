@@ -4309,10 +4309,18 @@ function _buildProceduralAvatar(H) {
 // box-humanoid immediately (no load wait), then swap in the nicer Blender-built model
 // (same node names/hierarchy — legL/legR/armL/armR/torso/head/gunSocket — so the exact
 // same _poseAvatar()/_setAvatarHeldWeapon() code keeps working unchanged) once it loads.
-let _astronautLobbyTemplate = _buildProceduralAvatar(18);
-let _astronautRoomTemplate  = _buildProceduralAvatar(100);
-loadModel('assets/avatar_blender.glb', 18, m => { if (m) _astronautLobbyTemplate = m; });
-loadModel('assets/avatar_blender.glb', 100, m => { if (m) _astronautRoomTemplate = m; });
+// Halved from 18/100 — character was too big. Every other room's size (range's 48/18
+// ratio, TDM's 2x, etc.) is defined relative to this base, so halving it cascades a
+// proportional halving everywhere automatically.
+let _astronautLobbyTemplate = _buildProceduralAvatar(9);
+let _astronautRoomTemplate  = _buildProceduralAvatar(50);
+// loadModel() always recenters a model's bounding box on its own origin — fine for most
+// assets, but wrong for a character, where we need the FEET at local y=0 (matching the
+// procedural fallback's own convention) so it stands ON the floor instead of being
+// vertically centered ON it (half sunk into the ground). Shift back up by half the
+// model's own height to compensate, same fix the old astronaut.glb needed.
+loadModel('assets/avatar_blender.glb', 9, m => { if (m) { m.position.y += 4.5; _astronautLobbyTemplate = m; } });
+loadModel('assets/avatar_blender.glb', 50, m => { if (m) { m.position.y += 25; _astronautRoomTemplate = m; } });
 
 function _cloneAstronaut(template) {
   if (!template) return new THREE.Group();
@@ -4400,11 +4408,16 @@ function _poseAvatar(clone, state) {
     ease(parts.armR, -0.4, -0.1, 0.25);
     ease(parts.torso, 0, 0, 0.25);
   } else {
-    ease(parts.legL, swing, 0, 0.3);
-    ease(parts.legR, -swing, 0, 0.3);
-    ease(parts.armL, -armSwing, 0, 0.3);
-    ease(parts.armR, armSwing, 0, 0.3);
-    ease(parts.torso, 0, 0, 0.3);
+    // Crouch blends with the walk cycle rather than replacing it, so crouch-walking still
+    // animates instead of freezing into a static pose.
+    const crouch = Math.max(0, Math.min(1, (state && state.crouch) || 0));
+    const crouchLegBend = -0.55 * crouch;
+    const crouchTorsoLean = -0.18 * crouch;
+    ease(parts.legL, swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
+    ease(parts.legR, -swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
+    ease(parts.armL, -armSwing * (1 - crouch * 0.3) + crouch * 0.2, 0, 0.3);
+    ease(parts.armR, armSwing * (1 - crouch * 0.3) + crouch * 0.2, 0, 0.3);
+    ease(parts.torso, crouchTorsoLean, 0, 0.3);
   }
 }
 
@@ -4469,6 +4482,7 @@ function _updateSelfAstronaut() {
       speed: fpVel.length() / _maxSpeed,
       jumping: _fpJumpVel !== 0, // nonzero exactly while airborne — 0 the instant updateFP() detects landing
       sliding: _slideTimer > 0,
+      crouch: _crouchAmount,
     });
     _setAvatarHeldWeapon(_selfAvatar, _equippedWeaponId);
   }
@@ -4544,17 +4558,18 @@ function addRemotePlayer(data) {
   const _rangeAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   const _rangeScaleXZ = 48 / 18; // lobby template is normalized to 18 units — make it 30 units bigger (48) in the range
   _rangeAstronaut.scale.multiplyScalar(_rangeScaleXZ);
-  // 5 units taller (Y-only stretch on top of the uniform scale above) and moved down 5 units total.
-  const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 18) * _rangeScaleXZ;
-  const _rangeScaleY = (_baseHeight + 5) / _baseHeight;
-  const _rangeDropY = 7.5;
+  // 2.5 units taller (Y-only stretch on top of the uniform scale above) and moved down
+  // 3.75 units total — halved from the original 5/7.5 to match the base template's own halving.
+  const _baseHeight = (_rangeAstronaut.userData.collisionHeight || 9) * _rangeScaleXZ;
+  const _rangeScaleY = (_baseHeight + 2.5) / _baseHeight;
+  const _rangeDropY = 3.75;
   _rangeAstronaut.scale.y *= _rangeScaleY;
   _rangeAstronaut.position.y -= _rangeDropY;
   // Hit-detection reads collisionRadius/collisionHeight/collisionCenterOffset directly as
   // world-space values — keep them in sync with the extra scaling above, otherwise the
-  // range astronaut's hitbox stays sized for the original 18-unit template.
+  // range astronaut's hitbox stays sized for the original 9-unit template.
   _rangeAstronaut.userData.collisionRadius *= _rangeScaleXZ;
-  _rangeAstronaut.userData.collisionHeight = _baseHeight + 5;
+  _rangeAstronaut.userData.collisionHeight = _baseHeight + 2.5;
   if (_rangeAstronaut.userData.collisionCenterOffset) {
     _rangeAstronaut.userData.collisionCenterOffset.x *= _rangeScaleXZ;
     _rangeAstronaut.userData.collisionCenterOffset.z *= _rangeScaleXZ;
@@ -4568,7 +4583,7 @@ function addRemotePlayer(data) {
   // to be rescaled by the same factor — same fix as the range astronaut above.
   const _tdmAstronaut = _cloneAstronaut(_astronautLobbyTemplate);
   _tdmAstronaut.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE);
-  _tdmAstronaut.position.y += 1;
+  _tdmAstronaut.position.y += 0.5;
   if (_astronautLobbyTemplate) {
     _tdmAstronaut.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
     _tdmAstronaut.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
@@ -4650,7 +4665,7 @@ function _updateRemoteFPMeshes(p) {
         if (fpMode === 'range') _astro.scale.multiplyScalar(48 / 18); // 30 units bigger in the range
         if (fpMode === 'tdm') {
           _astro.scale.multiplyScalar(_TDM_ASTRONAUT_SCALE); // matches _selfAstronautMesh's tdm scale
-          _astro.position.y += 1;
+          _astro.position.y += 0.5;
           _astro.userData.collisionRadius *= _TDM_ASTRONAUT_SCALE;
           _astro.userData.collisionHeight *= _TDM_ASTRONAUT_SCALE;
           if (_astro.userData.collisionCenterOffset) _astro.userData.collisionCenterOffset.multiplyScalar(_TDM_ASTRONAUT_SCALE);
@@ -5714,6 +5729,7 @@ if (socket) {
       speed: Math.max(0, Math.min(1, _fpAnimSpeed)),
       jumping: gameMode === 'planet_surface' ? _surfVertVel !== 0 : _fpJumpVel !== 0,
       sliding: _slideTimer > 0,
+      crouch: _crouchAmount,
     };
     socket.emit('player_update', {
       position: { x: self.position.x, y: self.position.y, z: self.position.z },

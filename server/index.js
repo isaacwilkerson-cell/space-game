@@ -99,6 +99,7 @@ io.on('connection', (socket) => {
         speed: typeof data.fpAnim.speed === 'number' && isFinite(data.fpAnim.speed) ? data.fpAnim.speed : 0,
         jumping: !!data.fpAnim.jumping,
         sliding: !!data.fpAnim.sliding,
+        crouch: typeof data.fpAnim.crouch === 'number' && isFinite(data.fpAnim.crouch) ? data.fpAnim.crouch : 0,
       } : null;
       player.equippedWeaponId = typeof data.equippedWeaponId === 'string' ? data.equippedWeaponId : null;
       player.tdmZone = player.fpMode === 'lobby' && inTDMZone(player.fpPos);
