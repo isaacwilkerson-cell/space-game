@@ -4316,7 +4316,7 @@ let _astronautRoomTemplate  = _buildProceduralAvatar(100);
 // procedural fallback's own convention) so it stands ON the floor instead of being
 // vertically centered ON it (half sunk into the ground). Shift back up by half the
 // model's own height to compensate, same fix the old astronaut.glb needed.
-loadModel('assets/avatar_blender.glb', 18, m => { if (m) { m.position.y += 9; _astronautLobbyTemplate = m; } });
+loadModel('assets/avatar_blender.glb', 18, m => { if (m) { m.position.y += 18.4; _astronautLobbyTemplate = m; } });
 loadModel('assets/avatar_blender.glb', 100, m => { if (m) { m.position.y += 50; _astronautRoomTemplate = m; } });
 
 function _cloneAstronaut(template) {
@@ -4337,8 +4337,10 @@ function _cloneAstronaut(template) {
     armL: clone.getObjectByName('armL'),
     armR: clone.getObjectByName('armR'),
     torso: clone.getObjectByName('torso'),
+    hips: clone.getObjectByName('hips'),
     gunSocket: clone.getObjectByName('gunSocket'),
   };
+  if (clone.userData.avatarParts.hips) clone.userData.avatarParts.hipsRestY = clone.userData.avatarParts.hips.position.y;
   clone.traverse(c => {
     if (c.isMesh && c.material) {
       c.userData.isPlayerHit = true; // lets bullet raycasts identify "this is a player"
@@ -4391,6 +4393,16 @@ function _poseAvatar(clone, state) {
     obj.rotation.x += (x - obj.rotation.x) * lerp;
     obj.rotation.z += (z - obj.rotation.z) * lerp;
   };
+
+  // Rotating a single rigid leg segment at the hip can't actually shorten it, so rotation
+  // alone never reads as "crouching" — it just tilts the legs forward. Lowering the whole
+  // hips group is what actually makes the character look shorter/crouched. Applied for all
+  // states (sliding already implies a low stance too) so it never gets stuck lowered.
+  if (parts.hips && parts.hipsRestY !== undefined) {
+    const crouchAmt = Math.max(0, Math.min(1, (state && state.crouch) || (state && state.sliding ? 1 : 0)));
+    const targetY = parts.hipsRestY - crouchAmt * parts.hipsRestY * 0.35;
+    parts.hips.position.y += (targetY - parts.hips.position.y) * 0.3;
+  }
 
   if (state && state.sliding) {
     ease(parts.legL, -0.9, 0, 0.3);
