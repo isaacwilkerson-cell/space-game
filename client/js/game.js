@@ -4416,6 +4416,8 @@ function _cloneAstronaut(template) {
   clone.userData.avatarParts = {
     legL: clone.getObjectByName('legL'),
     legR: clone.getObjectByName('legR'),
+    kneeL: clone.getObjectByName('kneeL'), // only present on the Blender-built model, not
+    kneeR: clone.getObjectByName('kneeR'), // the older box-only procedural fallback
     armL: clone.getObjectByName('armL'),
     armR: clone.getObjectByName('armR'),
     torso: clone.getObjectByName('torso'),
@@ -4476,39 +4478,74 @@ function _poseAvatar(clone, state) {
     obj.rotation.z += (z - obj.rotation.z) * lerp;
   };
 
-  // Rotating a single rigid leg segment at the hip can't actually shorten it, so rotation
-  // alone never reads as "crouching" — it just tilts the legs forward. Lowering the whole
-  // hips group is what actually makes the character look shorter/crouched. Applied for all
-  // states (sliding already implies a low stance too) so it never gets stuck lowered.
-  if (parts.hips && parts.hipsRestY !== undefined) {
-    const crouchAmt = Math.max(0, Math.min(1, (state && state.crouch) || (state && state.sliding ? 1 : 0)));
-    const targetY = parts.hipsRestY - crouchAmt * parts.hipsRestY * 0.35;
-    parts.hips.position.y += (targetY - parts.hips.position.y) * 0.3;
-  }
+  // A single rigid leg segment can only rotate at the hip, which can't actually shorten
+  // it — the old fix lowered the whole hips group instead, which just pushed the still-
+  // straight legs (and feet) through the floor rather than looking crouched. With a real
+  // knee joint, bending the thigh forward and the shin back under it genuinely shortens
+  // the leg's vertical reach, so the hips can drop by roughly that same amount while the
+  // feet stay planted at the floor instead of clipping through it.
+  const hasKnees = !!(parts.kneeL && parts.kneeR);
+  const kneeEase = (obj, x, lerp) => { if (obj) obj.rotation.x += (x - obj.rotation.x) * lerp; };
 
   if (state && state.sliding) {
-    ease(parts.legL, -0.9, 0, 0.3);
-    ease(parts.legR, -0.5, 0, 0.3);
+    if (hasKnees) {
+      ease(parts.legL, -0.55, 0, 0.3);  kneeEase(parts.kneeL, 0.85, 0.3);
+      ease(parts.legR, -0.3, 0, 0.3);   kneeEase(parts.kneeR, 0.5, 0.3);
+    } else {
+      ease(parts.legL, -0.9, 0, 0.3);
+      ease(parts.legR, -0.5, 0, 0.3);
+    }
     ease(parts.armL, -0.3, 0.15, 0.3);
     ease(parts.armR, -0.3, -0.15, 0.3);
     ease(parts.torso, -0.35, 0, 0.3);
+    if (parts.hips && parts.hipsRestY !== undefined) {
+      const targetY = parts.hipsRestY - (hasKnees ? parts.hipsRestY * 0.22 : parts.hipsRestY * 0.35);
+      parts.hips.position.y += (targetY - parts.hips.position.y) * 0.3;
+    }
   } else if (state && state.jumping) {
-    ease(parts.legL, -0.6, 0, 0.25);
-    ease(parts.legR, -0.6, 0, 0.25);
+    if (hasKnees) {
+      // Same sign as the thigh here (unlike crouch) — this is a tuck, so the shin should
+      // fold further in the same direction the thigh already rotated, not cancel it out.
+      ease(parts.legL, -0.35, 0, 0.25); kneeEase(parts.kneeL, -0.7, 0.25);
+      ease(parts.legR, -0.35, 0, 0.25); kneeEase(parts.kneeR, -0.7, 0.25);
+    } else {
+      ease(parts.legL, -0.6, 0, 0.25);
+      ease(parts.legR, -0.6, 0, 0.25);
+    }
     ease(parts.armL, -0.4, 0.1, 0.25);
     ease(parts.armR, -0.4, -0.1, 0.25);
     ease(parts.torso, 0, 0, 0.25);
+    if (parts.hips && parts.hipsRestY !== undefined) {
+      parts.hips.position.y += (parts.hipsRestY - parts.hips.position.y) * 0.3; // stand back to full height in the air
+    }
   } else {
     // Crouch blends with the walk cycle rather than replacing it, so crouch-walking still
     // animates instead of freezing into a static pose.
     const crouch = Math.max(0, Math.min(1, (state && state.crouch) || 0));
-    const crouchLegBend = -0.55 * crouch;
+    if (hasKnees) {
+      const thighFwd = 0.65 * crouch;
+      // Knee rotation is relative to the thigh and composes additively (both rotate about
+      // the same axis) — this needs to be NEGATIVE to fold the shin back opposite the
+      // thigh's forward tilt (a real knee bend), not add to it.
+      const kneeBack = -1.05 * crouch;
+      ease(parts.legL, swing * (1 - crouch * 0.5) + thighFwd, 0, 0.3);
+      ease(parts.legR, -swing * (1 - crouch * 0.5) + thighFwd, 0, 0.3);
+      kneeEase(parts.kneeL, kneeBack, 0.3);
+      kneeEase(parts.kneeR, kneeBack, 0.3);
+    } else {
+      const crouchLegBend = -0.55 * crouch;
+      ease(parts.legL, swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
+      ease(parts.legR, -swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
+    }
     const crouchTorsoLean = -0.18 * crouch;
-    ease(parts.legL, swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
-    ease(parts.legR, -swing * (1 - crouch * 0.5) + crouchLegBend, 0, 0.3);
     ease(parts.armL, -armSwing * (1 - crouch * 0.3) + crouch * 0.2, 0, 0.3);
     ease(parts.armR, armSwing * (1 - crouch * 0.3) + crouch * 0.2, 0, 0.3);
     ease(parts.torso, crouchTorsoLean, 0, 0.3);
+    if (parts.hips && parts.hipsRestY !== undefined) {
+      const dropFrac = hasKnees ? 0.16 : 0.35; // knees now do most of the height work
+      const targetY = parts.hipsRestY - crouch * parts.hipsRestY * dropFrac;
+      parts.hips.position.y += (targetY - parts.hips.position.y) * 0.3;
+    }
   }
 }
 
