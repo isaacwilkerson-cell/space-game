@@ -7,7 +7,10 @@ let socket = null;
 try {
   const _serverURL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? '' : 'https://space-game-production-1d20.up.railway.app';
-  socket = io(_serverURL, { timeout: 3000, reconnectionAttempts: 3 });
+  // Just a plain display name, no account/password — whatever was last typed on the title
+  // screen (or a blank string, meaning "let the server make up a Pilot-XXXX name").
+  const _savedUsername = localStorage.getItem('sn_username') || '';
+  socket = io(_serverURL, { timeout: 3000, reconnectionAttempts: 3, auth: { username: _savedUsername } });
   socket.on('connect_error', () => { socket = null; });
 } catch(e) { socket = null; }
 
@@ -5193,6 +5196,15 @@ document.addEventListener('click', () => {
   // separate "Play" button wiring.
   if (window._titleScreenReady && window._titleScreenEl && window._titleScreenEl.style.display !== 'none') {
     window._titleScreenEl.style.display = 'none';
+    // The socket connected at page load using whatever username was saved from a previous
+    // visit (or none) — if they typed a new/different one on the title screen just now,
+    // reconnect so this session actually uses it instead of requiring a page reload.
+    const typedName = document.getElementById('title-username-input') ? document.getElementById('title-username-input').value.trim().slice(0, 20) : '';
+    if (socket && typedName && typedName !== (socket.auth && socket.auth.username)) {
+      socket.auth = { username: typedName };
+      socket.disconnect();
+      socket.connect();
+    }
   }
   if (hubOpen || shopOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
   if (!document.pointerLockElement && !lockRequested) {
@@ -6104,15 +6116,31 @@ _titleScreenEl.innerHTML = `
       <div id="title-loading-bar" style="width:0%;height:100%;background:#0ff;box-shadow:0 0 10px #0ff;transition:width 0.15s;"></div>
     </div>
   </div>
-  <div id="title-play-prompt" style="display:none;margin-top:60px;font-size:clamp(14px, 3.5vw, 20px);letter-spacing:2px;border:2px solid #0ff;padding:16px 28px;border-radius:8px;background:rgba(0,255,255,0.08);text-shadow:0 0 10px #0ff;cursor:pointer;max-width:90vw;">
+  <div id="title-username-wrap" style="display:none;margin-top:40px;width:90vw;max-width:300px;">
+    <div style="font-size:12px;letter-spacing:2px;color:#7cf;margin-bottom:8px;">PILOT NAME</div>
+    <input id="title-username-input" type="text" maxlength="20" placeholder="enter a username" style="width:100%;box-sizing:border-box;padding:9px 10px;background:rgba(0,20,30,0.8);border:1px solid #0af;border-radius:4px;color:#0ff;font-family:inherit;font-size:14px;text-align:center;letter-spacing:1px;">
+  </div>
+  <div id="title-play-prompt" style="display:none;margin-top:30px;font-size:clamp(14px, 3.5vw, 20px);letter-spacing:2px;border:2px solid #0ff;padding:16px 28px;border-radius:8px;background:rgba(0,255,255,0.08);text-shadow:0 0 10px #0ff;cursor:pointer;max-width:90vw;">
     CLICK ANYWHERE TO ENTER
   </div>
 `;
 document.body.appendChild(_titleScreenEl);
 window._titleScreenEl = _titleScreenEl;
-const _titleLoadingWrap = _titleScreenEl.querySelector('#title-loading-wrap');
-const _titleLoadingBar  = _titleScreenEl.querySelector('#title-loading-bar');
-const _titlePlayPrompt  = _titleScreenEl.querySelector('#title-play-prompt');
+const _titleLoadingWrap  = _titleScreenEl.querySelector('#title-loading-wrap');
+const _titleLoadingBar   = _titleScreenEl.querySelector('#title-loading-bar');
+const _titlePlayPrompt   = _titleScreenEl.querySelector('#title-play-prompt');
+const _titleUsernameWrap = _titleScreenEl.querySelector('#title-username-wrap');
+const _titleUsernameInput = _titleScreenEl.querySelector('#title-username-input');
+
+_titleUsernameInput.value = localStorage.getItem('sn_username') || '';
+// Typing in the field shouldn't dismiss the title screen (that's bound to any click on
+// the document) — only saves the name as you type, live.
+_titleUsernameWrap.addEventListener('click', e => e.stopPropagation());
+_titleUsernameInput.addEventListener('input', () => {
+  const name = _titleUsernameInput.value.trim().slice(0, 20);
+  localStorage.setItem('sn_username', name);
+  if (socket) socket.auth = { username: name }; // takes effect next (re)connect
+});
 
 window._titleScreenReady = false;
 (function pollTitleScreenLoad() {
@@ -6126,6 +6154,7 @@ window._titleScreenReady = false;
     if (_loadStats.pending <= 0 || Date.now() - startTime > TIMEOUT_MS) {
       _titleLoadingBar.style.width = '100%';
       _titleLoadingWrap.style.display = 'none';
+      _titleUsernameWrap.style.display = 'block';
       _titlePlayPrompt.style.display = 'block';
       window._titleScreenReady = true;
       return;

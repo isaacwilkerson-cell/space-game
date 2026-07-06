@@ -59,9 +59,14 @@ function inSafeZone(pos) {
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
+  // Just a plain client-supplied display name — no account, no password, no verification.
+  // Falls back to the anonymous Pilot-XXXX naming if blank or invalid.
+  const _rawUsername = socket.handshake.auth && typeof socket.handshake.auth.username === 'string' ? socket.handshake.auth.username.trim() : '';
+  const displayName = (_rawUsername.length >= 1 && _rawUsername.length <= 20) ? _rawUsername : `Pilot-${socket.id.slice(0, 4)}`;
+
   players[socket.id] = {
     id: socket.id,
-    name: `Pilot-${socket.id.slice(0, 4)}`,
+    name: displayName,
     position: { x: 0, y: 0, z: 150 },
     rotation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
