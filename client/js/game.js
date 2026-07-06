@@ -754,7 +754,16 @@ const _tdmDebugEl = document.createElement('div');
 _tdmDebugEl.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.6);padding:4px 8px;pointer-events:none;display:none;z-index:600;max-width:90vw;';
 _tdmDebugEl.textContent = 'TDM DEBUG — waiting for map to load...';
 document.body.appendChild(_tdmDebugEl);
-loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
+// This 32MB map used to load eagerly at page start, blocking the initial loading screen
+// for every player even if they never touch TDM. Now it only starts downloading once the
+// server's real 20s countdown begins (see 'tdm_countdown_start' below) — that gives it a
+// full 20s+10s(intro) head start before anyone actually needs to walk on it, without
+// costing everyone that download on page load.
+let _tdmMapLoadStarted = false;
+function _loadTDMMap() {
+  if (_tdmMapLoadStarted) return;
+  _tdmMapLoadStarted = true;
+  loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   if (!model) {
     console.warn('TDM arena map GLB failed');
     _tdmLoadFailed = true;
@@ -789,12 +798,13 @@ loadModel('assets/lowpoly__map__asset__by_resoforge.glb', 1400, model => {
   console.log('[TDM] map bbox:', _tdmArenaBBox.min, _tdmArenaBBox.max, 'good spawn:', _tdmSpawnGoodX, _tdmSpawnGoodZ, 'evil spawn:', _tdmSpawnEvilX, _tdmSpawnEvilZ, 'meshes:', _tdmArenaCollidables.length);
   _tdmDebugEl.textContent = `TDM DEBUG — meshes:${_tdmArenaCollidables.length} bbox min:(${_tdmArenaBBox.min.x.toFixed(0)},${_tdmArenaBBox.min.y.toFixed(0)},${_tdmArenaBBox.min.z.toFixed(0)}) max:(${_tdmArenaBBox.max.x.toFixed(0)},${_tdmArenaBBox.max.y.toFixed(0)},${_tdmArenaBBox.max.z.toFixed(0)}) good:(${_tdmSpawnGoodX.toFixed(0)},${_tdmSpawnGoodZ.toFixed(0)}) evil:(${_tdmSpawnEvilX.toFixed(0)},${_tdmSpawnEvilZ.toFixed(0)})`;
   if (gameMode === 'tdm') { fpPos.y = _tdmFloorY; camera.position.y = _tdmFloorY; }
-}, (received, total) => {
-  const mb = (n) => (n / (1024 * 1024)).toFixed(1);
-  _tdmDebugEl.textContent = total > 0
-    ? `TDM DEBUG — downloading map: ${mb(received)}MB / ${mb(total)}MB (${Math.round(received / total * 100)}%)`
-    : `TDM DEBUG — downloading map: ${mb(received)}MB (size unknown)`;
-});
+  }, (received, total) => {
+    const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+    _tdmDebugEl.textContent = total > 0
+      ? `TDM DEBUG — downloading map: ${mb(received)}MB / ${mb(total)}MB (${Math.round(received / total * 100)}%)`
+      : `TDM DEBUG — downloading map: ${mb(received)}MB (size unknown)`;
+  });
+}
 
 const _tdmExitPrompt = document.createElement('div');
 _tdmExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
@@ -820,6 +830,7 @@ function _tdmRespawnAtTeamSpawn() {
 
 function enterTDMArena() {
   if (gameMode === 'tdm') return; // already in
+  _loadTDMMap(); // safety net in case the countdown-start trigger was somehow missed
   gameMode = 'tdm';
   _killAllExteriorLights();
   lobbyScene.visible = false;
@@ -1685,6 +1696,7 @@ function _invSetActive(idx) {
   });
   // Show the weapon viewmodel only if the active slot holds a weapon
   _equippedWeaponId = WEAPON_IDS.includes(_inventory[_activeSlot]) ? _inventory[_activeSlot] : null;
+  _ensureWeaponModelLoaded(_equippedWeaponId); // kicks off the download the first time this weapon is ever equipped
   _hasSniper = !!_equippedWeaponId;
   Object.entries(_weaponMeshes).forEach(([wid, m]) => { if (m) m.visible = false; });
   _sniperMesh = _equippedWeaponId ? (_weaponMeshes[_equippedWeaponId] || null) : null;
@@ -2282,10 +2294,19 @@ function _renderIconToSlot(model, slotIdx) {
   _invSlotEls[slotIdx].icon.appendChild(img);
 }
 
-// Load every weapon model up front (done once each; shown/hidden based on equip state).
-// All weapons share one point light, repositioned each frame to whichever gun is active.
+// Load weapon models lazily — on first equip — instead of all six up front. The two AK
+// rifles alone are ~60MB each and the shotgun is ~43MB; loading every weapon regardless of
+// whether the player owns or ever uses it was most of the game's initial load time.
+// _fireSniper() already guards on "if (!_weaponMeshes[_equippedWeaponId]) return" (model
+// still downloading), so firing just silently waits until the model is ready — no crash,
+// just a brief pause the first time a given weapon is equipped this session.
 window._weaponModelRefs = {};
-Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
+const _weaponLoadStarted = {};
+function _ensureWeaponModelLoaded(id) {
+  if (!id || _weaponLoadStarted[id]) return;
+  const def = WEAPON_DEFS[id];
+  if (!def) return;
+  _weaponLoadStarted[id] = true;
   loadModel(def.asset, def.viewSize || 40, model => {
     if (!model) return;
     model.traverse(c => {
@@ -2305,7 +2326,7 @@ Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
     // If this weapon happens to already be the equipped one (e.g. loaded after equip), show it
     if (_inventory[_activeSlot] === id) _sniperMesh = model;
   });
-});
+}
 
 // Shared side light — lives in viewmodel scene so it only ever lights the gun
 let _sniperLight = new THREE.PointLight(0xffffff, 9, 150);
@@ -5753,7 +5774,7 @@ if (socket) {
   // Server-authoritative TDM countdown — see server/index.js. Every client gets the same
   // endsAt timestamp and the same 'tdm_go' event at the same time, so everyone actually
   // teleports together instead of each client racing its own local timer.
-  socket.on('tdm_countdown_start', ({ endsAt }) => { _tdmServerEndsAt = endsAt; });
+  socket.on('tdm_countdown_start', ({ endsAt }) => { _tdmServerEndsAt = endsAt; _loadTDMMap(); });
   socket.on('tdm_countdown_cancel', () => { _tdmServerEndsAt = null; });
   socket.on('tdm_go', ({ participants }) => {
     _tdmServerEndsAt = null;
