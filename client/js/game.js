@@ -32,12 +32,29 @@ const ASSETS = {
 // total, so it correctly reflects "how much is left" no matter when each load started.
 const _loadStats = { pending: 0 };
 
-function loadModel(path, targetSize, onLoaded, onProgress) {
-  _loadStats.pending++;
+// Large assets (some weapons are 40-60MB, the shooting range is ~42MB) can hit a transient
+// network blip or timeout on any single attempt — this used to give up immediately and
+// permanently, silently leaving that weapon un-firable or the range's collision empty for
+// the rest of the session with no way to recover short of a page reload. Retry a few times
+// with a short backoff before actually giving up.
+const LOAD_MODEL_MAX_RETRIES = 3;
+function loadModel(path, targetSize, onLoaded, onProgress, _attempt) {
+  _attempt = _attempt || 0;
+  if (_attempt === 0) _loadStats.pending++;
   const _done = () => { _loadStats.pending = Math.max(0, _loadStats.pending - 1); };
+  const _retryOrGiveUp = () => {
+    if (_attempt < LOAD_MODEL_MAX_RETRIES) {
+      console.warn(`[loadModel] retrying ${path} (attempt ${_attempt + 2}/${LOAD_MODEL_MAX_RETRIES + 1})`);
+      setTimeout(() => loadModel(path, targetSize, onLoaded, onProgress, _attempt + 1), 800 * (_attempt + 1));
+    } else {
+      console.warn(`[loadModel] giving up on ${path} after ${LOAD_MODEL_MAX_RETRIES + 1} attempts`);
+      _done();
+      onLoaded(null);
+    }
+  };
   fetch(path)
     .then(r => {
-      if (!r.ok) { _done(); onLoaded(null); return null; }
+      if (!r.ok) { _retryOrGiveUp(); return null; }
       if (!onProgress || !r.body) return r.blob();
       // Manually read the stream so we can report bytes-downloaded progress for large
       // assets instead of just an indeterminate wait.
@@ -72,9 +89,9 @@ function loadModel(path, targetSize, onLoaded, onProgress) {
         }
         _done();
         onLoaded(model);
-      }, undefined, () => { URL.revokeObjectURL(url); _done(); onLoaded(null); });
+      }, undefined, () => { URL.revokeObjectURL(url); _retryOrGiveUp(); });
     })
-    .catch(() => { _done(); onLoaded(null); });
+    .catch(() => { _retryOrGiveUp(); });
 }
 
 // ── Loading screen (progress bar fills as pending assets finish loading) ───────
