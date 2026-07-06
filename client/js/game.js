@@ -4845,10 +4845,24 @@ function _updateRemoteFPMeshes(p) {
     // trust the broadcast fpPos.y directly, raycast the real floor at that XZ instead.
     // TDM's fpPos.y is eye height (see _TDM_EYE_OFFSET), not a raw floor value, so it needs
     // its own correction instead of the generic raycast (same fix as the self avatar).
+    // planet_surface broadcasts _surfPos directly, which — like TDM — bakes in SURF_EYE_H
+    // above the real ground, so remote avatars floated SURF_EYE_H units above the terrain
+    // instead of standing on it.
     const _targetGroundCollidables = _avatarGroundCollidables(fpMode);
     const _targetGroundY = fpMode === 'tdm' ? p.fpPos.y - _TDM_EYE_OFFSET
+      : fpMode === 'planet_surface' ? p.fpPos.y - SURF_EYE_H
       : _targetGroundCollidables ? _groundHeightAt(_targetGroundCollidables, p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
-    target.position.set(p.fpPos.x, _targetGroundY, p.fpPos.z);
+    if (fpMode === 'planet_walk' && _landedPlanet) {
+      // planet_walk broadcasts real world XYZ on the sphere's surface, offset outward along
+      // the surface normal by PW_EYE_H — pull it back in along that same normal so the feet
+      // land on the actual planet radius instead of floating just above it.
+      const _pwWorld = new THREE.Vector3(p.fpPos.x, p.fpPos.y, p.fpPos.z);
+      const _pwNormal = _pwWorld.clone().sub(_landedPlanet.position).normalize();
+      _pwWorld.addScaledVector(_pwNormal, -PW_EYE_H);
+      target.position.copy(_pwWorld);
+    } else {
+      target.position.set(p.fpPos.x, _targetGroundY, p.fpPos.z);
+    }
     target.rotation.set(0, p.fpYaw || 0, 0);
 
     // The name tag is always already a child of `target` (added at player creation), so
