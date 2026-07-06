@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const { initDb, registerAuthRoutes, verifySessionToken } = require('./auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,9 +10,6 @@ const io = new Server(server, {
   pingTimeout: 10000,
   pingInterval: 5000,
 });
-
-registerAuthRoutes(app);
-initDb().catch(err => console.error('[auth] initDb failed:', err.message));
 
 app.use((req, res, next) => {
   if (req.path.endsWith('.js') || req.path.endsWith('.html')) {
@@ -63,16 +59,9 @@ function inSafeZone(pos) {
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  // Logged-in players get their real username; anyone else (guests, or an expired/invalid
-  // token) falls back to the same anonymous "Pilot-XXXX" naming as before — accounts are
-  // additive, guest play still works exactly as it always did.
-  const sessionPayload = verifySessionToken(socket.handshake.auth && socket.handshake.auth.token);
-  const displayName = sessionPayload ? sessionPayload.username : `Pilot-${socket.id.slice(0, 4)}`;
-
   players[socket.id] = {
     id: socket.id,
-    name: displayName,
-    loggedIn: !!sessionPayload,
+    name: `Pilot-${socket.id.slice(0, 4)}`,
     position: { x: 0, y: 0, z: 150 },
     rotation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },

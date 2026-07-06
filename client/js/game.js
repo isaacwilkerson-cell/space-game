@@ -3,15 +3,11 @@ console.log('%c GAME.JS v209 LOADED', 'color:lime;font-size:18px;font-weight:bol
 document.title = 'Space Game v209';
 
 // Socket is optional — game runs offline if server isn't up
-const SERVER_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? '' : 'https://space-game-production-1d20.up.railway.app';
 let socket = null;
 try {
-  // If a previous session logged in, reconnect with that same identity right away —
-  // otherwise this connects anonymously and _accountLogin() below re-authenticates it
-  // once/if the player logs in on the title screen.
-  const _savedToken = localStorage.getItem('sn_token');
-  socket = io(SERVER_BASE_URL, { timeout: 3000, reconnectionAttempts: 3, auth: _savedToken ? { token: _savedToken } : {} });
+  const _serverURL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? '' : 'https://space-game-production-1d20.up.railway.app';
+  socket = io(_serverURL, { timeout: 3000, reconnectionAttempts: 3 });
   socket.on('connect_error', () => { socket = null; });
 } catch(e) { socket = null; }
 
@@ -6099,8 +6095,6 @@ _titleScreenEl.style.cssText = `
   background:radial-gradient(ellipse at center, #001428 0%, #000005 80%);
   font-family:'Courier New',monospace; color:#0ff;
 `;
-const _fieldCss = 'width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:8px;background:rgba(0,20,30,0.8);border:1px solid #0af;border-radius:4px;color:#0ff;font-family:inherit;font-size:13px;';
-const _btnCss = 'width:100%;padding:9px;background:rgba(0,255,255,0.12);border:1px solid #0ff;border-radius:4px;color:#0ff;font-family:inherit;font-size:13px;letter-spacing:1px;cursor:pointer;';
 _titleScreenEl.innerHTML = `
   <div style="font-size:clamp(26px, 8vw, 52px);letter-spacing:clamp(3px, 1.5vw, 10px);font-weight:bold;text-shadow:0 0 20px #0ff,0 0 40px #0af;padding:0 12px;">STARBOUND NEXUS</div>
   <div style="font-size:clamp(10px, 2.8vw, 14px);letter-spacing:2px;color:#7cf;margin-top:14px;padding:0 12px;">FREE MULTIPLAYER BROWSER SPACE GAME</div>
@@ -6110,129 +6104,15 @@ _titleScreenEl.innerHTML = `
       <div id="title-loading-bar" style="width:0%;height:100%;background:#0ff;box-shadow:0 0 10px #0ff;transition:width 0.15s;"></div>
     </div>
   </div>
-
-  <div id="title-account-panel" style="display:none;margin-top:40px;width:90vw;max-width:300px;">
-    <div id="title-loggedin-wrap" style="display:none;margin-bottom:16px;font-size:13px;letter-spacing:1px;color:#7cf;">
-      Playing as <span id="title-loggedin-name" style="color:#0ff;font-weight:bold;"></span>
-      &nbsp;<a id="title-logout" style="color:#f77;cursor:pointer;text-decoration:underline;">(log out)</a>
-    </div>
-    <div id="title-auth-forms">
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button id="title-tab-login" style="${_btnCss}background:rgba(0,255,255,0.25);">LOG IN</button>
-        <button id="title-tab-signup" style="${_btnCss}">SIGN UP</button>
-      </div>
-      <div id="title-login-form">
-        <input id="title-login-email" type="email" placeholder="email" style="${_fieldCss}">
-        <input id="title-login-password" type="password" placeholder="password" style="${_fieldCss}">
-        <button id="title-login-submit" style="${_btnCss}">LOG IN</button>
-      </div>
-      <div id="title-signup-form" style="display:none;">
-        <input id="title-signup-username" type="text" placeholder="username (3-20 chars)" style="${_fieldCss}">
-        <input id="title-signup-email" type="email" placeholder="email" style="${_fieldCss}">
-        <input id="title-signup-password" type="password" placeholder="password (6+ chars)" style="${_fieldCss}">
-        <button id="title-signup-submit" style="${_btnCss}">SIGN UP</button>
-      </div>
-      <div id="title-auth-msg" style="margin-top:10px;font-size:12px;min-height:16px;"></div>
-    </div>
-  </div>
-
-  <div id="title-play-prompt" style="display:none;margin-top:30px;font-size:clamp(14px, 3.5vw, 20px);letter-spacing:2px;border:2px solid #0ff;padding:16px 28px;border-radius:8px;background:rgba(0,255,255,0.08);text-shadow:0 0 10px #0ff;cursor:pointer;max-width:90vw;">
-    CLICK ANYWHERE TO ENTER <span style="font-size:11px;color:#7cf;display:block;margin-top:4px;letter-spacing:1px;">(or play as guest, no account needed)</span>
+  <div id="title-play-prompt" style="display:none;margin-top:60px;font-size:clamp(14px, 3.5vw, 20px);letter-spacing:2px;border:2px solid #0ff;padding:16px 28px;border-radius:8px;background:rgba(0,255,255,0.08);text-shadow:0 0 10px #0ff;cursor:pointer;max-width:90vw;">
+    CLICK ANYWHERE TO ENTER
   </div>
 `;
 document.body.appendChild(_titleScreenEl);
 window._titleScreenEl = _titleScreenEl;
-const _titleLoadingWrap  = _titleScreenEl.querySelector('#title-loading-wrap');
-const _titleLoadingBar   = _titleScreenEl.querySelector('#title-loading-bar');
-const _titlePlayPrompt   = _titleScreenEl.querySelector('#title-play-prompt');
-const _titleAccountPanel = _titleScreenEl.querySelector('#title-account-panel');
-const _titleAuthMsg      = _titleScreenEl.querySelector('#title-auth-msg');
-
-// Clicking anywhere on the title screen dismisses it (see the document click handler),
-// but interacting with the form itself shouldn't — stop those clicks from bubbling up.
-_titleAccountPanel.addEventListener('click', e => e.stopPropagation());
-
-function _titleShowAuthMsg(text, isError) {
-  _titleAuthMsg.textContent = text;
-  _titleAuthMsg.style.color = isError ? '#f77' : '#7f7';
-}
-
-_titleScreenEl.querySelector('#title-tab-login').addEventListener('click', () => {
-  _titleScreenEl.querySelector('#title-login-form').style.display = 'block';
-  _titleScreenEl.querySelector('#title-signup-form').style.display = 'none';
-  _titleScreenEl.querySelector('#title-tab-login').style.background = 'rgba(0,255,255,0.25)';
-  _titleScreenEl.querySelector('#title-tab-signup').style.background = 'rgba(0,255,255,0.12)';
-  _titleAuthMsg.textContent = '';
-});
-_titleScreenEl.querySelector('#title-tab-signup').addEventListener('click', () => {
-  _titleScreenEl.querySelector('#title-signup-form').style.display = 'block';
-  _titleScreenEl.querySelector('#title-login-form').style.display = 'none';
-  _titleScreenEl.querySelector('#title-tab-signup').style.background = 'rgba(0,255,255,0.25)';
-  _titleScreenEl.querySelector('#title-tab-login').style.background = 'rgba(0,255,255,0.12)';
-  _titleAuthMsg.textContent = '';
-});
-
-function _titleShowLoggedIn(username) {
-  _titleScreenEl.querySelector('#title-loggedin-wrap').style.display = 'block';
-  _titleScreenEl.querySelector('#title-loggedin-name').textContent = username;
-  _titleScreenEl.querySelector('#title-auth-forms').style.display = 'none';
-}
-
-_titleScreenEl.querySelector('#title-signup-submit').addEventListener('click', async () => {
-  const username = _titleScreenEl.querySelector('#title-signup-username').value.trim();
-  const email = _titleScreenEl.querySelector('#title-signup-email').value.trim();
-  const password = _titleScreenEl.querySelector('#title-signup-password').value;
-  _titleShowAuthMsg('Creating account...', false);
-  try {
-    const res = await fetch(SERVER_BASE_URL + '/api/signup', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) { _titleShowAuthMsg(data.error || 'Signup failed.', true); return; }
-    _titleShowAuthMsg(data.message || 'Check your email to verify your account, then log in.', false);
-    _titleScreenEl.querySelector('#title-tab-login').click();
-  } catch (e) {
-    _titleShowAuthMsg('Could not reach the server.', true);
-  }
-});
-
-_titleScreenEl.querySelector('#title-login-submit').addEventListener('click', async () => {
-  const email = _titleScreenEl.querySelector('#title-login-email').value.trim();
-  const password = _titleScreenEl.querySelector('#title-login-password').value;
-  _titleShowAuthMsg('Logging in...', false);
-  try {
-    const res = await fetch(SERVER_BASE_URL + '/api/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) { _titleShowAuthMsg(data.error || 'Login failed.', true); return; }
-    localStorage.setItem('sn_token', data.token);
-    localStorage.setItem('sn_username', data.username);
-    _titleShowAuthMsg('', false);
-    _titleShowLoggedIn(data.username);
-    // Re-authenticate the already-open socket connection with the new identity instead of
-    // requiring a full page reload.
-    if (socket) { socket.auth = { token: data.token }; socket.disconnect(); socket.connect(); }
-  } catch (e) {
-    _titleShowAuthMsg('Could not reach the server.', true);
-  }
-});
-
-_titleScreenEl.querySelector('#title-logout').addEventListener('click', () => {
-  localStorage.removeItem('sn_token');
-  localStorage.removeItem('sn_username');
-  _titleScreenEl.querySelector('#title-loggedin-wrap').style.display = 'none';
-  _titleScreenEl.querySelector('#title-auth-forms').style.display = 'block';
-  if (socket) { socket.auth = {}; socket.disconnect(); socket.connect(); }
-});
-
-// If a previous session already logged in, skip straight to the "logged in as X" state
-// instead of showing empty login/signup forms again.
-if (localStorage.getItem('sn_token') && localStorage.getItem('sn_username')) {
-  _titleShowLoggedIn(localStorage.getItem('sn_username'));
-}
+const _titleLoadingWrap = _titleScreenEl.querySelector('#title-loading-wrap');
+const _titleLoadingBar  = _titleScreenEl.querySelector('#title-loading-bar');
+const _titlePlayPrompt  = _titleScreenEl.querySelector('#title-play-prompt');
 
 window._titleScreenReady = false;
 (function pollTitleScreenLoad() {
@@ -6246,7 +6126,6 @@ window._titleScreenReady = false;
     if (_loadStats.pending <= 0 || Date.now() - startTime > TIMEOUT_MS) {
       _titleLoadingBar.style.width = '100%';
       _titleLoadingWrap.style.display = 'none';
-      _titleAccountPanel.style.display = 'block';
       _titlePlayPrompt.style.display = 'block';
       window._titleScreenReady = true;
       return;
