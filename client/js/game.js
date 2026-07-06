@@ -5188,6 +5188,12 @@ const overlay = document.getElementById('click-overlay');
 
 let lockRequested = false;
 document.addEventListener('click', () => {
+  // Dismiss the title screen on the very first click once it's actually ready — the same
+  // click that follows also requests pointer lock below, so this doesn't need its own
+  // separate "Play" button wiring.
+  if (window._titleScreenReady && window._titleScreenEl && window._titleScreenEl.style.display !== 'none') {
+    window._titleScreenEl.style.display = 'none';
+  }
   if (hubOpen || shopOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
   if (!document.pointerLockElement && !lockRequested) {
     lockRequested = true;
@@ -6076,9 +6082,55 @@ function animate(t) {
   _drawMinimap();
 }
 enterStation();
-// Everything (weapons, shooting range, planet terrains, etc.) already starts loading
-// synchronously above, so waiting on _loadStats.pending here naturally covers all of it —
-// no need for separate loading screens later. Long timeout since there's now a lot of
-// large assets (guns + terrain GLBs) that can take a while on a slow connection.
-_showLoadingScreen('ENTERING STATION', () => _loadStats.pending <= 0, { timeoutMs: 60000 });
+
+// ── Title screen — doubles as the initial loading screen ──────────────────────
+// Replaces the old bare "ENTERING STATION" progress bar: shows the game's actual
+// branding immediately, fills a progress bar while everything queued above finishes
+// loading in the background, then swaps to a "click to enter" prompt once ready —
+// the loading itself stays hidden behind a real title screen instead of a blank bar.
+const _titleScreenEl = document.createElement('div');
+_titleScreenEl.style.cssText = `
+  position:fixed; inset:0; z-index:1000; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center;
+  background:radial-gradient(ellipse at center, #001428 0%, #000005 80%);
+  font-family:'Courier New',monospace; color:#0ff;
+`;
+_titleScreenEl.innerHTML = `
+  <div style="font-size:clamp(26px, 8vw, 52px);letter-spacing:clamp(3px, 1.5vw, 10px);font-weight:bold;text-shadow:0 0 20px #0ff,0 0 40px #0af;padding:0 12px;">STARBOUND NEXUS</div>
+  <div style="font-size:clamp(10px, 2.8vw, 14px);letter-spacing:2px;color:#7cf;margin-top:14px;padding:0 12px;">FREE MULTIPLAYER BROWSER SPACE GAME</div>
+  <div id="title-loading-wrap" style="margin-top:60px;width:90vw;max-width:340px;">
+    <div id="title-loading-label" style="font-size:13px;letter-spacing:4px;margin-bottom:14px;">LOADING</div>
+    <div style="width:100%;height:10px;border:1px solid #0af;border-radius:5px;overflow:hidden;background:rgba(0,255,255,0.08);">
+      <div id="title-loading-bar" style="width:0%;height:100%;background:#0ff;box-shadow:0 0 10px #0ff;transition:width 0.15s;"></div>
+    </div>
+  </div>
+  <div id="title-play-prompt" style="display:none;margin-top:60px;font-size:clamp(14px, 3.5vw, 20px);letter-spacing:2px;border:2px solid #0ff;padding:16px 28px;border-radius:8px;background:rgba(0,255,255,0.08);text-shadow:0 0 10px #0ff;cursor:pointer;max-width:90vw;">
+    CLICK ANYWHERE TO ENTER
+  </div>
+`;
+document.body.appendChild(_titleScreenEl);
+window._titleScreenEl = _titleScreenEl;
+const _titleLoadingWrap = _titleScreenEl.querySelector('#title-loading-wrap');
+const _titleLoadingBar  = _titleScreenEl.querySelector('#title-loading-bar');
+const _titlePlayPrompt  = _titleScreenEl.querySelector('#title-play-prompt');
+
+window._titleScreenReady = false;
+(function pollTitleScreenLoad() {
+  const startPending = _loadStats.pending;
+  const startTime = Date.now();
+  const TIMEOUT_MS = 60000; // safety net so a single stuck asset can't strand the title screen forever
+  (function poll() {
+    const finishedSinceShown = Math.max(startPending - _loadStats.pending, 0);
+    const pct = startPending > 0 ? Math.min(99, Math.round((finishedSinceShown / startPending) * 100)) : 99;
+    _titleLoadingBar.style.width = pct + '%';
+    if (_loadStats.pending <= 0 || Date.now() - startTime > TIMEOUT_MS) {
+      _titleLoadingBar.style.width = '100%';
+      _titleLoadingWrap.style.display = 'none';
+      _titlePlayPrompt.style.display = 'block';
+      window._titleScreenReady = true;
+      return;
+    }
+    requestAnimationFrame(poll);
+  })();
+})();
 requestAnimationFrame(animate);
