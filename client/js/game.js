@@ -459,6 +459,63 @@ loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
   console.log('[lobby] loaded, bbox:', _lobbyBBox, 'exit:', _lobbyExitPos);
 });
 
+// Beta-testing thank-you screen — a flat quad mounted across four measured world-space
+// corners (the wall it's mounted on isn't perfectly axis-aligned, so each corner gets its
+// own position rather than assuming a flat rectangle).
+(function _addBetaThankYouScreen() {
+  const corners = {
+    topLeft:     new THREE.Vector3(0.6, 5.3, -57.8),
+    bottomLeft:  new THREE.Vector3(0.6, -4.1, -58),
+    topRight:    new THREE.Vector3(51.3, 6.8, -58.3),
+    bottomRight: new THREE.Vector3(51.3, -2.6, -60.7),
+  };
+  // The measured corners sit almost exactly on the room's own wall surface, which
+  // z-fights with the wall mesh underneath — nudge the whole plane out along its own
+  // face normal so it renders cleanly in front instead of flickering/losing to the wall.
+  const _edge1 = corners.bottomLeft.clone().sub(corners.topLeft);
+  const _edge2 = corners.topRight.clone().sub(corners.topLeft);
+  const _faceNormal = new THREE.Vector3().crossVectors(_edge1, _edge2).normalize();
+  Object.values(corners).forEach(c => c.addScaledVector(_faceNormal, 0.3));
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#04121c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  ctx.font = 'bold 64px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#00ffff';
+  ctx.fillText('THANK YOU FOR BEING', canvas.width / 2, canvas.height / 2 - 40);
+  ctx.fillText('A PART OF BETA TESTING', canvas.width / 2, canvas.height / 2 + 40);
+
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array([
+    corners.topLeft.x, corners.topLeft.y, corners.topLeft.z,
+    corners.bottomLeft.x, corners.bottomLeft.y, corners.bottomLeft.z,
+    corners.topRight.x, corners.topRight.y, corners.topRight.z,
+    corners.bottomRight.x, corners.bottomRight.y, corners.bottomRight.z,
+  ]);
+  const uvs = new Float32Array([0, 1,  0, 0,  1, 1,  1, 0]);
+  const indices = [0, 1, 2,  1, 3, 2];
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  // transparent + depthTest:false + a high renderOrder forces this into the very end of the
+  // transparent render queue, so it draws on top of the room's own glass/window panes
+  // instead of getting tinted/hidden underneath them (this exact spot sits right behind one).
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, depthTest: false, transparent: true });
+  const screen = new THREE.Mesh(geo, mat);
+  screen.renderOrder = 999;
+  screen.userData.isBetaScreen = true;
+  lobbyScene.add(screen);
+})();
+
 const _lobbyExitPrompt = document.createElement('div');
 _lobbyExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
 _lobbyExitPrompt.textContent = '[ E ]  RETURN TO STATION';
