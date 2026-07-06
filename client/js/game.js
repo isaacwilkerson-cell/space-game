@@ -4557,9 +4557,13 @@ function _poseAvatar(clone, state) {
   // whatever the walk/crouch/slide/jump pose above already set, so it reads as "holding
   // a gun in front of you" rather than "gun dangling at your side."
   if (clone.userData.heldWeaponId) {
-    parts.armR.rotation.x += (-1.3 - parts.armR.rotation.x) * 0.25;
-    parts.armR.rotation.z += (-0.15 - parts.armR.rotation.z) * 0.25;
-    parts.armL.rotation.x += (-0.9 - parts.armL.rotation.x) * 0.25; // off-hand supporting the foregrip
+    // Verified via live preview which sign actually points the arm forward: dot product
+    // of the hand's direction from the torso against the character's forward vector was
+    // -0.97 (pointing backward) with the negative sign this used to have, and +0.97
+    // (pointing forward, correct) with positive — that's the "arms bent the wrong way" bug.
+    parts.armR.rotation.x += (1.3 - parts.armR.rotation.x) * 0.25;
+    parts.armR.rotation.z += (0.15 - parts.armR.rotation.z) * 0.25;
+    parts.armL.rotation.x += (0.9 - parts.armL.rotation.x) * 0.25; // off-hand supporting the foregrip
   }
 }
 
@@ -4648,7 +4652,11 @@ function _updateSelfAstronaut() {
   // it has its own dedicated ground system instead (_tdmGroundHeightAt) — mixing the two
   // conventions here would put the avatar at the wrong height, not fix it.
   const _selfGroundCollidables = _avatarGroundCollidables(gameMode);
-  const _selfGroundY = _selfGroundCollidables ? _groundHeightAt(_selfGroundCollidables, fpPos.x, fpPos.z, fpPos.y) : fpPos.y;
+  // TDM was excluded from the generic raycast fix above (see comment) but never actually
+  // got its own correction applied — fpPos.y there is EYE height, so positioning the avatar
+  // directly at fpPos.y left it floating _TDM_EYE_OFFSET (16) units above the real floor.
+  const _selfGroundY = gameMode === 'tdm' ? fpPos.y - _TDM_EYE_OFFSET
+    : _selfGroundCollidables ? _groundHeightAt(_selfGroundCollidables, fpPos.x, fpPos.z, fpPos.y) : fpPos.y;
   _selfAstronautMesh.position.set(fpPos.x, _selfGroundY, fpPos.z);
   _selfAstronautMesh.rotation.set(0, fpYaw, 0);
   // Drive the walk/jump/slide animation from real movement state, so toggling third
@@ -4831,8 +4839,11 @@ function _updateRemoteFPMeshes(p) {
                  : rp.roomMesh;
     // Same floor-mismatch fix as the self avatar, across every applicable mode — don't
     // trust the broadcast fpPos.y directly, raycast the real floor at that XZ instead.
+    // TDM's fpPos.y is eye height (see _TDM_EYE_OFFSET), not a raw floor value, so it needs
+    // its own correction instead of the generic raycast (same fix as the self avatar).
     const _targetGroundCollidables = _avatarGroundCollidables(fpMode);
-    const _targetGroundY = _targetGroundCollidables ? _groundHeightAt(_targetGroundCollidables, p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
+    const _targetGroundY = fpMode === 'tdm' ? p.fpPos.y - _TDM_EYE_OFFSET
+      : _targetGroundCollidables ? _groundHeightAt(_targetGroundCollidables, p.fpPos.x, p.fpPos.z, p.fpPos.y) : p.fpPos.y;
     target.position.set(p.fpPos.x, _targetGroundY, p.fpPos.z);
     target.rotation.set(0, p.fpYaw || 0, 0);
 
