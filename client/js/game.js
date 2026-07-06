@@ -2527,30 +2527,20 @@ function _firePellet(dir, activeScene) {
     console.warn('[fire] static hit-detection error (bullet still fired fine):', err);
   }
 
-  // Player hits: a ray-vs-sphere test against each player's known position + measured
-  // radius decides WHETHER a shot hit them at all (reliable regardless of mesh/matrix/
-  // template timing issues that made pure mesh-raycasting flaky). Once we know a shot
-  // touched that sphere, we then raycast just that one player's actual mesh to place
-  // the bullet hole precisely on the real surface (any part of the model) instead of on
-  // the sphere's surface, which visibly floated off the model.
+  // Player hits: raycast directly against each player's ACTUAL current-pose mesh first —
+  // the avatar's real geometry (torso/arms/legs/head) now decides whether a shot connects,
+  // so aiming at a limb that's swung away from the rest-pose bounding sphere still counts.
+  // A single bounding sphere used to be the gate here and only refined position afterward;
+  // that made shots on anything outside the torso-centered sphere (an outstretched arm, a
+  // raised leg while sliding, the head) silently miss even though the shot visibly connected.
+  // The sphere is now only a fallback for the rare case the mesh isn't ready yet.
   let bestPlayerHit = null;
   try {
     const playerTargets = _getRemotePlayerHitTargets();
     playerTargets.forEach(m => {
       const other = m.children[0];
-      const radius = (other && other.userData.collisionRadius) || 6;
-      // Center offset is in the model's own local space — rotate it by the wrapper's
-      // current facing so the hitbox turns with the character instead of staying fixed.
-      const localOffset = (other && other.userData.collisionCenterOffset) || new THREE.Vector3(0, 12, 0);
-      const worldOffset = localOffset.clone().applyQuaternion(m.quaternion);
-      const center = m.position.clone().add(worldOffset);
-      const sphere = new THREE.Sphere(center, radius);
-      const spherePoint = new THREE.Vector3();
-      if (!raycaster.ray.intersectSphere(sphere, spherePoint)) return;
-
-      // Sphere says this shot touches this player — refine to the exact mesh surface.
-      let point = spherePoint;
-      let normal = spherePoint.clone().sub(center).normalize();
+      let point = null;
+      let normal = null;
       try {
         if (other) {
           other.updateMatrixWorld(true);
@@ -2559,11 +2549,25 @@ function _firePellet(dir, activeScene) {
             point = meshHits[0].point;
             normal = meshHits[0].face
               ? meshHits[0].face.normal.clone().transformDirection(meshHits[0].object.matrixWorld).normalize()
-              : normal;
+              : dir.clone().negate();
           }
         }
       } catch (err) {
-        // Mesh refine failed — spherePoint is still a perfectly good fallback.
+        // Mesh raycast failed — fall through to the sphere test below.
+      }
+
+      if (!point) {
+        const radius = (other && other.userData.collisionRadius) || 6;
+        // Center offset is in the model's own local space — rotate it by the wrapper's
+        // current facing so the hitbox turns with the character instead of staying fixed.
+        const localOffset = (other && other.userData.collisionCenterOffset) || new THREE.Vector3(0, 12, 0);
+        const worldOffset = localOffset.clone().applyQuaternion(m.quaternion);
+        const center = m.position.clone().add(worldOffset);
+        const sphere = new THREE.Sphere(center, radius);
+        const spherePoint = new THREE.Vector3();
+        if (!raycaster.ray.intersectSphere(sphere, spherePoint)) return;
+        point = spherePoint;
+        normal = spherePoint.clone().sub(center).normalize();
       }
 
       const distance = camera.position.distanceTo(point);
