@@ -6105,7 +6105,7 @@ _titleScreenEl.style.cssText = `
   position:fixed; inset:0; z-index:1000; display:flex; flex-direction:column;
   align-items:center; justify-content:center; text-align:center;
   background:radial-gradient(ellipse at center, #001428 0%, #000005 80%);
-  font-family:'Courier New',monospace; color:#0ff;
+  font-family:'Courier New',monospace; color:#0ff; cursor:auto;
 `;
 _titleScreenEl.innerHTML = `
   <div style="font-size:clamp(26px, 8vw, 52px);letter-spacing:clamp(3px, 1.5vw, 10px);font-weight:bold;text-shadow:0 0 20px #0ff,0 0 40px #0af;padding:0 12px;">STARBOUND NEXUS</div>
@@ -6136,6 +6136,11 @@ _titleUsernameInput.value = localStorage.getItem('sn_username') || '';
 // Typing in the field shouldn't dismiss the title screen (that's bound to any click on
 // the document) — only saves the name as you type, live.
 _titleUsernameWrap.addEventListener('click', e => e.stopPropagation());
+// The game's own global keydown handler (WASD movement) calls preventDefault() on every
+// key so it doesn't leak into browser shortcuts — same reason the chat box needs this,
+// otherwise every keystroke gets swallowed before it ever reaches the input.
+_titleUsernameInput.addEventListener('keydown', e => e.stopPropagation());
+_titleUsernameInput.addEventListener('keyup', e => e.stopPropagation());
 _titleUsernameInput.addEventListener('input', () => {
   const name = _titleUsernameInput.value.trim().slice(0, 20);
   localStorage.setItem('sn_username', name);
