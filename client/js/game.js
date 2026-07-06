@@ -4547,15 +4547,54 @@ function _poseAvatar(clone, state) {
       parts.hips.position.y += (targetY - parts.hips.position.y) * 0.3;
     }
   }
+
+  // With the arm hanging straight down (the base rest pose above), anything attached at
+  // the hand — like a held gun — sits mostly hidden behind/beside the body from most
+  // angles. Raise the gun arm into a held/ready position instead, blended on top of
+  // whatever the walk/crouch/slide/jump pose above already set, so it reads as "holding
+  // a gun in front of you" rather than "gun dangling at your side."
+  if (clone.userData.heldWeaponId) {
+    parts.armR.rotation.x += (-1.3 - parts.armR.rotation.x) * 0.25;
+    parts.armR.rotation.z += (-0.15 - parts.armR.rotation.z) * 0.25;
+    parts.armL.rotation.x += (-0.9 - parts.armL.rotation.x) * 0.25; // off-hand supporting the foregrip
+  }
 }
 
-// Attaches a simple representative gun shape to an avatar's hand socket. The real FP
-// weapon viewmodels each have custom offsets tuned specifically for camera-relative first-
-// person placement, not third-person hand placement, so re-using them accurately here
-// would need a separate per-weapon tuning pass — this is a deliberately simple stand-in
-// that shows *a* gun in hand, not the exact equipped model.
-const _heldGunGeo = new THREE.BoxGeometry(1, 1, 1);
-const _heldGunMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4, metalness: 0.6 });
+// Attaches a simple representative gun shape (barrel + receiver + grip + mag) to an
+// avatar's hand socket. The real FP weapon viewmodels each have custom offsets tuned
+// specifically for camera-relative first-person placement, not third-person hand
+// placement, so re-using them accurately here would need a separate per-weapon tuning
+// pass — this is a deliberately simple stand-in that reads as *a* gun in hand, not the
+// exact equipped model.
+//
+// Sizing bug this replaces: the old version used flat numbers (e.g. scale 1.2/1.2/9) as
+// if gunSocket's local space were world-scale units. It isn't — the avatar clone's ROOT
+// carries loadModel()'s own targetSize scale factor (often ~10x or more), which multiplies
+// every descendant's local coordinates. A "9 unit long" box nested that deep in the
+// hierarchy rendered many times larger than intended — the "massive black cube" other
+// players saw. Sizing everything as a fraction of gunSocket's own measured distance from
+// the elbow (same local-unit frame the gun mesh is added into) makes it self-scaling
+// instead of a guessed absolute number.
+const _heldGunMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.45, metalness: 0.55 });
+const _heldGunGripMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.8, metalness: 0.1 });
+function _buildHeldGunMesh(refLen) {
+  const group = new THREE.Group();
+  const barrelLen = refLen * 0.75, thick = refLen * 0.13;
+  const barrel = new THREE.Mesh(new THREE.BoxGeometry(thick, thick, barrelLen), _heldGunMat);
+  barrel.position.z = -barrelLen * 0.3;
+  group.add(barrel);
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(thick * 1.4, thick * 1.6, barrelLen * 0.35), _heldGunMat);
+  receiver.position.z = barrelLen * 0.12;
+  group.add(receiver);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(thick * 0.9, barrelLen * 0.35, thick * 0.9), _heldGunGripMat);
+  grip.position.set(0, -barrelLen * 0.16, barrelLen * 0.22);
+  group.add(grip);
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(thick * 0.7, barrelLen * 0.3, thick * 0.6), _heldGunMat);
+  mag.position.set(0, -barrelLen * 0.16, -barrelLen * 0.02);
+  mag.rotation.x = 0.35;
+  group.add(mag);
+  return group;
+}
 function _setAvatarHeldWeapon(clone, weaponId) {
   const parts = clone.userData.avatarParts;
   if (!parts || !parts.gunSocket) return;
@@ -4563,10 +4602,9 @@ function _setAvatarHeldWeapon(clone, weaponId) {
   clone.userData.heldWeaponId = weaponId || null;
   if (clone.userData.heldGunMesh) { parts.gunSocket.remove(clone.userData.heldGunMesh); clone.userData.heldGunMesh = null; }
   if (!weaponId) return;
-  const len = (weaponId === 'shotgun' || weaponId === 'ak105' || weaponId === 'ak47' || weaponId === 'sniper') ? 9 : 5;
-  const mesh = new THREE.Mesh(_heldGunGeo, _heldGunMat);
-  mesh.scale.set(1.2, 1.2, len);
-  mesh.position.set(0.6, 1.2, -len * 0.4);
+  const refLen = parts.gunSocket.position.length() || 1; // ~forearm length, same local-unit frame as the mesh we're adding
+  const mesh = _buildHeldGunMesh(refLen);
+  mesh.rotation.x = -0.15; // angle the barrel slightly up/forward instead of straight down like the arm
   parts.gunSocket.add(mesh);
   clone.userData.heldGunMesh = mesh;
 }
