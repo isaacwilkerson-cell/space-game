@@ -4784,7 +4784,15 @@ function addRemotePlayer(data) {
   planetMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
   planetSurfMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
   planetSurfMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
-  ejectedMesh.add(_cloneAstronaut(_astronautLobbyTemplate));
+  // Ejected mode broadcasts the player's actual eye/camera position (free-floating in
+  // space, no ground to raycast against) — but the astronaut clone is built feet-at-origin
+  // like every other mode, so planting it directly at that position put the feet at eye
+  // height and the whole body floated a full body-height above where the player actually
+  // is. Shift it down by its own measured height so the head (not the feet) lines up with
+  // the broadcast position instead.
+  const _ejectedAstro = _cloneAstronaut(_astronautLobbyTemplate);
+  _ejectedAstro.position.y -= _ejectedAstro.userData.collisionHeight || 18;
+  ejectedMesh.add(_ejectedAstro);
   ejectedMesh.userData.hasAstronaut = !!_astronautLobbyTemplate;
 
   // Name tags
