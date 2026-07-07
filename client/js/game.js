@@ -5790,6 +5790,9 @@ function drawReticle() {
     _floatingCrateMesh.getWorldPosition(wp);
     drawWaypoint(wp, 0, 'rgba(120,255,120,A)', '📦 CRATE', true);
   }
+  if (gameMode === 'flight') {
+    _tradingStations.forEach(s => drawWaypoint(s.position, 0, 'rgba(0,200,255,A)', 'TRADE STATION'));
+  }
 
   // Admin noclip dot + world coords of looked-at point
   if (window._adminMode && pointerLocked) {
@@ -6675,6 +6678,57 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ── Trading stations ─────────────────────────────────────────────────────────
+// Independent shop access points scattered out near the edges of the explorable area —
+// gives flying way out there its own reason beyond just reaching a particular planet.
+// Docking with one just opens the same shop panel directly (no hangar interior/customize
+// tabs like the home station has — these are remote outposts, not your own hangar).
+const TRADING_STATION_DOCK_RADIUS = 500;
+const TRADING_STATION_POSITIONS = [
+  new THREE.Vector3(78000, 4000, -20000),
+  new THREE.Vector3(-72000, -6000, 30000),
+  new THREE.Vector3(15000, 8000, 82000),
+  new THREE.Vector3(-30000, -9000, -80000),
+];
+const _tradingStations = [];
+let _tradingStationTemplate = null;
+loadModel('assets/space_station_v_2001_a_space_odyssey.glb', 900, model => {
+  if (!model) return;
+  _tradingStationTemplate = model;
+  TRADING_STATION_POSITIONS.forEach(pos => {
+    const clone = model.clone(true);
+    clone.position.copy(pos);
+    scene.add(clone);
+    _tradingStations.push(clone);
+  });
+});
+
+const _tradeStationPrompt = document.createElement('div');
+_tradeStationPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#0ff;font-family:monospace;font-size:15px;letter-spacing:3px;text-shadow:0 0 10px #0ff;pointer-events:none;display:none;z-index:30;';
+_tradeStationPrompt.textContent = '[ E ]  TRADE';
+document.body.appendChild(_tradeStationPrompt);
+let _nearestTradingStation = null;
+
+function _updateTradingStations() {
+  if (gameMode !== 'flight' || _tradingStations.length === 0) {
+    _tradeStationPrompt.style.display = 'none';
+    _nearestTradingStation = null;
+    return;
+  }
+  _tradingStations.forEach(s => { s.rotation.y += 0.0006; }); // slow tumble, reads as a real structure
+  let nearest = null, nearestDist = Infinity;
+  _tradingStations.forEach(s => {
+    const d = selfMesh.position.distanceTo(s.position);
+    if (d < nearestDist) { nearestDist = d; nearest = s; }
+  });
+  _nearestTradingStation = nearestDist < TRADING_STATION_DOCK_RADIUS ? nearest : null;
+  _tradeStationPrompt.style.display = _nearestTradingStation ? 'block' : 'none';
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E') && _nearestTradingStation && gameMode === 'flight') openShop();
+});
+
 let _mouseFireHeld = false;
 document.addEventListener('mousedown', e => { if (e.button === 0) _mouseFireHeld = true; });
 document.addEventListener('mouseup',   e => { if (e.button === 0) _mouseFireHeld = false; });
@@ -7159,6 +7213,7 @@ function animate(t) {
   _updateSmokeVision(); // always run — smoke cloud obstruction shouldn't stop just because gameMode changed
   _updateCargoShipVisuals(); // always run — tumble animation regardless of mode
   _updateCrateCollection(); // always run — E-to-collect prompt only actually shows in flight/ejected
+  _updateTradingStations(); // always run — no-ops outside flight mode internally
   if (_hangarShip) {
     _hangarShip.rotation.y = t * 0.0004;
     _hangarShip.position.y = 22 + Math.sin(t * 0.0008) * 3;
