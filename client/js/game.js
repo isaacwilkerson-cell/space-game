@@ -2991,11 +2991,26 @@ function _spawnGrenadeBlast(pos, activeScene) {
 
 // Flat scorch decal dropped where a frag grenade actually detonates, oriented to the last
 // surface it bounced off (defaults to a flat floor-facing decal if it never touched
-// anything before the fuse ran out, e.g. exploding mid-air).
-const _scorchGeo = new THREE.CircleGeometry(8, 16);
+// anything before the fuse ran out, e.g. exploding mid-air). Uses a soft radial-gradient
+// canvas texture instead of a solid-color disc — a hard-edged flat circle still reads as
+// a floating 3D chip sitting on the surface; a soft faded edge reads as an actual burn
+// mark painted onto it.
+const _scorchTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0,   'rgba(0,0,0,0.85)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.55)');
+  grad.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(cv);
+})();
+const _scorchGeo = new THREE.CircleGeometry(8, 24);
 function _spawnScorchMark(pos, normal, activeScene) {
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x0a0a0a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide,
+    map: _scorchTex, color: 0x000000, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide,
   });
   const decal = new THREE.Mesh(_scorchGeo, mat);
   decal.position.copy(pos).addScaledVector(normal, 0.15); // avoid z-fighting with the floor
@@ -3006,37 +3021,79 @@ function _spawnScorchMark(pos, normal, activeScene) {
     const t = (performance.now() - start) / SCORCH_MARK_LIFETIME_MS;
     if (t >= 1) { activeScene.remove(decal); return; }
     // Holds fully opaque for most of its life, then fades out over the last third.
-    mat.opacity = 0.8 * Math.min(1, (1 - t) / 0.33);
+    mat.opacity = Math.min(1, (1 - t) / 0.33);
     requestAnimationFrame(fade);
   })();
 }
 
-// Lingering smoke cloud — a handful of soft grey billboarded spheres that puff outward
-// then hang in place, slowly fading over SMOKE_CLOUD_LIFETIME_MS.
+// Lingering smoke cloud. Sparse billboarded spheres always have visible gaps between
+// them, so no matter how you're standing in the cloud, you can see through those gaps —
+// the actual "can't see" effect comes from a full-screen overlay that ramps up the closer
+// the camera is to the cloud's center, on top of denser/bigger puffs for how it looks from
+// outside the cloud.
+const _smokeOverlayEl = document.createElement('div');
+_smokeOverlayEl.style.cssText = 'position:fixed;inset:0;z-index:65;pointer-events:none;background:#ccccccdd;opacity:0;';
+document.body.appendChild(_smokeOverlayEl);
+const _activeSmokeClouds = []; // { pos, radius, endTime }
+const SMOKE_CLOUD_RADIUS = 34;
+
 function _spawnSmokeCloud(pos, activeScene) {
   const puffs = [];
-  const PUFF_COUNT = 8;
+  const PUFF_COUNT = 26;
   for (let i = 0; i < PUFF_COUNT; i++) {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.55, depthWrite: false })
+      new THREE.SphereGeometry(5 + Math.random() * 4, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xbbbbbb, transparent: true, opacity: 0.7, depthWrite: false })
     );
-    mesh.position.copy(pos);
+    // Cluster puffs within the cloud's actual radius (not just a point) so it reads as one
+    // continuous mass from the start instead of visibly growing from a single dot.
+    const spread = new THREE.Vector3(
+      (Math.random() - 0.5) * SMOKE_CLOUD_RADIUS * 0.7,
+      Math.random() * SMOKE_CLOUD_RADIUS * 0.4,
+      (Math.random() - 0.5) * SMOKE_CLOUD_RADIUS * 0.7
+    );
+    mesh.position.copy(pos).add(spread);
     activeScene.add(mesh);
-    const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.6, Math.random() - 0.5).normalize();
-    puffs.push({ mesh, vel: dir.multiplyScalar(0.15 + Math.random() * 0.15) });
+    const dir = spread.clone().normalize();
+    puffs.push({ mesh, vel: dir.multiplyScalar(0.05 + Math.random() * 0.08) });
   }
+  const cloudEntry = { pos: pos.clone(), radius: SMOKE_CLOUD_RADIUS, endTime: performance.now() + SMOKE_CLOUD_LIFETIME_MS };
+  _activeSmokeClouds.push(cloudEntry);
+
   const start = performance.now();
   (function step() {
     const t = (performance.now() - start) / SMOKE_CLOUD_LIFETIME_MS;
-    if (t >= 1) { puffs.forEach(p => activeScene.remove(p.mesh)); return; }
+    if (t >= 1) {
+      puffs.forEach(p => activeScene.remove(p.mesh));
+      const idx = _activeSmokeClouds.indexOf(cloudEntry);
+      if (idx !== -1) _activeSmokeClouds.splice(idx, 1);
+      return;
+    }
     puffs.forEach(p => {
-      if (t < 0.25) p.mesh.position.add(p.vel); // puff outward briefly, then hang in place
-      p.mesh.scale.setScalar(1 + t * 1.5);
-      p.mesh.material.opacity = 0.55 * Math.min(1, (1 - t) / 0.4);
+      if (t < 0.3) p.mesh.position.add(p.vel); // puff outward briefly, then hang in place
+      p.mesh.scale.setScalar(1 + t * 1.2);
+      p.mesh.material.opacity = 0.7 * Math.min(1, (1 - t) / 0.4);
     });
     requestAnimationFrame(step);
   })();
+}
+
+// Checked every frame regardless of mode — ramps the full-screen grey overlay up as the
+// camera gets closer to any active smoke cloud's center, so being inside one genuinely
+// blocks vision instead of just being a visual prop you can see past the edges of.
+function _updateSmokeVision() {
+  if (_activeSmokeClouds.length === 0) { _smokeOverlayEl.style.opacity = '0'; return; }
+  let maxOpacity = 0;
+  const camPos = camera.position;
+  _activeSmokeClouds.forEach(c => {
+    const dist = camPos.distanceTo(c.pos);
+    if (dist >= c.radius) return;
+    const proximity = 1 - dist / c.radius; // 0 at edge, 1 at center
+    const lifeLeft = Math.max(0, (c.endTime - performance.now()) / SMOKE_CLOUD_LIFETIME_MS);
+    const fadeOut = Math.min(1, lifeLeft / 0.25);
+    maxOpacity = Math.max(maxOpacity, proximity * 0.92 * fadeOut);
+  });
+  _smokeOverlayEl.style.opacity = String(maxOpacity);
 }
 
 function _throwGrenade() {
@@ -6888,6 +6945,7 @@ function animate(t) {
   }
   _updateSniperShots(); // always run — handles hand model + shots in all modes
   _updateGrenades(); // always run — thrown grenades keep arcing/ticking regardless of mode changes mid-flight
+  _updateSmokeVision(); // always run — smoke cloud obstruction shouldn't stop just because gameMode changed
   if (_hangarShip) {
     _hangarShip.rotation.y = t * 0.0004;
     _hangarShip.position.y = 22 + Math.sin(t * 0.0008) * 3;
