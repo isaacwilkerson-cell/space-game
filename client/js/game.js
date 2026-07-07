@@ -5544,6 +5544,7 @@ const ejectPos = new THREE.Vector3();
 const ejectVel = new THREE.Vector3();
 let   _ejectMouseDX = 0, _ejectMouseDY = 0;
 let   _ejectYaw = 0, _ejectPitch = 0, _ejectDriftT = 0, _ejectTime = 0;
+let   _ejectFreezeDamageTimer = 0; // counts frames once fully iced over, ticking cold damage
 const _ejectEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _ejectQuat  = new THREE.Quaternion();
 const FP_EJECT_SPEED = 0.12, FP_EJECT_ACCEL = 0.0018, FP_EJECT_FRICTION = 0.994;
@@ -5674,6 +5675,7 @@ function ejectFromShip() {
   ejectPos.copy(selfMesh.position).addScaledVector(new THREE.Vector3(0,1,0).applyQuaternion(selfMesh.quaternion), 8);
   ejectVel.set(0, 0, 0);
   _ejectYaw = 0; _ejectPitch = 0; _ejectMouseDX = 0; _ejectMouseDY = 0; _ejectDriftT = 0; _ejectTime = 0;
+  _ejectFreezeDamageTimer = 0;
   selfMesh.visible = true;
   elHud.style.display = 'none';
   frostCanvas.style.display = 'block';
@@ -5734,6 +5736,21 @@ function updateEjected() {
   _ejectTime++;
   const frostP = Math.min(1, _ejectTime / 1200);
   drawFrost(frostP);
+
+  // Once the ice has fully formed, exposure starts taking a real toll — small ticks of
+  // cold damage every half-second until you either freeze to death or get back to a
+  // ship/station. Routed through the server the same way any other damage is (via
+  // 'environmental_damage', which mirrors player_hit's health/death handling but always
+  // targets yourself), so health stays authoritative instead of drifting client-side.
+  if (frostP >= 1) {
+    _ejectFreezeDamageTimer++;
+    if (_ejectFreezeDamageTimer >= 30) {
+      _ejectFreezeDamageTimer = 0;
+      if (socket) socket.emit('environmental_damage', { damage: 3 });
+    }
+  } else {
+    _ejectFreezeDamageTimer = 0;
+  }
 }
 
 // J to eject, E to re-board
@@ -6414,6 +6431,15 @@ if (socket) {
       if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'Your ship was destroyed!', false);
       _spawnBigShipExplosion(selfMesh.position.clone());
       ejectFromShip();
+      // ejectFromShip() reuses the ship mesh as the thing you can reboard (the normal
+      // J-eject flow just leaves an intact ship floating where you left it) — but this
+      // ship just exploded, so leaving it intact right under the player made it look
+      // like the wreck had simply teleported back instead of being destroyed. Move the
+      // (now-replacement) ship to wait at the station instead — ejectPos was already
+      // captured above at the explosion site, so the player still floats there; only
+      // the ship itself relocates.
+      selfMesh.position.copy(station.position).addScaledVector(new THREE.Vector3(0, 0, 1), 320);
+      self.velocity.set(0, 0, 0);
       return;
     }
     if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'You died — respawning in your room', false);

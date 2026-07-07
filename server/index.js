@@ -140,6 +140,26 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Environmental damage (e.g. freezing to death while ejected in open space) — same
+  // damage/death flow as player_hit, but always targets yourself, so it skips that
+  // handler's no-self-damage check instead of trying to route around it.
+  socket.on('environmental_damage', (data) => {
+    try {
+      const player = players[socket.id];
+      if (!player) return;
+      const damage = typeof data.damage === 'number' && isFinite(data.damage)
+        ? Math.max(0, Math.min(100, data.damage)) : 5;
+      player.health = Math.max(0, player.health - damage);
+      io.to(socket.id).emit('took_damage', { health: player.health, damage });
+      if (player.health <= 0) {
+        player.health = 100; // respawn full health
+        io.to(socket.id).emit('you_died', {});
+      }
+    } catch(e) {
+      console.error('environmental_damage error:', e.message);
+    }
+  });
+
   socket.on('chat', (data) => {
     try {
       if (!data || typeof data.text !== 'string' || !data.text.trim()) return;
