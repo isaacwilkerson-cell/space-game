@@ -26,6 +26,39 @@ const TICK_RATE = 50; // ms per server tick (was 20 — 20ms floods slow connect
 
 const players = {};
 
+// ── Economy ──────────────────────────────────────────────────────────────────
+const CREDIT_REWARD = { fp: 30, tdm: 15, ship: 60, crate: 150 };
+
+// ── Cargo ship / crate event ─────────────────────────────────────────────────
+// A cargo ship carrying a valuable crate periodically appears out in open space. Its
+// position/health/existence is entirely server-owned (not tied to any one player's
+// connection) so every client sees the exact same thing at the exact same time — shoot it
+// down (ship combat) and the crate is left floating at the wreck site for anyone to fly
+// over/eject near and collect.
+const CARGO_SHIP_HP = 150;
+const CARGO_SHIP_SPAWN_MIN_MS = 3 * 60 * 1000;
+const CARGO_SHIP_SPAWN_MAX_MS = 6 * 60 * 1000;
+const CARGO_SHIP_SPAWN_RADIUS = 60000; // out among the planets, not right on top of the station
+const CRATE_COLLECT_RADIUS = 80;
+let _cargoShip = null; // { id, position, hp } while alive
+let _floatingCrate = null; // { position } once the cargo ship is destroyed, until collected
+let _nextCargoShipAt = Date.now() + 20000; // first one appears reasonably soon after boot
+
+function spawnCargoShip() {
+  const ang = Math.random() * Math.PI * 2;
+  const elevAng = (Math.random() - 0.5) * Math.PI * 0.6;
+  const r = CARGO_SHIP_SPAWN_RADIUS * (0.5 + Math.random() * 0.5);
+  const position = {
+    x: Math.cos(ang) * Math.cos(elevAng) * r,
+    y: Math.sin(elevAng) * r,
+    z: Math.sin(ang) * Math.cos(elevAng) * r,
+  };
+  _cargoShip = { id: 'cargo-' + Date.now(), position, hp: CARGO_SHIP_HP };
+  _floatingCrate = null;
+  io.emit('cargo_ship_spawned', _cargoShip);
+  io.emit('chat', { name: '📦 SERVER', text: `A supply ship carrying a crate has been spotted! Shoot it down to claim the cargo.` });
+}
+
 // ── TDM zone arbitration ────────────────────────────────────────────────────
 // Countdown/teleport used to be decided independently by each client's own clock, so one
 // client's local timer could hit zero a moment before another's — only that one player
@@ -78,6 +111,7 @@ io.on('connection', (socket) => {
     fpYaw: null,
     tdmKills: 0,
     tdmDeaths: 0,
+    credits: 0,
   };
 
   socket.emit('init', {
@@ -85,6 +119,8 @@ io.on('connection', (socket) => {
     players: Object.values(players).filter(p => p.id !== socket.id),
     stationPos: STATION_POS,
     safeZoneRadius: SAFE_ZONE_RADIUS,
+    cargoShip: _cargoShip,
+    floatingCrate: _floatingCrate,
   });
 
   socket.broadcast.emit('player_joined', players[socket.id]);
@@ -134,6 +170,16 @@ io.on('connection', (socket) => {
           target.tdmDeaths++;
           io.emit('tdm_kill', { killerId: socket.id, victimId: data.targetId });
         }
+        // Credit reward — ship-vs-ship kills (both flying, fpMode null) pay the most,
+        // TDM the least (matches are long and kills are frequent there), anything else
+        // (FP combat in the lobby/range/etc.) in between.
+        if (killer) {
+          const reward = (killer.fpMode === 'tdm' && target.fpMode === 'tdm') ? CREDIT_REWARD.tdm
+                       : (killer.fpMode === null && target.fpMode === null)   ? CREDIT_REWARD.ship
+                       : CREDIT_REWARD.fp;
+          killer.credits += reward;
+          io.to(socket.id).emit('credits_update', { credits: killer.credits, reward, reason: 'kill' });
+        }
       }
     } catch(e) {
       console.error('player_hit error:', e.message);
@@ -157,6 +203,64 @@ io.on('connection', (socket) => {
       }
     } catch(e) {
       console.error('environmental_damage error:', e.message);
+    }
+  });
+
+  // Ship combat damage against the cargo ship — same idea as player_hit but the target
+  // isn't a player, so it's a separate event with its own (simpler) state.
+  socket.on('hit_cargo_ship', (data) => {
+    try {
+      if (!_cargoShip || !data || data.id !== _cargoShip.id) return;
+      const damage = typeof data.damage === 'number' && isFinite(data.damage)
+        ? Math.max(0, Math.min(100, data.damage)) : 10;
+      _cargoShip.hp = Math.max(0, _cargoShip.hp - damage);
+      io.emit('cargo_ship_damaged', { id: _cargoShip.id, hp: _cargoShip.hp });
+      if (_cargoShip.hp <= 0) {
+        _floatingCrate = { position: _cargoShip.position };
+        io.emit('cargo_ship_destroyed', { id: _cargoShip.id, position: _cargoShip.position, killerId: socket.id });
+        io.emit('chat', { name: '📦 SERVER', text: `The supply ship was shot down! Its crate is floating at the wreck site.` });
+        _cargoShip = null;
+        _nextCargoShipAt = Date.now() + CARGO_SHIP_SPAWN_MIN_MS + Math.random() * (CARGO_SHIP_SPAWN_MAX_MS - CARGO_SHIP_SPAWN_MIN_MS);
+      }
+    } catch(e) {
+      console.error('hit_cargo_ship error:', e.message);
+    }
+  });
+
+  // Collecting the floating crate — trusts the position the client says it's at (same
+  // trust level as every other position in this game, there's no server-side movement
+  // simulation to check against), but still requires actually being within range of the
+  // real server-tracked crate position, so you can't collect one from across the map.
+  socket.on('collect_crate', (data) => {
+    try {
+      if (!_floatingCrate || !data || !isValidVec(data.position)) return;
+      const dx = data.position.x - _floatingCrate.position.x;
+      const dy = data.position.y - _floatingCrate.position.y;
+      const dz = data.position.z - _floatingCrate.position.z;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) > CRATE_COLLECT_RADIUS) return;
+      const player = players[socket.id];
+      if (!player) return;
+      player.credits += CREDIT_REWARD.crate;
+      io.to(socket.id).emit('credits_update', { credits: player.credits, reward: CREDIT_REWARD.crate, reason: 'crate' });
+      io.emit('crate_collected', { by: player.name });
+      io.emit('chat', { name: '📦 SERVER', text: `${player.name} collected the crate!` });
+      _floatingCrate = null;
+    } catch(e) {
+      console.error('collect_crate error:', e.message);
+    }
+  });
+
+  // Shop purchases are decided client-side (no server-side item catalog to validate
+  // against yet), but the spend still has to be mirrored into the server-held balance —
+  // otherwise the next kill/crate reward would add onto a stale pre-purchase number and
+  // the player's credits would silently jump back up.
+  socket.on('spend_credits', (data) => {
+    try {
+      const player = players[socket.id];
+      if (!player || typeof data.amount !== 'number' || !isFinite(data.amount) || data.amount < 0) return;
+      player.credits = Math.max(0, player.credits - data.amount);
+    } catch(e) {
+      console.error('spend_credits error:', e.message);
     }
   });
 
@@ -185,6 +289,13 @@ setInterval(() => {
   const list = Object.values(players);
   if (list.length > 0) io.emit('world_state', list);
 }, TICK_RATE);
+
+// Cargo ship spawn timer — checked every 5s, only spawns a new one if there isn't one
+// already alive and no uncollected crate is currently floating from the last one.
+setInterval(() => {
+  if (_cargoShip || _floatingCrate) return;
+  if (Date.now() >= _nextCargoShipAt) spawnCargoShip();
+}, 5000);
 
 // TDM zone countdown — single authoritative timer, ticked/broadcast every 500ms.
 setInterval(() => {

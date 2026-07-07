@@ -1876,8 +1876,8 @@ for (let i = 0; i < INVENTORY_SIZE; i++) {
 // instead of a square in cyan so it reads as a different kind of slot at a glance, not
 // just a third gun slot.
 const GRENADE_TYPES = {
-  frag:  { name: 'Frag Grenade',  icon: '💣' },
-  smoke: { name: 'Smoke Grenade', icon: '💨' },
+  frag:  { name: 'Frag Grenade',  icon: '💣', price: 40 },
+  smoke: { name: 'Smoke Grenade', icon: '💨', price: 25 },
 };
 let _grenadeCount = 0;       // frag count
 let _smokeGrenadeCount = 0;
@@ -1938,12 +1938,12 @@ const WEAPON_DEFS = {
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes. damage: HP per
   // projectile that lands on a player (shotgun pellets each do their own smaller damage).
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper_c.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol_c.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol_c.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28 },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun_c.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17 },
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper_c.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100, price: 400 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol_c.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol_c.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26, price: 350 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28, price: 350 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun_c.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17, price: 300 },
 };
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
@@ -2504,6 +2504,7 @@ const _weaponShopRows = Object.entries(WEAPON_DEFS).map(([id, def]) => `
     <div style="text-align:left;">
       <div style="font-size:14px;letter-spacing:2px;color:#fff;">${def.name.toUpperCase()}</div>
       <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">${def.desc}</div>
+      <div style="font-size:11px;color:#ffd24d;margin-top:4px;">⬙ ${def.price} CR</div>
     </div>
     <button id="shop-${id}-btn" style="background:#0af2;border:1px solid #0af;border-radius:4px;color:#0af;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">EQUIP</button>
   </div>`).join('');
@@ -2516,34 +2517,65 @@ const _grenadeShopRows = Object.entries(GRENADE_TYPES).map(([id, def]) => `
     <div style="text-align:left;">
       <div style="font-size:14px;letter-spacing:2px;color:#fff;">${def.name.toUpperCase()}</div>
       <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">${_grenadeShopDescs[id]}</div>
+      <div style="font-size:11px;color:#ffd24d;margin-top:4px;">⬙ ${def.price} CR each</div>
     </div>
     <button id="shop-grenade-${id}-btn" style="background:#fa02;border:1px solid #fa0;border-radius:4px;color:#fa0;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">BUY (<span id="shop-grenade-${id}-count">0</span> owned)</button>
   </div>`).join('');
 shopEl.innerHTML = `
   <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0af;">SHOP</div>
+  <div style="color:#ffd24d;font-size:13px;letter-spacing:2px;margin-bottom:14px;">⬙ <span id="shop-credits-display">0</span> CR</div>
   <div style="color:#0af8;font-size:11px;letter-spacing:2px;margin-bottom:18px;">WEAPONS</div>
   <div style="max-height:34vh;overflow-y:auto;margin-bottom:10px;">${_weaponShopRows}</div>
   <div style="color:#fa08;font-size:11px;letter-spacing:2px;margin-bottom:18px;">GRENADES</div>
   <div style="max-height:20vh;overflow-y:auto;margin-bottom:10px;">${_grenadeShopRows}</div>
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
 let shopOpen = false;
-function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); }
+function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); _updateShopAffordability(); }
 function closeShop() { shopOpen = false; shopEl.style.display = 'none'; }
 shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
 document.addEventListener('keydown', e => { if (shopOpen  && e.key === 'Escape') { closeShop(); e.stopPropagation(); } });
 
 // Grenades can be bought any number of times (stacking count), unlike weapons which are a
-// one-time equip — each click just adds one more to the relevant count.
+// one-time equip — each click just adds one more to the relevant count, deducting credits.
 function _buyGrenade(type) {
+  const def = GRENADE_TYPES[type];
+  if (self.credits < def.price) return;
+  self.credits -= def.price;
+  _updateCreditsHUD();
+  if (socket) socket.emit('spend_credits', { amount: def.price });
   if (type === 'smoke') _smokeGrenadeCount++; else _grenadeCount++;
   const countEl = shopEl.querySelector(`#shop-grenade-${type}-count`);
   if (countEl) countEl.textContent = String(_grenadeCountFor(type));
   _updateGrenadeSlotUI();
+  _updateShopAffordability();
 }
 Object.keys(GRENADE_TYPES).forEach(type => {
   const btn = shopEl.querySelector(`#shop-grenade-${type}-btn`);
   if (btn) btn.addEventListener('click', () => _buyGrenade(type));
 });
+
+// Greys out (and disables) anything the player can't currently afford — called whenever
+// credits change and whenever the shop opens, so the state is never stale.
+function _updateShopAffordability() {
+  const creditsDisplay = shopEl.querySelector('#shop-credits-display');
+  if (creditsDisplay) creditsDisplay.textContent = String(self.credits);
+  Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
+    const btn = shopEl.querySelector(`#shop-${id}-btn`);
+    if (!btn || btn.textContent === 'EQUIPPED') return;
+    const affordable = self.credits >= def.price;
+    btn.disabled = !affordable;
+    btn.style.opacity = affordable ? '1' : '0.4';
+    btn.style.cursor = affordable ? 'pointer' : 'not-allowed';
+  });
+  Object.entries(GRENADE_TYPES).forEach(([id, def]) => {
+    const btn = shopEl.querySelector(`#shop-grenade-${id}-btn`);
+    if (!btn) return;
+    const affordable = self.credits >= def.price;
+    btn.disabled = !affordable;
+    btn.style.opacity = affordable ? '1' : '0.4';
+    btn.style.cursor = affordable ? 'pointer' : 'not-allowed';
+  });
+}
 
 // ── Weapon System (all weapons share this exact fire/scope/recoil behavior) ────
 // _hasSniper, _sniperMesh, _weaponMeshes declared earlier near inventory system
@@ -2670,11 +2702,20 @@ function _equipWeapon(id, btn) {
   if (_inventory.includes(id)) return;
   const slotIdx = _inventory.indexOf(null);
   if (slotIdx === -1) return; // inventory full
+  const def = WEAPON_DEFS[id];
+  if (self.credits < def.price) return;
+  self.credits -= def.price;
+  _updateCreditsHUD();
+  if (socket) socket.emit('spend_credits', { amount: def.price });
   _invAddItem(id); // sets the reliable emoji icon + name label — no 3D render needed
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
   btn.style.borderColor = '#0f4';
   btn.style.color = '#0f4';
+  btn.disabled = false; // stays clickable-looking but _inventory.includes(id) guards re-buying
+  btn.style.opacity = '1';
+  btn.style.cursor = 'default';
+  _updateShopAffordability();
 }
 Object.keys(WEAPON_DEFS).forEach(id => {
   const btn = shopEl.querySelector(`#shop-${id}-btn`);
@@ -3487,6 +3528,31 @@ const _healthBarFill = document.createElement('div');
 _healthBarFill.style.cssText = 'width:100%;height:100%;background:#fff;box-shadow:0 0 6px #fff;transition:width 0.15s;';
 _healthBarOuter.appendChild(_healthBarFill);
 document.body.appendChild(_healthBarOuter);
+
+// ── Credits HUD ────────────────────────────────────────────────────────────────
+const _creditsEl = document.createElement('div');
+_creditsEl.style.cssText = 'position:fixed;bottom:46px;left:20px;color:#ffd24d;font-family:"Courier New",monospace;font-size:14px;letter-spacing:1px;text-shadow:0 0 6px #000;z-index:45;';
+document.body.appendChild(_creditsEl);
+function _updateCreditsHUD() { _creditsEl.textContent = `⬙ ${self.credits} CR`; }
+// NOTE: can't call _updateCreditsHUD() here yet — `self` (the player state object) isn't
+// declared until much later in this file, and referencing a not-yet-initialized top-level
+// const throws (silently killing the rest of the script's top-level execution, since nothing
+// here catches it). Just set the initial text directly; the real value arrives via the
+// 'init' socket handler once connected.
+_creditsEl.textContent = '⬙ 0 CR';
+// Small floating "+N CR" popup whenever a reward comes in, so a kill/crate actually feels
+// like it paid off instead of the number just quietly changing in the corner.
+function _popCreditsReward(amount, reason) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;bottom:70px;left:20px;color:#ffd24d;font-family:"Courier New",monospace;font-size:15px;font-weight:bold;text-shadow:0 0 8px #000;z-index:46;pointer-events:none;transition:transform 1.1s ease-out, opacity 1.1s ease-out;';
+  el.textContent = `+${amount} CR${reason ? ' — ' + reason.toUpperCase() : ''}`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.transform = 'translateY(-30px)';
+    el.style.opacity = '0';
+  });
+  setTimeout(() => el.remove(), 1200);
+}
 
 function _updateHealthHUD() {
   if (_healthEl) _healthEl.textContent = Math.round(self.health);
@@ -4852,6 +4918,7 @@ const self = {
   velocity: new THREE.Vector3(),
   inSafeZone: true,
   health: 100,
+  credits: 0,
 };
 
 const selfMesh = createShipMesh(0x00ccff);
@@ -5710,6 +5777,20 @@ function drawReticle() {
     });
   }
 
+  // Cargo ship / floating crate markers — deliberately NOT gated to any particular
+  // gameMode, so the "you can see this from anywhere" marker really does show up whether
+  // you're flying, ejected, or walking around a planet.
+  if (_cargoShipMesh && _cargoShipMesh.visible) {
+    const wp = new THREE.Vector3();
+    _cargoShipMesh.getWorldPosition(wp);
+    drawWaypoint(wp, 0, 'rgba(255,180,50,A)', '📦 SUPPLY SHIP', true);
+  }
+  if (_floatingCrateMesh && _floatingCrateMesh.visible) {
+    const wp = new THREE.Vector3();
+    _floatingCrateMesh.getWorldPosition(wp);
+    drawWaypoint(wp, 0, 'rgba(120,255,120,A)', '📦 CRATE', true);
+  }
+
   // Admin noclip dot + world coords of looked-at point
   if (window._adminMode && pointerLocked) {
     rCtx.beginPath();
@@ -5783,8 +5864,10 @@ function drawReticle() {
     rCtx.restore();
   }
 
-  // Waypoint helper — works at any distance using direction projection
-  function drawWaypoint(targetWorldPos, minDist, color, label) {
+  // Waypoint helper — works at any distance using direction projection. `big` draws a
+  // noticeably larger, faster-pulsing marker for map-wide events (cargo ship/crate)
+  // instead of the normal small waypoint used for the station/planet-walk markers.
+  function drawWaypoint(targetWorldPos, minDist, color, label, big) {
     if (!self) return;
     const dist = selfMesh.position.distanceTo(targetWorldPos);
     if (dist < minDist) return;
@@ -5812,23 +5895,30 @@ function drawReticle() {
       sy = cy + sin * scale;
     }
 
-    const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003);
-    const s = 10;
+    const pulse = big ? (0.5 + 0.5 * Math.sin(Date.now() * 0.006)) : (0.6 + 0.4 * Math.sin(Date.now() * 0.003));
+    const s = big ? 26 : 10;
     rCtx.save();
     rCtx.translate(sx, sy);
     rCtx.rotate(Math.PI / 4);
     rCtx.beginPath();
     rCtx.rect(-s/2, -s/2, s, s);
     rCtx.strokeStyle = color.replace('A', (pulse).toFixed(2));
-    rCtx.lineWidth = 1.5;
+    rCtx.lineWidth = big ? 3 : 1.5;
     rCtx.stroke();
+    if (big) {
+      rCtx.beginPath();
+      rCtx.rect(-s*0.7, -s*0.7, s*1.4, s*1.4);
+      rCtx.strokeStyle = color.replace('A', (pulse * 0.5).toFixed(2));
+      rCtx.lineWidth = 1.5;
+      rCtx.stroke();
+    }
     rCtx.restore();
 
     const distStr = dist >= 1000 ? `${(dist/1000).toFixed(1)}ku` : `${Math.round(dist)}u`;
     rCtx.fillStyle = color.replace('A', (pulse * 0.85).toFixed(2));
-    rCtx.font = '11px monospace';
+    rCtx.font = big ? 'bold 14px monospace' : '11px monospace';
     rCtx.textAlign = 'center';
-    rCtx.fillText(`${label}  ${distStr}`, sx, sy + 20);
+    rCtx.fillText(`${label}  ${distStr}`, sx, sy + (big ? 30 : 20));
   }
 
   if (typeof station !== 'undefined') {
@@ -6355,7 +6445,16 @@ function updateLasers() {
       if (rp.data && rp.data.inSafeZone) continue;
       if (_pointToSegmentDistance(rp.mesh.position, _prevPos, l.mesh.position) < SHIP_HIT_RADIUS) { hitId = id; break; }
     }
-    if (hitId) {
+    // The cargo ship is a world event, not a player — checked the same way but reported
+    // through its own damage event instead of player_hit.
+    if (!hitId && _cargoShipMesh.visible && _pointToSegmentDistance(_cargoShipMesh.position, _prevPos, l.mesh.position) < CARGO_SHIP_HIT_RADIUS) {
+      hitId = CARGO_SHIP_TARGET_ID;
+    }
+    if (hitId === CARGO_SHIP_TARGET_ID) {
+      socket.emit('hit_cargo_ship', { id: _cargoShipState ? _cargoShipState.id : null, damage: LASER_DAMAGE });
+      _spawnShipImpact(l.mesh.position.clone());
+      if (!_shipTarget || _shipTarget.id !== hitId) _shipTarget = { id: hitId, lockedMs: 0 };
+    } else if (hitId) {
       socket.emit('player_hit', { targetId: hitId, damage: LASER_DAMAGE });
       _spawnShipImpact(l.mesh.position.clone());
       // A hit on a new ship starts a fresh lock; re-hitting the ship already being
@@ -6380,12 +6479,21 @@ function updateLasers() {
 // math as drawWaypoint() above but kept standalone since that helper is local to
 // drawReticle() and this needs to run every frame regardless of the HUD redraw, to build
 // up lock time even on frames where drawing itself is skipped.
+// A lock-on/homing target is either a real remote player's ship or the world-event cargo
+// ship (identified by the CARGO_SHIP_TARGET_ID sentinel) — these two helpers paper over
+// that difference so the targeting/missile code doesn't need an if/else at every use.
+function _shipTargetMesh(targetId) {
+  if (targetId === CARGO_SHIP_TARGET_ID) return _cargoShipMesh.visible ? _cargoShipMesh : null;
+  const rp = remotePlayers[targetId];
+  return (rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone)) ? rp.mesh : null;
+}
+
 function _updateShipTargeting() {
   if (_missileCooldown > 0) _missileCooldown--;
   if (!_shipTarget) return;
-  const rp = remotePlayers[_shipTarget.id];
-  const alive = rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone);
-  if (!alive) { _shipTarget = null; return; }
+  const targetMesh = _shipTargetMesh(_shipTarget.id);
+  if (!targetMesh) { _shipTarget = null; return; }
+  const rp = { mesh: targetMesh };
 
   const dir = rp.mesh.position.clone().sub(camera.position).normalize();
   const near = camera.position.clone().addScaledVector(dir, 1);
@@ -6419,8 +6527,9 @@ function _fireMissile() {
   if (gameMode !== 'flight' || !self || self.inSafeZone) return;
   if (!_shipTarget || _shipTarget.lockedMs < SHIP_LOCK_TIME_MS) return;
   if (_missileCooldown > 0) return;
-  const rp = remotePlayers[_shipTarget.id];
-  if (!rp || !rp.mesh.visible) return;
+  const targetMesh = _shipTargetMesh(_shipTarget.id);
+  if (!targetMesh) return;
+  const rp = { mesh: targetMesh };
   _missileCooldown = MISSILE_COOLDOWN_FRAMES;
 
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(selfMesh.quaternion);
@@ -6453,11 +6562,11 @@ function _updateMissiles() {
   for (let i = _missiles.length - 1; i >= 0; i--) {
     const m = _missiles[i];
     m.life--;
-    const rp = remotePlayers[m.targetId];
-    const targetAlive = rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone);
+    const targetMesh = _shipTargetMesh(m.targetId);
+    const targetAlive = !!targetMesh;
     if (targetAlive) {
       // Steer velocity toward the target — a homing turn, not an instant snap.
-      const toTarget = rp.mesh.position.clone().sub(m.mesh.position).normalize();
+      const toTarget = targetMesh.position.clone().sub(m.mesh.position).normalize();
       m.vel.lerp(toTarget.multiplyScalar(MISSILE_SPEED), MISSILE_TURN).setLength(MISSILE_SPEED);
     }
     const _prevPos = m.mesh.position.clone();
@@ -6466,8 +6575,12 @@ function _updateMissiles() {
     m.flame.position.copy(m.mesh.position);
 
     let hit = false;
-    if (targetAlive && _pointToSegmentDistance(rp.mesh.position, _prevPos, m.mesh.position) < SHIP_HIT_RADIUS) {
-      socket.emit('player_hit', { targetId: m.targetId, damage: MISSILE_DAMAGE });
+    if (targetAlive && _pointToSegmentDistance(targetMesh.position, _prevPos, m.mesh.position) < SHIP_HIT_RADIUS) {
+      if (m.targetId === CARGO_SHIP_TARGET_ID) {
+        socket.emit('hit_cargo_ship', { id: _cargoShipState ? _cargoShipState.id : null, damage: MISSILE_DAMAGE });
+      } else {
+        socket.emit('player_hit', { targetId: m.targetId, damage: MISSILE_DAMAGE });
+      }
       _spawnShipImpact(m.mesh.position.clone(), true);
       hit = true;
     }
@@ -6479,6 +6592,88 @@ function _updateMissiles() {
     }
   }
 }
+
+// ── Cargo ship event / crate economy ────────────────────────────────────────────
+// Entirely server-driven: the server decides when the cargo ship spawns, tracks its
+// health, and owns the floating crate afterward, so every client sees the same thing at
+// the same time regardless of who's actually nearby when it happens.
+const CARGO_SHIP_HIT_RADIUS = 20; // a bit bigger than a normal player ship (SHIP_HIT_RADIUS=16) — it's a hauler, not a fighter
+const CARGO_SHIP_TARGET_ID = '__cargo_ship__';
+const CRATE_PICKUP_RADIUS = 80; // matches server's CRATE_COLLECT_RADIUS
+
+let _cargoShipState = null; // { id, hp } while alive, else null
+const _cargoShipMesh = (() => {
+  const group = createShipMesh(0xffaa00);
+  const crateProp = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xaa7733, roughness: 0.8 })
+  );
+  crateProp.position.set(0, 6, 4);
+  group.add(crateProp);
+  group.scale.setScalar(2.2); // a hauler should read as bulkier than a player's scout ship
+  group.visible = false;
+  scene.add(group);
+  return group;
+})();
+
+const _floatingCrateMesh = (() => {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0xddaa33, roughness: 0.6, emissive: 0x442200, emissiveIntensity: 0.4 })
+  );
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
+})();
+
+function _onCargoShipSpawned(data) {
+  _cargoShipState = { id: data.id, hp: data.hp };
+  _cargoShipMesh.position.set(data.position.x, data.position.y, data.position.z);
+  _cargoShipMesh.visible = true;
+  _floatingCrateMesh.visible = false;
+}
+
+function _onCrateFloating(data) {
+  _cargoShipState = null;
+  _cargoShipMesh.visible = false;
+  _floatingCrateMesh.position.set(data.position.x, data.position.y, data.position.z);
+  _floatingCrateMesh.visible = true;
+}
+
+// Slow tumble so the crate/cargo ship read as physical objects floating in space, not
+// static props — cheap and always running regardless of mode.
+function _updateCargoShipVisuals() {
+  if (_cargoShipMesh.visible) _cargoShipMesh.rotation.y += 0.002;
+  if (_floatingCrateMesh.visible) { _floatingCrateMesh.rotation.x += 0.004; _floatingCrateMesh.rotation.y += 0.006; }
+}
+
+// Collecting the crate — only reachable while actually out in space (flying or freshly
+// ejected), close enough, and pressing E. Trusts the crate's OWN world position (already
+// synced from the server) rather than re-deriving it, and sends along wherever the player
+// currently is so the server can do its own distance sanity check.
+const _cratePrompt = document.createElement('div');
+_cratePrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#fc6;font-family:monospace;font-size:15px;letter-spacing:2px;text-shadow:0 0 8px #000;pointer-events:none;display:none;z-index:30;';
+_cratePrompt.textContent = '[ E ]  COLLECT CRATE';
+document.body.appendChild(_cratePrompt);
+
+function _updateCrateCollection() {
+  if (!_floatingCrateMesh.visible || (gameMode !== 'flight' && gameMode !== 'ejected')) {
+    _cratePrompt.style.display = 'none';
+    return;
+  }
+  const myPos = gameMode === 'ejected' ? ejectPos : selfMesh.position;
+  const near = myPos.distanceTo(_floatingCrateMesh.position) < CRATE_PICKUP_RADIUS;
+  _cratePrompt.style.display = near ? 'block' : 'none';
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E') && _floatingCrateMesh.visible && (gameMode === 'flight' || gameMode === 'ejected')) {
+    const myPos = gameMode === 'ejected' ? ejectPos : selfMesh.position;
+    if (myPos.distanceTo(_floatingCrateMesh.position) < CRATE_PICKUP_RADIUS) {
+      socket.emit('collect_crate', { position: { x: myPos.x, y: myPos.y, z: myPos.z } });
+    }
+  }
+});
 
 let _mouseFireHeld = false;
 document.addEventListener('mousedown', e => { if (e.button === 0) _mouseFireHeld = true; });
@@ -6783,6 +6978,10 @@ if (socket) {
     self.position.copy(selfMesh.position);
     self.health = typeof data.self.health === 'number' ? data.self.health : 100;
     _updateHealthHUD();
+    self.credits = typeof data.self.credits === 'number' ? data.self.credits : 0;
+    _updateCreditsHUD();
+    if (data.cargoShip) _onCargoShipSpawned(data.cargoShip);
+    if (data.floatingCrate) _onCrateFloating(data.floatingCrate);
     data.players.forEach(addRemotePlayer);
   });
   socket.on('took_damage', ({ health }) => {
@@ -6790,6 +6989,16 @@ if (socket) {
     _updateHealthHUD();
     _flashDamageVignette();
   });
+  socket.on('credits_update', ({ credits, reward, reason }) => {
+    self.credits = credits;
+    _updateCreditsHUD();
+    if (reward) _popCreditsReward(reward, reason);
+    _updateShopAffordability();
+  });
+  socket.on('cargo_ship_spawned', (data) => _onCargoShipSpawned(data));
+  socket.on('cargo_ship_damaged', ({ hp }) => { if (_cargoShipState) _cargoShipState.hp = hp; });
+  socket.on('cargo_ship_destroyed', (data) => _onCrateFloating(data));
+  socket.on('crate_collected', () => { _floatingCrateMesh.visible = false; });
   socket.on('you_died', () => {
     if (gameMode === 'tdm') {
       // Server already reset health to 100 server-side before sending this, but the
@@ -6948,6 +7157,8 @@ function animate(t) {
   _updateSniperShots(); // always run — handles hand model + shots in all modes
   _updateGrenades(); // always run — thrown grenades keep arcing/ticking regardless of mode changes mid-flight
   _updateSmokeVision(); // always run — smoke cloud obstruction shouldn't stop just because gameMode changed
+  _updateCargoShipVisuals(); // always run — tumble animation regardless of mode
+  _updateCrateCollection(); // always run — E-to-collect prompt only actually shows in flight/ejected
   if (_hangarShip) {
     _hangarShip.rotation.y = t * 0.0004;
     _hangarShip.position.y = 22 + Math.sin(t * 0.0008) * 3;
