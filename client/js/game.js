@@ -1382,6 +1382,49 @@ _loadSurfTerrain('desert', 'assets/dune_-_arrakis_wip.glb');
 _loadSurfTerrain('industrial', 'assets/futuristic_cube-shaped_cityscape.glb');
 _loadSurfTerrain('valley', 'assets/grassy_mountains_geo.glb');
 
+// Bright day-sky skybox, shown on every planet surface EXCEPT the fiery (mars/volcano)
+// and dark/neon (industrial) terrain types, which keep their own dramatic tinted dome —
+// a cheerful blue-sky-and-clouds backdrop would look wrong over lava or a cyberpunk city.
+let _surfDaySky = null;
+const _SURF_DAY_SKY_EXCLUDED_TERRAINS = new Set(['mars', 'volcano', 'industrial']);
+loadModel('assets/skybox_skydays_3.glb', 16000, model => {
+  if (!model) return;
+  // The source asset's own single-material box UVs don't line up with its texture (came
+  // out fully black no matter which way you looked) — the texture itself is a standard
+  // cross-layout cube atlas (verified by sampling a coarse brightness grid: a plus-shaped
+  // pattern at columns 1 of 4 / rows 1 of 3, i.e. top/bottom arms plus a left-front-right-
+  // back middle band). Rebuilding as a fresh box with 6 explicit face materials, each
+  // cropped to its correct cell via texture repeat/offset, instead of trusting the
+  // imported mesh's UVs.
+  let srcTex = null;
+  model.traverse(c => {
+    if (c.isMesh && c.material && !srcTex) {
+      const m = Array.isArray(c.material) ? c.material[0] : c.material;
+      srcTex = m.emissiveMap || m.map;
+    }
+  });
+  if (!srcTex) return;
+  const cellW = 0.25, cellH = 1 / 3;
+  function faceMat(cx, cy) {
+    const t = srcTex.clone();
+    t.flipY = false;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.repeat.set(cellW, cellH);
+    t.offset.set(cx * cellW, cy * cellH);
+    t.needsUpdate = true;
+    return new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, fog: false, depthWrite: false });
+  }
+  const mats = [
+    faceMat(2, 1), // +x right
+    faceMat(0, 1), // -x left
+    faceMat(1, 0), // +y top
+    faceMat(1, 2), // -y bottom
+    faceMat(1, 1), // +z front
+    faceMat(3, 1), // -z back
+  ];
+  _surfDaySky = new THREE.Mesh(new THREE.BoxGeometry(16000, 16000, 16000), mats);
+});
+
 function _enterPlanetSurface(planet) {
   _surfCurrentPlanet = planet;
   const atm = planet.userData.atmosphere;
@@ -1422,6 +1465,18 @@ function _enterPlanetSurface(planet) {
       // Tint flat ground to match planet fog/surface color
       _surfGroundMat.color.copy(atm.fogColor || atm.skyColor);
       _surfGroundMat.needsUpdate = true;
+    }
+  }
+
+  // Bright day-sky skybox on every planet except fiery (mars/volcano) and dark/neon
+  // (industrial) terrain types — those keep the plain tinted dome instead.
+  const _useDaySky = !!_surfDaySky && !_SURF_DAY_SKY_EXCLUDED_TERRAINS.has(terrainKey);
+  _surfSkyDome.visible = !_useDaySky;
+  if (_surfDaySky) {
+    if (_useDaySky) {
+      if (_surfDaySky.parent !== _planetSurfScene) _planetSurfScene.add(_surfDaySky);
+    } else if (_surfDaySky.parent === _planetSurfScene) {
+      _planetSurfScene.remove(_surfDaySky);
     }
   }
 
