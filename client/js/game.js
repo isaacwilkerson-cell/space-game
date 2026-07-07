@@ -1871,46 +1871,57 @@ for (let i = 0; i < INVENTORY_SIZE; i++) {
 }
 
 // Dedicated 3rd slot for grenades — separate from the weapon inventory above (its own
-// throw-on-click behavior instead of the aim-and-shoot weapon flow), always shown with a
-// live count rather than needing to be picked up into a numbered slot.
-let _grenadeCount = 3;
+// throw-on-click behavior instead of the aim-and-shoot weapon flow). Not pre-filled —
+// both counts start at 0 and have to be bought in the shop. Styled as a circle in orange
+// instead of a square in cyan so it reads as a different kind of slot at a glance, not
+// just a third gun slot.
+const GRENADE_TYPES = {
+  frag:  { name: 'Frag Grenade',  icon: '💣' },
+  smoke: { name: 'Smoke Grenade', icon: '💨' },
+};
+let _grenadeCount = 0;       // frag count
+let _smokeGrenadeCount = 0;
+let _grenadeType = 'frag';   // which type is currently loaded in the slot
 let _grenadeSelected = false;
 const _grenadeSlotEl = document.createElement('div');
 _grenadeSlotEl.style.cssText = `
   width:52px; height:52px;
-  background:rgba(0,0,0,0.6);
-  border:2px solid rgba(0,255,255,0.25);
-  box-shadow:0 0 6px rgba(0,255,255,0.1) inset;
-  border-radius:3px;
+  background:rgba(20,10,0,0.6);
+  border:2px solid rgba(255,140,0,0.35);
+  box-shadow:0 0 6px rgba(255,140,0,0.15) inset;
+  border-radius:50%;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   position:relative; transition:border-color 0.1s;
 `;
 const _grenadeNum = document.createElement('span');
-_grenadeNum.style.cssText = 'position:absolute;bottom:2px;right:4px;color:rgba(0,255,255,0.3);font-family:"Courier New",monospace;font-size:9px;';
+_grenadeNum.style.cssText = 'position:absolute;bottom:2px;right:6px;color:rgba(255,140,0,0.4);font-family:"Courier New",monospace;font-size:9px;';
 _grenadeNum.textContent = String(INVENTORY_SIZE + 1);
 const _grenadeIcon = document.createElement('div');
 _grenadeIcon.style.cssText = 'font-size:22px;line-height:1;';
-_grenadeIcon.textContent = '💣';
 const _grenadeCountEl = document.createElement('span');
-_grenadeCountEl.style.cssText = 'position:absolute;bottom:2px;left:4px;color:#0ff;font-family:"Courier New",monospace;font-size:10px;font-weight:bold;';
+_grenadeCountEl.style.cssText = 'position:absolute;bottom:2px;left:6px;color:#fa0;font-family:"Courier New",monospace;font-size:10px;font-weight:bold;';
 const _grenadeLabel = document.createElement('div');
 _grenadeLabel.style.cssText = `
   position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
-  color:#0ff; font-family:'Courier New',monospace; font-size:9px; letter-spacing:0.5px;
+  color:#fa0; font-family:'Courier New',monospace; font-size:9px; letter-spacing:0.5px;
   white-space:nowrap; text-shadow:0 0 4px #000;
 `;
-_grenadeLabel.textContent = 'GRENADE';
 _grenadeSlotEl.appendChild(_grenadeIcon);
 _grenadeSlotEl.appendChild(_grenadeNum);
 _grenadeSlotEl.appendChild(_grenadeCountEl);
 _grenadeSlotEl.appendChild(_grenadeLabel);
 _inventoryBar.appendChild(_grenadeSlotEl);
+function _grenadeCountFor(type) { return type === 'smoke' ? _smokeGrenadeCount : _grenadeCount; }
 function _updateGrenadeSlotUI() {
-  _grenadeCountEl.textContent = String(_grenadeCount);
-  _grenadeSlotEl.style.borderColor = _grenadeSelected ? '#0ff' : 'rgba(0,255,255,0.25)';
+  const def = GRENADE_TYPES[_grenadeType];
+  _grenadeIcon.textContent = def.icon;
+  _grenadeIcon.style.opacity = _grenadeCountFor(_grenadeType) > 0 ? '1' : '0.3';
+  _grenadeCountEl.textContent = String(_grenadeCountFor(_grenadeType));
+  _grenadeLabel.textContent = def.name.toUpperCase();
+  _grenadeSlotEl.style.borderColor = _grenadeSelected ? '#ffaa00' : 'rgba(255,140,0,0.35)';
   _grenadeSlotEl.style.boxShadow   = _grenadeSelected
-    ? '0 0 12px rgba(0,255,255,0.5) inset, 0 0 8px rgba(0,255,255,0.4)'
-    : '0 0 6px rgba(0,255,255,0.1) inset';
+    ? '0 0 12px rgba(255,170,0,0.6) inset, 0 0 8px rgba(255,170,0,0.5)'
+    : '0 0 6px rgba(255,140,0,0.15) inset';
   _grenadeSlotEl.style.transform  = _grenadeSelected ? 'translateY(-4px)' : 'none';
 }
 _updateGrenadeSlotUI();
@@ -1996,6 +2007,21 @@ function _selectGrenadeSlot() {
     s.el.style.boxShadow   = '0 0 6px rgba(0,255,255,0.1) inset';
     s.el.style.transform   = 'none';
   });
+  // If you don't actually own whatever type was last loaded (e.g. you've only ever
+  // bought smoke grenades), switch to whichever type you do own instead of showing an
+  // empty frag slot by default.
+  if (_grenadeCountFor(_grenadeType) === 0) {
+    const other = _grenadeType === 'frag' ? 'smoke' : 'frag';
+    if (_grenadeCountFor(other) > 0) _grenadeType = other;
+  }
+  _updateGrenadeSlotUI();
+}
+
+// Pressing 3 again while the grenade slot is already active cycles between grenade types
+// — but only if you actually own both, otherwise there's nothing to switch to.
+function _cycleGrenadeType() {
+  if (_grenadeCount <= 0 || _smokeGrenadeCount <= 0) return;
+  _grenadeType = _grenadeType === 'frag' ? 'smoke' : 'frag';
   _updateGrenadeSlotUI();
 }
 
@@ -2003,7 +2029,10 @@ function _selectGrenadeSlot() {
 window.addEventListener('keydown', e => {
   const n = parseInt(e.key);
   if (n >= 1 && n <= INVENTORY_SIZE) { _invSetActive(n - 1); }
-  else if (n === INVENTORY_SIZE + 1) { _selectGrenadeSlot(); }
+  else if (n === INVENTORY_SIZE + 1) {
+    if (_grenadeSelected) _cycleGrenadeType();
+    else _selectGrenadeSlot();
+  }
 });
 
 // Switch slots with scroll wheel
@@ -2478,16 +2507,43 @@ const _weaponShopRows = Object.entries(WEAPON_DEFS).map(([id, def]) => `
     </div>
     <button id="shop-${id}-btn" style="background:#0af2;border:1px solid #0af;border-radius:4px;color:#0af;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">EQUIP</button>
   </div>`).join('');
+const _grenadeShopDescs = {
+  frag:  'Explosive — falloff blast damage, scorches the ground',
+  smoke: 'No damage — leaves a lingering smoke cloud',
+};
+const _grenadeShopRows = Object.entries(GRENADE_TYPES).map(([id, def]) => `
+  <div style="border:1px solid #fa04;border-radius:6px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:14px;">
+    <div style="text-align:left;">
+      <div style="font-size:14px;letter-spacing:2px;color:#fff;">${def.name.toUpperCase()}</div>
+      <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">${_grenadeShopDescs[id]}</div>
+    </div>
+    <button id="shop-grenade-${id}-btn" style="background:#fa02;border:1px solid #fa0;border-radius:4px;color:#fa0;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">BUY (<span id="shop-grenade-${id}-count">0</span> owned)</button>
+  </div>`).join('');
 shopEl.innerHTML = `
   <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0af;">SHOP</div>
   <div style="color:#0af8;font-size:11px;letter-spacing:2px;margin-bottom:18px;">WEAPONS</div>
-  <div style="max-height:50vh;overflow-y:auto;margin-bottom:10px;">${_weaponShopRows}</div>
+  <div style="max-height:34vh;overflow-y:auto;margin-bottom:10px;">${_weaponShopRows}</div>
+  <div style="color:#fa08;font-size:11px;letter-spacing:2px;margin-bottom:18px;">GRENADES</div>
+  <div style="max-height:20vh;overflow-y:auto;margin-bottom:10px;">${_grenadeShopRows}</div>
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
 let shopOpen = false;
 function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); }
 function closeShop() { shopOpen = false; shopEl.style.display = 'none'; }
 shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
 document.addEventListener('keydown', e => { if (shopOpen  && e.key === 'Escape') { closeShop(); e.stopPropagation(); } });
+
+// Grenades can be bought any number of times (stacking count), unlike weapons which are a
+// one-time equip — each click just adds one more to the relevant count.
+function _buyGrenade(type) {
+  if (type === 'smoke') _smokeGrenadeCount++; else _grenadeCount++;
+  const countEl = shopEl.querySelector(`#shop-grenade-${type}-count`);
+  if (countEl) countEl.textContent = String(_grenadeCountFor(type));
+  _updateGrenadeSlotUI();
+}
+Object.keys(GRENADE_TYPES).forEach(type => {
+  const btn = shopEl.querySelector(`#shop-grenade-${type}-btn`);
+  if (btn) btn.addEventListener('click', () => _buyGrenade(type));
+});
 
 // ── Weapon System (all weapons share this exact fire/scope/recoil behavior) ────
 // _hasSniper, _sniperMesh, _weaponMeshes declared earlier near inventory system
@@ -2884,26 +2940,31 @@ function _getRemotePlayerHitTargets() {
 
 // ── Grenades ──────────────────────────────────────────────────────────────────
 // Thrown by hand (not aimed-and-fired like a gun) from the dedicated 3rd inventory slot —
-// arcs under gravity, bounces once off the first thing it hits, then detonates on a timed
-// fuse, dealing falloff damage to every player within the blast radius.
+// arcs under gravity, bounces once off the first thing it hits, then goes off on a timed
+// fuse. Frag grenades deal falloff blast damage and scorch the ground; smoke grenades
+// deal no damage and just leave a lingering smoke cloud instead.
 const GRENADE_FUSE_FRAMES  = 90;   // ~1.5s at 60fps
 const GRENADE_BLAST_RADIUS = 60;
 const GRENADE_MAX_DAMAGE   = 80;
 const GRENADE_GRAVITY      = 0.03;
 const GRENADE_THROW_SPEED  = 3.2;
 const GRENADE_THROW_COOLDOWN_FRAMES = 40;
+const SCORCH_MARK_LIFETIME_MS = 6000;
+const SMOKE_CLOUD_LIFETIME_MS = 9000;
 const _grenadeGeo = new THREE.SphereGeometry(1.4, 8, 6);
 const _grenadeMat = new THREE.MeshStandardMaterial({ color: 0x33552a, roughness: 0.6, metalness: 0.2 });
 const _thrownGrenades = [];
 let _grenadeThrowCooldown = 0;
 
-// Real grenade model, preloaded once and cloned per throw — falls back to a plain sphere
-// if it hasn't finished downloading yet (or fails), same pattern as the procedural
+// Real grenade models, preloaded once and cloned per throw — falls back to a plain sphere
+// if a model hasn't finished downloading yet (or fails), same pattern as the procedural
 // astronaut fallback elsewhere.
-let _grenadeTemplate = null;
+let _grenadeTemplate = null, _smokeGrenadeTemplate = null;
 loadModel('assets/grenade.glb', 3, model => { if (model) _grenadeTemplate = model; });
-function _makeGrenadeMesh() {
-  return _grenadeTemplate ? _grenadeTemplate.clone() : new THREE.Mesh(_grenadeGeo, _grenadeMat);
+loadModel('assets/m18_smoke_grenade.glb', 3, model => { if (model) _smokeGrenadeTemplate = model; });
+function _makeGrenadeMesh(type) {
+  const tmpl = type === 'smoke' ? _smokeGrenadeTemplate : _grenadeTemplate;
+  return tmpl ? tmpl.clone() : new THREE.Mesh(_grenadeGeo, _grenadeMat);
 }
 
 function _spawnGrenadeBlast(pos, activeScene) {
@@ -2928,10 +2989,62 @@ function _spawnGrenadeBlast(pos, activeScene) {
   })();
 }
 
+// Flat scorch decal dropped where a frag grenade actually detonates, oriented to the last
+// surface it bounced off (defaults to a flat floor-facing decal if it never touched
+// anything before the fuse ran out, e.g. exploding mid-air).
+const _scorchGeo = new THREE.CircleGeometry(8, 16);
+function _spawnScorchMark(pos, normal, activeScene) {
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x0a0a0a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const decal = new THREE.Mesh(_scorchGeo, mat);
+  decal.position.copy(pos).addScaledVector(normal, 0.15); // avoid z-fighting with the floor
+  decal.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  activeScene.add(decal);
+  const start = performance.now();
+  (function fade() {
+    const t = (performance.now() - start) / SCORCH_MARK_LIFETIME_MS;
+    if (t >= 1) { activeScene.remove(decal); return; }
+    // Holds fully opaque for most of its life, then fades out over the last third.
+    mat.opacity = 0.8 * Math.min(1, (1 - t) / 0.33);
+    requestAnimationFrame(fade);
+  })();
+}
+
+// Lingering smoke cloud — a handful of soft grey billboarded spheres that puff outward
+// then hang in place, slowly fading over SMOKE_CLOUD_LIFETIME_MS.
+function _spawnSmokeCloud(pos, activeScene) {
+  const puffs = [];
+  const PUFF_COUNT = 8;
+  for (let i = 0; i < PUFF_COUNT; i++) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.55, depthWrite: false })
+    );
+    mesh.position.copy(pos);
+    activeScene.add(mesh);
+    const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.6, Math.random() - 0.5).normalize();
+    puffs.push({ mesh, vel: dir.multiplyScalar(0.15 + Math.random() * 0.15) });
+  }
+  const start = performance.now();
+  (function step() {
+    const t = (performance.now() - start) / SMOKE_CLOUD_LIFETIME_MS;
+    if (t >= 1) { puffs.forEach(p => activeScene.remove(p.mesh)); return; }
+    puffs.forEach(p => {
+      if (t < 0.25) p.mesh.position.add(p.vel); // puff outward briefly, then hang in place
+      p.mesh.scale.setScalar(1 + t * 1.5);
+      p.mesh.material.opacity = 0.55 * Math.min(1, (1 - t) / 0.4);
+    });
+    requestAnimationFrame(step);
+  })();
+}
+
 function _throwGrenade() {
-  if (!_grenadeSelected || _grenadeCount <= 0 || _grenadeThrowCooldown > 0) return;
+  if (!_grenadeSelected || _grenadeThrowCooldown > 0) return;
+  const type = _grenadeType;
+  if (_grenadeCountFor(type) <= 0) return;
   if (!pointerLocked || (gameMode !== 'lobby' && gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'planet_surface' && gameMode !== 'planet_walk' && gameMode !== 'ejected')) return;
-  _grenadeCount--;
+  if (type === 'smoke') _smokeGrenadeCount--; else _grenadeCount--;
   _grenadeThrowCooldown = GRENADE_THROW_COOLDOWN_FRAMES;
   _updateGrenadeSlotUI();
 
@@ -2944,20 +3057,27 @@ function _throwGrenade() {
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  const mesh = _makeGrenadeMesh();
+  const mesh = _makeGrenadeMesh(type);
   mesh.position.copy(camera.position).addScaledVector(dir, 6);
   activeScene.add(mesh);
 
   _thrownGrenades.push({
     mesh,
     scene: activeScene,
+    type,
     vel: dir.clone().multiplyScalar(GRENADE_THROW_SPEED),
     fuse: GRENADE_FUSE_FRAMES,
+    lastNormal: new THREE.Vector3(0, 1, 0),
   });
 }
 
 function _explodeGrenade(g) {
+  if (g.type === 'smoke') {
+    _spawnSmokeCloud(g.mesh.position.clone(), g.scene);
+    return;
+  }
   _spawnGrenadeBlast(g.mesh.position.clone(), g.scene);
+  _spawnScorchMark(g.mesh.position.clone(), g.lastNormal, g.scene);
   _getRemotePlayerHitTargets().forEach(m => {
     const dist = g.mesh.position.distanceTo(m.position);
     if (dist > GRENADE_BLAST_RADIUS) return;
@@ -2993,6 +3113,7 @@ function _updateGrenades() {
           : new THREE.Vector3(0, 1, 0);
         g.mesh.position.copy(hits[0].point).addScaledVector(n, 0.5);
         g.vel.reflect(n).multiplyScalar(0.4);
+        g.lastNormal.copy(n);
       }
     }
 
