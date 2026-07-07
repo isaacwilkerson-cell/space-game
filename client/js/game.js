@@ -5716,10 +5716,43 @@ document.addEventListener('mousemove', e => {
   _ejectMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
 });
 
+// Shortest distance from `point` to the segment a→b — used to catch fast projectiles
+// against the path they swept this frame, not just where they ended up.
+const _p2sAP = new THREE.Vector3(), _p2sAB = new THREE.Vector3();
+function _pointToSegmentDistance(point, a, b) {
+  _p2sAB.subVectors(b, a);
+  const lenSq = _p2sAB.lengthSq();
+  if (lenSq < 1e-8) return point.distanceTo(a);
+  _p2sAP.subVectors(point, a);
+  const t = Math.max(0, Math.min(1, _p2sAP.dot(_p2sAB) / lenSq));
+  return point.distanceTo(a.clone().addScaledVector(_p2sAB, t));
+}
+
+// Ship-vs-ship hit effect — a quick decaying point-light burst. Uses its own rAF fade
+// loop instead of a frame-array tied into updateLasers(), since a fatal hit switches the
+// victim straight into 'ejected' mode (a different animate() branch) and the flash still
+// needs to finish playing out regardless of which mode is active afterward.
+function _spawnShipImpact(pos, big) {
+  const baseIntensity = big ? 400 : 150;
+  const light = new THREE.PointLight(0xff6600, baseIntensity, big ? 800 : 400);
+  light.position.copy(pos);
+  scene.add(light);
+  const duration = big ? 500 : 250;
+  const start = performance.now();
+  (function fade() {
+    const t = (performance.now() - start) / duration;
+    if (t >= 1) { scene.remove(light); return; }
+    light.intensity = baseIntensity * (1 - t);
+    requestAnimationFrame(fade);
+  })();
+}
+
 // ── Laser cannon ─────────────────────────────────────────────────────────────
 const LASER_SPEED    = 80;
 const LASER_LIFETIME   = 55;  // frames
 const LASER_COOLDOWN   = 22;  // frames between shots
+const SHIP_HIT_RADIUS = 16;   // rough ship collision radius (enemy ships load at targetSize 20)
+const LASER_DAMAGE    = 12;
 const LASER_HEAT_PER   = 5;   // heat added per shot (0-100 scale)
 const LASER_COOL_RATE  = 0.6; // heat lost per frame when not firing
 const LASER_OVERHEAT   = 100;
@@ -5775,12 +5808,34 @@ function updateLasers() {
   }
   for (let i = _lasers.length - 1; i >= 0; i--) {
     const l = _lasers[i];
+    const _prevPos = l.mesh.position.clone();
     l.mesh.position.add(l.vel);
     l.glow.position.copy(l.mesh.position);
     l.life--;
+
+    // Ship-vs-ship hit detection — only against players actually flying (their ship mesh
+    // is only visible while not in any FP sub-mode), and never anyone currently inside the
+    // safe zone, mirroring the same inSafeZone check that already blocks firing in the
+    // first place (this covers the receiving end too, e.g. shooting in from just outside).
+    // Checked against the swept segment from last frame's position to this frame's, not
+    // just the new point — LASER_SPEED (80/frame) is faster than SHIP_HIT_RADIUS (16), so
+    // a plain point check let fast-moving bolts tunnel straight through nearby targets
+    // without ever landing a sample inside the hit radius.
+    let hitId = null;
+    for (const id in remotePlayers) {
+      const rp = remotePlayers[id];
+      if (!rp.mesh.visible) continue;
+      if (rp.data && rp.data.inSafeZone) continue;
+      if (_pointToSegmentDistance(rp.mesh.position, _prevPos, l.mesh.position) < SHIP_HIT_RADIUS) { hitId = id; break; }
+    }
+    if (hitId) {
+      socket.emit('player_hit', { targetId: hitId, damage: LASER_DAMAGE });
+      _spawnShipImpact(l.mesh.position.clone());
+    }
+
     const t = l.life / LASER_LIFETIME;
     l.glow.intensity = 55 * t;
-    if (l.life <= 0) {
+    if (hitId || l.life <= 0) {
       scene.remove(l.mesh);
       scene.remove(l.glow);
       _lasers.splice(i, 1);
@@ -6102,6 +6157,18 @@ if (socket) {
       // which fires for both the killer and victim at once.
       self.health = 100;
       _updateHealthHUD();
+      return;
+    }
+    if (gameMode === 'flight') {
+      // Ship destroyed in combat — explode and eject into space (reusing the same
+      // free-float 'ejected' mode as manually pressing J) instead of yanking the player
+      // back to their room and wiping their inventory, which only makes sense for the
+      // FP-combat death flow below.
+      self.health = 100;
+      _updateHealthHUD();
+      if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'Your ship was destroyed!', false);
+      _spawnShipImpact(selfMesh.position.clone(), true);
+      ejectFromShip();
       return;
     }
     if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'You died — respawning in your room', false);
