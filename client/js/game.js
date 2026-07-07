@@ -3088,10 +3088,12 @@ function _updateSmokeVision() {
   _activeSmokeClouds.forEach(c => {
     const dist = camPos.distanceTo(c.pos);
     if (dist >= c.radius) return;
-    const proximity = 1 - dist / c.radius; // 0 at edge, 1 at center
+    // sqrt curve so it saturates fast on entry instead of only getting properly thick
+    // right at dead-center — most of the cloud's interior should feel equally blinding.
+    const proximity = Math.sqrt(1 - dist / c.radius); // 0 at edge, 1 at center
     const lifeLeft = Math.max(0, (c.endTime - performance.now()) / SMOKE_CLOUD_LIFETIME_MS);
     const fadeOut = Math.min(1, lifeLeft / 0.25);
-    maxOpacity = Math.max(maxOpacity, proximity * 0.92 * fadeOut);
+    maxOpacity = Math.max(maxOpacity, proximity * 0.97 * fadeOut);
   });
   _smokeOverlayEl.style.opacity = String(maxOpacity);
 }
