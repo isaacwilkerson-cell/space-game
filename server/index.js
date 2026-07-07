@@ -370,4 +370,9 @@ process.on('unhandledRejection', (err) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Space game server running on http://localhost:${PORT}`);
+  // Distinctive boot marker for the event-crate system specifically — if this line isn't
+  // in the Railway logs after a deploy, the running process is an older build that
+  // predates the crate system entirely, which would explain a total absence of crate
+  // spawns/chat/markers better than any in-game logic bug would.
+  console.log(`[event-crate] system active — first crate in ~${Math.round((_nextEventCrateAt - Date.now()) / 1000)}s, then every ${EVENT_CRATE_SPAWN_MIN_MS / 60000}-${EVENT_CRATE_SPAWN_MAX_MS / 60000} min after each delivery`);
 });
