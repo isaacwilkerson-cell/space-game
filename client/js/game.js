@@ -5747,6 +5747,101 @@ function _spawnShipImpact(pos, big) {
   })();
 }
 
+// Full ship-destruction explosion — a layered additive fireball (hot core + mid + outer
+// glow), an expanding shockwave ring, flying debris chunks, and a spark burst. All driven
+// by its own rAF loop (same reasoning as _spawnShipImpact above: the death that triggers
+// this immediately switches gameMode to 'ejected', a different animate() branch, and the
+// explosion still needs to keep playing through that transition).
+function _spawnBigShipExplosion(pos) {
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  scene.add(group);
+
+  const ballGeo = new THREE.SphereGeometry(1, 14, 10);
+  const core  = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0xfff2cc, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const mid   = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0xff9900, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const outer = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  group.add(outer, mid, core);
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1, 1.35, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(ring);
+
+  const DEBRIS_COUNT = 12;
+  const debris = [];
+  for (let i = 0; i < DEBRIS_COUNT; i++) {
+    const s = 1 + Math.random() * 2.2;
+    const chunk = new THREE.Mesh(
+      new THREE.BoxGeometry(s, s * 0.6, s * 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.3, emissive: 0xff4400, emissiveIntensity: 0.8 })
+    );
+    const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    chunk.userData.vel  = dir.multiplyScalar(1.5 + Math.random() * 4);
+    chunk.userData.spin = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.25);
+    group.add(chunk);
+    debris.push(chunk);
+  }
+
+  const SPARK_COUNT = 70;
+  const sparkPos = new Float32Array(SPARK_COUNT * 3);
+  const sparkVel = [];
+  for (let i = 0; i < SPARK_COUNT; i++) {
+    const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    sparkVel.push(dir.multiplyScalar(2 + Math.random() * 7));
+  }
+  const sparkGeo = new THREE.BufferGeometry();
+  sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+  const sparks = new THREE.Points(sparkGeo, new THREE.PointsMaterial({
+    color: 0xffcc66, size: 3, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  group.add(sparks);
+
+  const light = new THREE.PointLight(0xffaa44, 600, 1400);
+  group.add(light);
+
+  const DURATION = 1500;
+  const start = performance.now();
+  (function step() {
+    const t = (performance.now() - start) / DURATION; // 0 -> 1
+    if (t >= 1) { scene.remove(group); return; }
+
+    const fireScale = 1 + t * 36;
+    core.scale.setScalar(fireScale * 0.45);
+    mid.scale.setScalar(fireScale * 0.75);
+    outer.scale.setScalar(fireScale);
+    const fireFade = Math.max(0, 1 - t / 0.6);
+    core.material.opacity  = fireFade;
+    mid.material.opacity   = fireFade * 0.9;
+    outer.material.opacity = fireFade * 0.6;
+
+    ring.scale.setScalar(1 + t * 65);
+    ring.material.opacity = Math.max(0, 0.8 * (1 - t));
+    ring.lookAt(camera.position);
+
+    debris.forEach(c => {
+      c.position.add(c.userData.vel);
+      c.rotation.x += c.userData.spin.x;
+      c.rotation.y += c.userData.spin.y;
+      c.rotation.z += c.userData.spin.z;
+    });
+
+    const posAttr = sparks.geometry.attributes.position;
+    for (let i = 0; i < SPARK_COUNT; i++) {
+      posAttr.array[i * 3]     += sparkVel[i].x;
+      posAttr.array[i * 3 + 1] += sparkVel[i].y;
+      posAttr.array[i * 3 + 2] += sparkVel[i].z;
+    }
+    posAttr.needsUpdate = true;
+    sparks.material.opacity = Math.max(0, 1 - t);
+
+    light.intensity = 600 * Math.max(0, 1 - t / 0.4);
+
+    requestAnimationFrame(step);
+  })();
+}
+
 // ── Laser cannon ─────────────────────────────────────────────────────────────
 const LASER_SPEED    = 80;
 const LASER_LIFETIME   = 55;  // frames
@@ -6167,7 +6262,7 @@ if (socket) {
       self.health = 100;
       _updateHealthHUD();
       if (window._chatAddMsg) window._chatAddMsg('🛸 SERVER', 'Your ship was destroyed!', false);
-      _spawnShipImpact(selfMesh.position.clone(), true);
+      _spawnBigShipExplosion(selfMesh.position.clone());
       ejectFromShip();
       return;
     }
