@@ -520,6 +520,80 @@ loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
   lobbyScene.add(screen);
 })();
 
+// Player's private room: a "WELCOME <username>" screen, mounted the same way as the
+// lobby's thank-you screen (flat quad across two measured diagonal corners, nudged
+// forward along its own face normal, drawn with depthTest off + a high renderOrder so it
+// doesn't z-fight with the room's own wall/window geometry behind it). Unlike the lobby
+// screen, the text has to be re-drawn whenever the player's username changes, so the
+// canvas/texture/context are kept around in _roomWelcomeScreen instead of being local to
+// a one-shot IIFE.
+let _roomWelcomeScreen = null;
+function _addRoomWelcomeScreen() {
+  if (_roomWelcomeScreen) return; // room model can't reload while the tab is open, but guard anyway
+  const _topLeft     = new THREE.Vector3(-33.5, 2, -88.4);
+  const _bottomRight = new THREE.Vector3(-81.8, 26.7, -126.3);
+  const corners = {
+    topLeft:     _topLeft,
+    bottomLeft:  new THREE.Vector3(_topLeft.x, _bottomRight.y, _topLeft.z),
+    topRight:    new THREE.Vector3(_bottomRight.x, _topLeft.y, _bottomRight.z),
+    bottomRight: _bottomRight,
+  };
+  const _edge1 = corners.bottomLeft.clone().sub(corners.topLeft);
+  const _edge2 = corners.topRight.clone().sub(corners.topLeft);
+  const _faceNormal = new THREE.Vector3().crossVectors(_edge1, _edge2).normalize();
+  Object.values(corners).forEach(c => c.addScaledVector(_faceNormal, 0.3));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array([
+    corners.topLeft.x, corners.topLeft.y, corners.topLeft.z,
+    corners.bottomLeft.x, corners.bottomLeft.y, corners.bottomLeft.z,
+    corners.topRight.x, corners.topRight.y, corners.topRight.z,
+    corners.bottomRight.x, corners.bottomRight.y, corners.bottomRight.z,
+  ]);
+  // The given "top" corner actually sits at a lower world y than the given "bottom"
+  // corner (this panel is mounted on the room's slanted overhang), so mapping UVs the
+  // same way as the lobby screen rendered the text upside-down and mirrored — flipped
+  // both axes here to counter that instead of re-guessing the world-space corners.
+  const uvs = new Float32Array([1, 0,  1, 1,  0, 0,  0, 1]);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex([0, 1, 2,  1, 3, 2]);
+  geo.computeVertexNormals();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, depthTest: false, transparent: true });
+  const screen = new THREE.Mesh(geo, mat);
+  screen.renderOrder = 999;
+  screen.userData.isRoomWelcomeScreen = true;
+  interiorScene.add(screen);
+
+  _roomWelcomeScreen = { canvas, ctx, tex };
+  _updateRoomWelcomeScreen(localStorage.getItem('sn_username') || '');
+}
+function _updateRoomWelcomeScreen(name) {
+  if (!_roomWelcomeScreen) return;
+  const { canvas, ctx, tex } = _roomWelcomeScreen;
+  const displayName = (name || '').trim().slice(0, 20) || 'PILOT';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#04121c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#00ffff';
+  ctx.font = 'bold 90px monospace';
+  ctx.fillText('WELCOME', canvas.width / 2, canvas.height / 2 - 70);
+  ctx.font = 'bold 70px monospace';
+  ctx.fillText(displayName.toUpperCase(), canvas.width / 2, canvas.height / 2 + 70);
+  tex.needsUpdate = true;
+}
+
 const _lobbyExitPrompt = document.createElement('div');
 _lobbyExitPrompt.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);color:#adf;font-family:monospace;font-size:13px;letter-spacing:2px;pointer-events:none;display:none;';
 _lobbyExitPrompt.textContent = '[ E ]  RETURN TO STATION';
@@ -2017,6 +2091,7 @@ loadModel('assets/sci-fi_interior_room.glb', 300, model => {
   interiorScene.add(model);
   // Compute room bounds AFTER adding to scene so world matrix is correct
   _roomBBox = new THREE.Box3().setFromObject(model);
+  _addRoomWelcomeScreen();
 
   // Find door mesh — look for "capsule", "door", "exit", or "C1" in name (case-insensitive)
   const doorKeywords = /capsule|door|exit|c.?1|hatch|airlock/i;
@@ -6243,6 +6318,7 @@ _titleUsernameInput.addEventListener('input', () => {
   const name = _titleUsernameInput.value.trim().slice(0, 20);
   localStorage.setItem('sn_username', name);
   if (socket) socket.auth = { username: name }; // takes effect next (re)connect
+  _updateRoomWelcomeScreen(name);
 });
 
 window._titleScreenReady = false;
