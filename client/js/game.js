@@ -5834,18 +5834,26 @@ function drawReticle() {
     });
   }
 
-  // Cargo ship / floating crate markers — deliberately NOT gated to any particular
-  // gameMode, so the "you can see this from anywhere" marker really does show up whether
-  // you're flying, ejected, or walking around a planet.
-  if (_cargoShipMesh && _cargoShipMesh.visible) {
-    const wp = new THREE.Vector3();
-    _cargoShipMesh.getWorldPosition(wp);
-    drawWaypoint(wp, 0, 'rgba(255,180,50,A)', '📦 SUPPLY SHIP', true);
-  }
-  if (_floatingCrateMesh && _floatingCrateMesh.visible) {
-    const wp = new THREE.Vector3();
-    _floatingCrateMesh.getWorldPosition(wp);
-    drawWaypoint(wp, 0, 'rgba(120,255,120,A)', '📦 CRATE', true);
+  // Event crate marker — deliberately NOT gated to any particular gameMode, so the
+  // "you can see this from anywhere" marker really does show up whether you're flying,
+  // ejected, or walking around a planet. Points at whichever representation is currently
+  // relevant: the planet itself (from anywhere else), the actual crate mesh once you're
+  // on the right planet, or the floating wreck-site crate once it's been dropped.
+  if (_eventCrateState) {
+    if (_eventCrateState.status === 'planet') {
+      if (_eventCratePlanetMesh.visible) {
+        const wp = new THREE.Vector3();
+        _eventCratePlanetMesh.getWorldPosition(wp);
+        drawWaypoint(wp, 0, 'rgba(255,180,50,A)', '📦 CRATE', true);
+      } else if (typeof planets !== 'undefined' && planets[_eventCrateState.planetIndex]) {
+        drawWaypoint(planets[_eventCrateState.planetIndex].position, 0, 'rgba(255,180,50,A)', '📦 CRATE PLANET', true);
+      }
+    } else if (_eventCrateState.status === 'floating' && _floatingCrateMesh.visible) {
+      const wp = new THREE.Vector3();
+      _floatingCrateMesh.getWorldPosition(wp);
+      drawWaypoint(wp, 0, 'rgba(120,255,120,A)', '📦 CRATE', true);
+    }
+    // status === 'carried': nothing to point at — it's with whoever picked it up.
   }
   if (gameMode === 'flight') {
     _tradingStations.forEach(s => drawWaypoint(s.position, 0, 'rgba(0,200,255,A)', 'TRADE STATION'));
@@ -6505,16 +6513,7 @@ function updateLasers() {
       if (rp.data && rp.data.inSafeZone) continue;
       if (_pointToSegmentDistance(rp.mesh.position, _prevPos, l.mesh.position) < SHIP_HIT_RADIUS) { hitId = id; break; }
     }
-    // The cargo ship is a world event, not a player — checked the same way but reported
-    // through its own damage event instead of player_hit.
-    if (!hitId && _cargoShipMesh.visible && _pointToSegmentDistance(_cargoShipMesh.position, _prevPos, l.mesh.position) < CARGO_SHIP_HIT_RADIUS) {
-      hitId = CARGO_SHIP_TARGET_ID;
-    }
-    if (hitId === CARGO_SHIP_TARGET_ID) {
-      socket.emit('hit_cargo_ship', { id: _cargoShipState ? _cargoShipState.id : null, damage: LASER_DAMAGE });
-      _spawnShipImpact(l.mesh.position.clone());
-      if (!_shipTarget || _shipTarget.id !== hitId) _shipTarget = { id: hitId, lockedMs: 0 };
-    } else if (hitId) {
+    if (hitId) {
       socket.emit('player_hit', { targetId: hitId, damage: LASER_DAMAGE });
       _spawnShipImpact(l.mesh.position.clone());
       // A hit on a new ship starts a fresh lock; re-hitting the ship already being
@@ -6539,11 +6538,7 @@ function updateLasers() {
 // math as drawWaypoint() above but kept standalone since that helper is local to
 // drawReticle() and this needs to run every frame regardless of the HUD redraw, to build
 // up lock time even on frames where drawing itself is skipped.
-// A lock-on/homing target is either a real remote player's ship or the world-event cargo
-// ship (identified by the CARGO_SHIP_TARGET_ID sentinel) — these two helpers paper over
-// that difference so the targeting/missile code doesn't need an if/else at every use.
 function _shipTargetMesh(targetId) {
-  if (targetId === CARGO_SHIP_TARGET_ID) return _cargoShipMesh.visible ? _cargoShipMesh : null;
   const rp = remotePlayers[targetId];
   return (rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone)) ? rp.mesh : null;
 }
@@ -6636,11 +6631,7 @@ function _updateMissiles() {
 
     let hit = false;
     if (targetAlive && _pointToSegmentDistance(targetMesh.position, _prevPos, m.mesh.position) < SHIP_HIT_RADIUS) {
-      if (m.targetId === CARGO_SHIP_TARGET_ID) {
-        socket.emit('hit_cargo_ship', { id: _cargoShipState ? _cargoShipState.id : null, damage: MISSILE_DAMAGE });
-      } else {
-        socket.emit('player_hit', { targetId: m.targetId, damage: MISSILE_DAMAGE });
-      }
+      socket.emit('player_hit', { targetId: m.targetId, damage: MISSILE_DAMAGE });
       _spawnShipImpact(m.mesh.position.clone(), true);
       hit = true;
     }
@@ -6657,25 +6648,27 @@ function _updateMissiles() {
 // Entirely server-driven: the server decides when the cargo ship spawns, tracks its
 // health, and owns the floating crate afterward, so every client sees the same thing at
 // the same time regardless of who's actually nearby when it happens.
-const CARGO_SHIP_HIT_RADIUS = 20; // a bit bigger than a normal player ship (SHIP_HIT_RADIUS=16) — it's a hauler, not a fighter
-const CARGO_SHIP_TARGET_ID = '__cargo_ship__';
 const CRATE_PICKUP_RADIUS = 80; // matches server's CRATE_COLLECT_RADIUS
+const PLANET_CRATE_PICKUP_RADIUS = 30; // tighter on foot than in a ship
 
-let _cargoShipState = null; // { id, hp } while alive, else null
-const _cargoShipMesh = (() => {
-  const group = createShipMesh(0xffaa00);
-  const crateProp = new THREE.Mesh(
+// Full state mirrors the server's _eventCrate: { status: 'planet', planetIndex, ang, elev }
+// | { status: 'carried', holderId, holderName } | { status: 'floating', position } | null.
+let _eventCrateState = null;
+let _iAmCarryingCrate = false;
+
+// Crate mesh for when it's sitting on a planet's surface — parented directly to the
+// target planet object (same trick the decorative crates use) so it automatically tracks
+// that planet's position/rotation without any extra bookkeeping.
+const _eventCratePlanetMesh = (() => {
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(6, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xaa7733, roughness: 0.8 })
+    new THREE.MeshStandardMaterial({ color: 0xffcc44, roughness: 0.5, emissive: 0x664400, emissiveIntensity: 0.6 })
   );
-  crateProp.position.set(0, 6, 4);
-  group.add(crateProp);
-  group.scale.setScalar(2.2); // a hauler should read as bulkier than a player's scout ship
-  group.visible = false;
-  scene.add(group);
-  return group;
+  mesh.visible = false;
+  return mesh;
 })();
 
+// Crate mesh for when it's floating loose in open space (dropped from a carrier).
 const _floatingCrateMesh = (() => {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(10, 10, 10),
@@ -6686,53 +6679,96 @@ const _floatingCrateMesh = (() => {
   return mesh;
 })();
 
-function _onCargoShipSpawned(data) {
-  _cargoShipState = { id: data.id, hp: data.hp };
-  _cargoShipMesh.position.set(data.position.x, data.position.y, data.position.z);
-  _cargoShipMesh.visible = true;
+function _placeCrateOnPlanet(planetIndex, ang, elev) {
+  if (typeof planets === 'undefined' || !planets[planetIndex]) return;
+  const planet = planets[planetIndex];
+  const r = planet.userData.collisionRadius || 500;
+  const localNorm = new THREE.Vector3(
+    Math.cos(elev) * Math.cos(ang),
+    Math.sin(elev),
+    Math.cos(elev) * Math.sin(ang)
+  ).normalize();
+  _eventCratePlanetMesh.position.copy(localNorm.clone().multiplyScalar(r + 3));
+  _eventCratePlanetMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), localNorm);
+  if (_eventCratePlanetMesh.parent !== planet) {
+    if (_eventCratePlanetMesh.parent) _eventCratePlanetMesh.parent.remove(_eventCratePlanetMesh);
+    planet.add(_eventCratePlanetMesh);
+  }
+  _eventCratePlanetMesh.visible = true;
+}
+
+function _onEventCrateSpawned(data) {
+  _eventCrateState = data;
+  _iAmCarryingCrate = false;
+  _floatingCrateMesh.visible = false;
+  _placeCrateOnPlanet(data.planetIndex, data.ang, data.elev);
+  const planetName = (typeof planets !== 'undefined' && planets[data.planetIndex] && planets[data.planetIndex].userData.mapName) || 'a nearby planet';
+  if (window._chatAddMsg) window._chatAddMsg('📦 SERVER', `A crate has landed on ${planetName}! Get there and grab it before someone else does.`, false);
+}
+
+function _onEventCratePickedUp(data) {
+  _eventCrateState = { status: 'carried', holderId: data.holderId, holderName: data.holderName };
+  _iAmCarryingCrate = !!(self && data.holderId === self.id);
+  _eventCratePlanetMesh.visible = false;
   _floatingCrateMesh.visible = false;
 }
 
-function _onCrateFloating(data) {
-  _cargoShipState = null;
-  _cargoShipMesh.visible = false;
+function _onEventCrateDropped(data) {
+  _eventCrateState = { status: 'floating', position: data.position };
+  _iAmCarryingCrate = false;
+  _eventCratePlanetMesh.visible = false;
   _floatingCrateMesh.position.set(data.position.x, data.position.y, data.position.z);
   _floatingCrateMesh.visible = true;
 }
 
-// Slow tumble so the crate/cargo ship read as physical objects floating in space, not
-// static props — cheap and always running regardless of mode.
-function _updateCargoShipVisuals() {
-  if (_cargoShipMesh.visible) _cargoShipMesh.rotation.y += 0.002;
+function _onEventCrateDelivered() {
+  _eventCrateState = null;
+  _iAmCarryingCrate = false;
+  _eventCratePlanetMesh.visible = false;
+  _floatingCrateMesh.visible = false;
+}
+
+// Slow tumble so both crate representations read as physical objects, not static props.
+function _updateEventCrateVisuals() {
+  if (_eventCratePlanetMesh.visible) _eventCratePlanetMesh.rotation.y += 0.004;
   if (_floatingCrateMesh.visible) { _floatingCrateMesh.rotation.x += 0.004; _floatingCrateMesh.rotation.y += 0.006; }
 }
 
-// Collecting the crate — only reachable while actually out in space (flying or freshly
-// ejected), close enough, and pressing E. Trusts the crate's OWN world position (already
-// synced from the server) rather than re-deriving it, and sends along wherever the player
-// currently is so the server can do its own distance sanity check.
+// Picking up the crate works from two different states: sitting on a planet (on foot, in
+// planet_walk mode, right on the planet it landed on) or floating loose in space (flying
+// or freshly ejected). Both funnel into the same 'collect_crate' server event.
 const _cratePrompt = document.createElement('div');
 _cratePrompt.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#fc6;font-family:monospace;font-size:15px;letter-spacing:2px;text-shadow:0 0 8px #000;pointer-events:none;display:none;z-index:30;';
-_cratePrompt.textContent = '[ E ]  COLLECT CRATE';
+_cratePrompt.textContent = '[ E ]  PICK UP CRATE';
 document.body.appendChild(_cratePrompt);
 
-function _updateCrateCollection() {
-  if (!_floatingCrateMesh.visible || (gameMode !== 'flight' && gameMode !== 'ejected')) {
-    _cratePrompt.style.display = 'none';
-    return;
+function _crateCollectCheck() {
+  if (!_eventCrateState) return null;
+  if (_eventCrateState.status === 'planet' && gameMode === 'planet_walk' && _landedPlanet === planets[_eventCrateState.planetIndex]) {
+    // The crate mesh is parented to the planet, so its .position is planet-local — has to
+    // be resolved to a world position before comparing against the (world-space) camera.
+    const crateWorldPos = new THREE.Vector3();
+    _eventCratePlanetMesh.getWorldPosition(crateWorldPos);
+    if (camera.position.distanceTo(crateWorldPos) < PLANET_CRATE_PICKUP_RADIUS) {
+      return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+    }
+  } else if (_eventCrateState.status === 'floating' && (gameMode === 'flight' || gameMode === 'ejected')) {
+    const myPos = gameMode === 'ejected' ? ejectPos : selfMesh.position;
+    if (myPos.distanceTo(_floatingCrateMesh.position) < CRATE_PICKUP_RADIUS) {
+      return { x: myPos.x, y: myPos.y, z: myPos.z };
+    }
   }
-  const myPos = gameMode === 'ejected' ? ejectPos : selfMesh.position;
-  const near = myPos.distanceTo(_floatingCrateMesh.position) < CRATE_PICKUP_RADIUS;
-  _cratePrompt.style.display = near ? 'block' : 'none';
+  return null;
+}
+
+function _updateCrateCollection() {
+  _cratePrompt.style.display = _crateCollectCheck() ? 'block' : 'none';
 }
 
 document.addEventListener('keydown', e => {
-  if ((e.key === 'e' || e.key === 'E') && _floatingCrateMesh.visible && (gameMode === 'flight' || gameMode === 'ejected')) {
-    const myPos = gameMode === 'ejected' ? ejectPos : selfMesh.position;
-    if (myPos.distanceTo(_floatingCrateMesh.position) < CRATE_PICKUP_RADIUS) {
-      socket.emit('collect_crate', { position: { x: myPos.x, y: myPos.y, z: myPos.z } });
-    }
-  }
+  if (e.key !== 'e' && e.key !== 'E') return;
+  const pos = _crateCollectCheck();
+  if (pos) socket.emit('collect_crate', { position: pos });
 });
 
 // ── Trading stations ─────────────────────────────────────────────────────────
@@ -7091,8 +7127,15 @@ if (socket) {
     _updateHealthHUD();
     self.credits = typeof data.self.credits === 'number' ? data.self.credits : 0;
     _updateCreditsHUD();
-    if (data.cargoShip) _onCargoShipSpawned(data.cargoShip);
-    if (data.floatingCrate) _onCrateFloating(data.floatingCrate);
+    // Resuming into whatever state the event crate is already in (a newly-connecting
+    // player might join mid-event) — dispatch to whichever handler matches its status
+    // rather than re-announcing it as a fresh spawn.
+    if (data.eventCrate) {
+      const ec = data.eventCrate;
+      if (ec.status === 'planet') { _eventCrateState = ec; _placeCrateOnPlanet(ec.planetIndex, ec.ang, ec.elev); }
+      else if (ec.status === 'carried') _onEventCratePickedUp(ec);
+      else if (ec.status === 'floating') _onEventCrateDropped(ec);
+    }
     data.players.forEach(addRemotePlayer);
   });
   socket.on('took_damage', ({ health }) => {
@@ -7118,10 +7161,13 @@ if (socket) {
       if (bountiesOpen) _renderBounties();
     }
   });
-  socket.on('cargo_ship_spawned', (data) => _onCargoShipSpawned(data));
-  socket.on('cargo_ship_damaged', ({ hp }) => { if (_cargoShipState) _cargoShipState.hp = hp; });
-  socket.on('cargo_ship_destroyed', (data) => _onCrateFloating(data));
-  socket.on('crate_collected', () => { _floatingCrateMesh.visible = false; });
+  // Pickup/drop/delivery chat announcements are sent by the server directly (as regular
+  // 'chat' messages) since it already knows the player's name at that point — these
+  // handlers only need to update the local state/meshes, not duplicate that text.
+  socket.on('event_crate_spawned', (data) => _onEventCrateSpawned(data));
+  socket.on('event_crate_picked_up', (data) => _onEventCratePickedUp(data));
+  socket.on('event_crate_dropped', (data) => _onEventCrateDropped(data));
+  socket.on('event_crate_delivered', () => _onEventCrateDelivered());
   socket.on('you_died', () => {
     if (gameMode === 'tdm') {
       // Server already reset health to 100 server-side before sending this, but the
@@ -7280,7 +7326,7 @@ function animate(t) {
   _updateSniperShots(); // always run — handles hand model + shots in all modes
   _updateGrenades(); // always run — thrown grenades keep arcing/ticking regardless of mode changes mid-flight
   _updateSmokeVision(); // always run — smoke cloud obstruction shouldn't stop just because gameMode changed
-  _updateCargoShipVisuals(); // always run — tumble animation regardless of mode
+  _updateEventCrateVisuals(); // always run — tumble animation regardless of mode
   _updateCrateCollection(); // always run — E-to-collect prompt only actually shows in flight/ejected
   _updateTradingStations(); // always run — no-ops outside flight mode internally
   if (_hangarShip) {

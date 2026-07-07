@@ -29,34 +29,41 @@ const players = {};
 // ── Economy ──────────────────────────────────────────────────────────────────
 const CREDIT_REWARD = { fp: 30, tdm: 15, ship: 60, crate: 150 };
 
-// ── Cargo ship / crate event ─────────────────────────────────────────────────
-// A cargo ship carrying a valuable crate periodically appears out in open space. Its
-// position/health/existence is entirely server-owned (not tied to any one player's
-// connection) so every client sees the exact same thing at the exact same time — shoot it
-// down (ship combat) and the crate is left floating at the wreck site for anyone to fly
-// over/eject near and collect.
-const CARGO_SHIP_HP = 150;
-const CARGO_SHIP_SPAWN_MIN_MS = 3 * 60 * 1000;
-const CARGO_SHIP_SPAWN_MAX_MS = 6 * 60 * 1000;
-const CARGO_SHIP_SPAWN_RADIUS = 60000; // out among the planets, not right on top of the station
+// ── Event crate ───────────────────────────────────────────────────────────────
+// A valuable crate periodically lands on a random planet — server-owned state (not tied
+// to any one player's connection) so every client agrees on where it is and who has it.
+// Flow: lands on a planet's surface (status 'planet') → someone walks up and picks it up
+// (status 'carried') → they have to physically get it back to the safe zone to actually
+// bank the reward → if they die anywhere while carrying it (especially getting shot down
+// while flying it out), it drops right there (status 'floating') for anyone else to grab.
+//
+// PLANET_COUNT must match the length of the client's `planets` array (2 hand-placed +
+// however many are in the procedural defs list) — the server only ever deals in an index
+// into that array, never planet data itself, since planet definitions live entirely
+// client-side. If planets are ever added/removed there, update this to match.
+const EVENT_CRATE_PLANET_COUNT = 38;
+const EVENT_CRATE_SPAWN_MIN_MS = 3 * 60 * 1000;
+const EVENT_CRATE_SPAWN_MAX_MS = 6 * 60 * 1000;
 const CRATE_COLLECT_RADIUS = 80;
-let _cargoShip = null; // { id, position, hp } while alive
-let _floatingCrate = null; // { position } once the cargo ship is destroyed, until collected
-let _nextCargoShipAt = Date.now() + 20000; // first one appears reasonably soon after boot
+let _eventCrate = null; // { status: 'planet'|'carried'|'floating', ...fields for that status }
+let _nextEventCrateAt = Date.now() + 20000; // first one appears reasonably soon after boot
 
-function spawnCargoShip() {
+function spawnEventCrate() {
+  const planetIndex = Math.floor(Math.random() * EVENT_CRATE_PLANET_COUNT);
+  // Angular placement on the planet's surface — client resolves this to an actual world
+  // position using its own copy of that planet's real position/radius (same approach
+  // already used for the decorative crates every planet has).
   const ang = Math.random() * Math.PI * 2;
-  const elevAng = (Math.random() - 0.5) * Math.PI * 0.6;
-  const r = CARGO_SHIP_SPAWN_RADIUS * (0.5 + Math.random() * 0.5);
-  const position = {
-    x: Math.cos(ang) * Math.cos(elevAng) * r,
-    y: Math.sin(elevAng) * r,
-    z: Math.sin(ang) * Math.cos(elevAng) * r,
-  };
-  _cargoShip = { id: 'cargo-' + Date.now(), position, hp: CARGO_SHIP_HP };
-  _floatingCrate = null;
-  io.emit('cargo_ship_spawned', _cargoShip);
-  io.emit('chat', { name: '📦 SERVER', text: `A supply ship carrying a crate has been spotted! Shoot it down to claim the cargo.` });
+  const elev = 0.3 + Math.random() * 0.5;
+  _eventCrate = { status: 'planet', planetIndex, ang, elev };
+  io.emit('event_crate_spawned', _eventCrate);
+}
+
+function _dropEventCrate(holderId, position) {
+  if (!_eventCrate || _eventCrate.status !== 'carried' || _eventCrate.holderId !== holderId) return;
+  _eventCrate = { status: 'floating', position };
+  io.emit('event_crate_dropped', { position });
+  io.emit('chat', { name: '📦 SERVER', text: `The crate was dropped! It's floating in space, up for grabs.` });
 }
 
 // ── TDM zone arbitration ────────────────────────────────────────────────────
@@ -119,8 +126,7 @@ io.on('connection', (socket) => {
     players: Object.values(players).filter(p => p.id !== socket.id),
     stationPos: STATION_POS,
     safeZoneRadius: SAFE_ZONE_RADIUS,
-    cargoShip: _cargoShip,
-    floatingCrate: _floatingCrate,
+    eventCrate: _eventCrate,
   });
 
   socket.broadcast.emit('player_joined', players[socket.id]);
@@ -144,6 +150,18 @@ io.on('connection', (socket) => {
       } : null;
       player.equippedWeaponId = typeof data.equippedWeaponId === 'string' ? data.equippedWeaponId : null;
       player.tdmZone = player.fpMode === 'lobby' && inTDMZone(player.fpPos);
+
+      // Auto-deliver: getting the crate back into the safe zone (under your own power,
+      // however you manage it) banks the reward automatically — no separate "turn in"
+      // action needed, matching "escape with the loot" as literally as possible.
+      if (_eventCrate && _eventCrate.status === 'carried' && _eventCrate.holderId === socket.id && player.inSafeZone) {
+        player.credits += CREDIT_REWARD.crate;
+        io.to(socket.id).emit('credits_update', { credits: player.credits, reward: CREDIT_REWARD.crate, reason: 'crate' });
+        io.emit('event_crate_delivered', { by: player.name });
+        io.emit('chat', { name: '📦 SERVER', text: `${player.name} delivered the crate to safety!` });
+        _eventCrate = null;
+        _nextEventCrateAt = Date.now() + EVENT_CRATE_SPAWN_MIN_MS + Math.random() * (EVENT_CRATE_SPAWN_MAX_MS - EVENT_CRATE_SPAWN_MIN_MS);
+      }
     } catch(e) {
       console.error('player_update error:', e.message);
     }
@@ -180,6 +198,10 @@ io.on('connection', (socket) => {
           killer.credits += reward;
           io.to(socket.id).emit('credits_update', { credits: killer.credits, reward, reason: 'kill', kind: isShipKill ? 'ship' : isTdmKill ? 'tdm' : 'fp' });
         }
+        // Dying while carrying the event crate drops it right where you died — most
+        // dramatically, getting shot down while flying it back leaves it floating in
+        // space at the wreck, exactly like the cargo ship used to work.
+        _dropEventCrate(data.targetId, target.position);
       }
     } catch(e) {
       console.error('player_hit error:', e.message);
@@ -200,51 +222,33 @@ io.on('connection', (socket) => {
       if (player.health <= 0) {
         player.health = 100; // respawn full health
         io.to(socket.id).emit('you_died', {});
+        _dropEventCrate(socket.id, player.position);
       }
     } catch(e) {
       console.error('environmental_damage error:', e.message);
     }
   });
 
-  // Ship combat damage against the cargo ship — same idea as player_hit but the target
-  // isn't a player, so it's a separate event with its own (simpler) state.
-  socket.on('hit_cargo_ship', (data) => {
-    try {
-      if (!_cargoShip || !data || data.id !== _cargoShip.id) return;
-      const damage = typeof data.damage === 'number' && isFinite(data.damage)
-        ? Math.max(0, Math.min(100, data.damage)) : 10;
-      _cargoShip.hp = Math.max(0, _cargoShip.hp - damage);
-      io.emit('cargo_ship_damaged', { id: _cargoShip.id, hp: _cargoShip.hp });
-      if (_cargoShip.hp <= 0) {
-        _floatingCrate = { position: _cargoShip.position };
-        io.emit('cargo_ship_destroyed', { id: _cargoShip.id, position: _cargoShip.position, killerId: socket.id });
-        io.emit('chat', { name: '📦 SERVER', text: `The supply ship was shot down! Its crate is floating at the wreck site.` });
-        _cargoShip = null;
-        _nextCargoShipAt = Date.now() + CARGO_SHIP_SPAWN_MIN_MS + Math.random() * (CARGO_SHIP_SPAWN_MAX_MS - CARGO_SHIP_SPAWN_MIN_MS);
-      }
-    } catch(e) {
-      console.error('hit_cargo_ship error:', e.message);
-    }
-  });
-
-  // Collecting the floating crate — trusts the position the client says it's at (same
-  // trust level as every other position in this game, there's no server-side movement
-  // simulation to check against), but still requires actually being within range of the
-  // real server-tracked crate position, so you can't collect one from across the map.
+  // Picking up the crate — either off a planet's surface (status 'planet', where the
+  // server only knows angular coordinates, not a real world position, so that case is
+  // trusted outright — same trust level this game already gives fpPos in general) or out
+  // of open space (status 'floating', where the server DOES have a real tracked position
+  // and can sanity-check the client is actually within range of it).
   socket.on('collect_crate', (data) => {
     try {
-      if (!_floatingCrate || !data || !isValidVec(data.position)) return;
-      const dx = data.position.x - _floatingCrate.position.x;
-      const dy = data.position.y - _floatingCrate.position.y;
-      const dz = data.position.z - _floatingCrate.position.z;
-      if (Math.sqrt(dx * dx + dy * dy + dz * dz) > CRATE_COLLECT_RADIUS) return;
+      if (!_eventCrate || _eventCrate.status === 'carried' || !data) return;
+      if (_eventCrate.status === 'floating') {
+        if (!isValidVec(data.position)) return;
+        const dx = data.position.x - _eventCrate.position.x;
+        const dy = data.position.y - _eventCrate.position.y;
+        const dz = data.position.z - _eventCrate.position.z;
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) > CRATE_COLLECT_RADIUS) return;
+      }
       const player = players[socket.id];
       if (!player) return;
-      player.credits += CREDIT_REWARD.crate;
-      io.to(socket.id).emit('credits_update', { credits: player.credits, reward: CREDIT_REWARD.crate, reason: 'crate' });
-      io.emit('crate_collected', { by: player.name });
-      io.emit('chat', { name: '📦 SERVER', text: `${player.name} collected the crate!` });
-      _floatingCrate = null;
+      _eventCrate = { status: 'carried', holderId: socket.id, holderName: player.name };
+      io.emit('event_crate_picked_up', { holderId: socket.id, holderName: player.name });
+      io.emit('chat', { name: '📦 SERVER', text: `${player.name} picked up the crate! Get it back to the safe zone to bank it.` });
     } catch(e) {
       console.error('collect_crate error:', e.message);
     }
@@ -288,6 +292,9 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', (reason) => {
     console.log(`Player disconnected: ${socket.id} (${reason})`);
+    // Don't let the crate vanish into a disconnected player's pocket forever — drop it
+    // right where they were, same as if they'd died carrying it.
+    if (players[socket.id]) _dropEventCrate(socket.id, players[socket.id].position);
     delete players[socket.id];
     io.emit('player_left', socket.id);
   });
@@ -304,11 +311,11 @@ setInterval(() => {
   if (list.length > 0) io.emit('world_state', list);
 }, TICK_RATE);
 
-// Cargo ship spawn timer — checked every 5s, only spawns a new one if there isn't one
-// already alive and no uncollected crate is currently floating from the last one.
+// Event crate spawn timer — checked every 5s, only spawns a new one once the last one is
+// fully resolved (delivered — _eventCrate goes back to null only on delivery).
 setInterval(() => {
-  if (_cargoShip || _floatingCrate) return;
-  if (Date.now() >= _nextCargoShipAt) spawnCargoShip();
+  if (_eventCrate) return;
+  if (Date.now() >= _nextEventCrateAt) spawnEventCrate();
 }, 5000);
 
 // TDM zone countdown — single authoritative timer, ticked/broadcast every 500ms.
