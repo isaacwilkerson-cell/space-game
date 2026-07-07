@@ -1829,7 +1829,7 @@ let _reloadTimer = 0;
 let _reloadDuration = 1;
 
 // ── Inventory system ──────────────────────────────────────────────────────────
-const INVENTORY_SIZE = 8;
+const INVENTORY_SIZE = 2;
 const _inventory = Array(INVENTORY_SIZE).fill(null); // null = empty
 let _activeSlot = 0;
 
@@ -1869,6 +1869,52 @@ for (let i = 0; i < INVENTORY_SIZE; i++) {
   _inventoryBar.appendChild(slot);
   _invSlotEls.push({ el: slot, icon, label });
 }
+
+// Dedicated 3rd slot for grenades — separate from the weapon inventory above (its own
+// throw-on-click behavior instead of the aim-and-shoot weapon flow), always shown with a
+// live count rather than needing to be picked up into a numbered slot.
+let _grenadeCount = 3;
+let _grenadeSelected = false;
+const _grenadeSlotEl = document.createElement('div');
+_grenadeSlotEl.style.cssText = `
+  width:52px; height:52px;
+  background:rgba(0,0,0,0.6);
+  border:2px solid rgba(0,255,255,0.25);
+  box-shadow:0 0 6px rgba(0,255,255,0.1) inset;
+  border-radius:3px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  position:relative; transition:border-color 0.1s;
+`;
+const _grenadeNum = document.createElement('span');
+_grenadeNum.style.cssText = 'position:absolute;bottom:2px;right:4px;color:rgba(0,255,255,0.3);font-family:"Courier New",monospace;font-size:9px;';
+_grenadeNum.textContent = String(INVENTORY_SIZE + 1);
+const _grenadeIcon = document.createElement('div');
+_grenadeIcon.style.cssText = 'font-size:22px;line-height:1;';
+_grenadeIcon.textContent = '💣';
+const _grenadeCountEl = document.createElement('span');
+_grenadeCountEl.style.cssText = 'position:absolute;bottom:2px;left:4px;color:#0ff;font-family:"Courier New",monospace;font-size:10px;font-weight:bold;';
+const _grenadeLabel = document.createElement('div');
+_grenadeLabel.style.cssText = `
+  position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
+  color:#0ff; font-family:'Courier New',monospace; font-size:9px; letter-spacing:0.5px;
+  white-space:nowrap; text-shadow:0 0 4px #000;
+`;
+_grenadeLabel.textContent = 'GRENADE';
+_grenadeSlotEl.appendChild(_grenadeIcon);
+_grenadeSlotEl.appendChild(_grenadeNum);
+_grenadeSlotEl.appendChild(_grenadeCountEl);
+_grenadeSlotEl.appendChild(_grenadeLabel);
+_inventoryBar.appendChild(_grenadeSlotEl);
+function _updateGrenadeSlotUI() {
+  _grenadeCountEl.textContent = String(_grenadeCount);
+  _grenadeSlotEl.style.borderColor = _grenadeSelected ? '#0ff' : 'rgba(0,255,255,0.25)';
+  _grenadeSlotEl.style.boxShadow   = _grenadeSelected
+    ? '0 0 12px rgba(0,255,255,0.5) inset, 0 0 8px rgba(0,255,255,0.4)'
+    : '0 0 6px rgba(0,255,255,0.1) inset';
+  _grenadeSlotEl.style.transform  = _grenadeSelected ? 'translateY(-4px)' : 'none';
+}
+_updateGrenadeSlotUI();
+
 document.body.appendChild(_inventoryBar);
 
 // Weapon definitions — all weapons share identical fire/scope/recoil mechanics (see
@@ -1897,6 +1943,8 @@ const _itemDefs = {
 
 function _invSetActive(idx) {
   _activeSlot = (idx + INVENTORY_SIZE) % INVENTORY_SIZE;
+  _grenadeSelected = false; // picking a weapon slot always drops out of grenade mode
+  _updateGrenadeSlotUI();
   _invSlotEls.forEach((s, i) => {
     s.el.style.borderColor = i === _activeSlot ? '#0ff' : 'rgba(0,255,255,0.25)';
     s.el.style.boxShadow   = i === _activeSlot
@@ -1934,10 +1982,28 @@ function _invAddItem(itemId) {
   _invSetActive(emptyIdx); // auto-select the new item
 }
 
-// Switch slots with 1-8 keys
+// Selecting the grenade slot hides whatever weapon viewmodel was up (grenades are thrown
+// by hand, not aimed-and-fired like a gun) but otherwise leaves the weapon in its slot
+// untouched so switching back to it resumes with the same ammo/reload state.
+function _selectGrenadeSlot() {
+  _grenadeSelected = true;
+  _equippedWeaponId = null;
+  _hasSniper = false;
+  Object.entries(_weaponMeshes).forEach(([wid, m]) => { if (m) m.visible = false; });
+  _sniperMesh = null;
+  _invSlotEls.forEach(s => {
+    s.el.style.borderColor = 'rgba(0,255,255,0.25)';
+    s.el.style.boxShadow   = '0 0 6px rgba(0,255,255,0.1) inset';
+    s.el.style.transform   = 'none';
+  });
+  _updateGrenadeSlotUI();
+}
+
+// Switch slots with number keys — 1/2 for the weapon inventory, 3 for grenades
 window.addEventListener('keydown', e => {
   const n = parseInt(e.key);
-  if (n >= 1 && n <= 8) { _invSetActive(n - 1); }
+  if (n >= 1 && n <= INVENTORY_SIZE) { _invSetActive(n - 1); }
+  else if (n === INVENTORY_SIZE + 1) { _selectGrenadeSlot(); }
 });
 
 // Switch slots with scroll wheel
@@ -2815,6 +2881,123 @@ function _getRemotePlayerHitTargets() {
   });
   return targets;
 }
+
+// ── Grenades ──────────────────────────────────────────────────────────────────
+// Thrown by hand (not aimed-and-fired like a gun) from the dedicated 3rd inventory slot —
+// arcs under gravity, bounces once off the first thing it hits, then detonates on a timed
+// fuse, dealing falloff damage to every player within the blast radius.
+const GRENADE_FUSE_FRAMES  = 90;   // ~1.5s at 60fps
+const GRENADE_BLAST_RADIUS = 60;
+const GRENADE_MAX_DAMAGE   = 80;
+const GRENADE_GRAVITY      = 0.03;
+const GRENADE_THROW_SPEED  = 3.2;
+const GRENADE_THROW_COOLDOWN_FRAMES = 40;
+const _grenadeGeo = new THREE.SphereGeometry(1.4, 8, 6);
+const _grenadeMat = new THREE.MeshStandardMaterial({ color: 0x33552a, roughness: 0.6, metalness: 0.2 });
+const _thrownGrenades = [];
+let _grenadeThrowCooldown = 0;
+
+function _spawnGrenadeBlast(pos, activeScene) {
+  const light = new THREE.PointLight(0xff6600, 120, 150);
+  light.position.copy(pos);
+  activeScene.add(light);
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  ball.position.copy(pos);
+  activeScene.add(ball);
+  const start = performance.now();
+  const DUR = 350;
+  (function step() {
+    const t = (performance.now() - start) / DUR;
+    if (t >= 1) { activeScene.remove(light); activeScene.remove(ball); return; }
+    ball.scale.setScalar(1 + t * 14);
+    ball.material.opacity = Math.max(0, 1 - t);
+    light.intensity = 120 * (1 - t);
+    requestAnimationFrame(step);
+  })();
+}
+
+function _throwGrenade() {
+  if (!_grenadeSelected || _grenadeCount <= 0 || _grenadeThrowCooldown > 0) return;
+  if (!pointerLocked || (gameMode !== 'lobby' && gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'planet_surface' && gameMode !== 'planet_walk' && gameMode !== 'ejected')) return;
+  _grenadeCount--;
+  _grenadeThrowCooldown = GRENADE_THROW_COOLDOWN_FRAMES;
+  _updateGrenadeSlotUI();
+
+  const activeScene = gameMode === 'docked'        ? interiorScene
+                    : gameMode === 'lobby'          ? lobbyScene
+                    : gameMode === 'range'          ? shootingRangeScene
+                    : gameMode === 'tdm'            ? tdmScene
+                    : gameMode === 'planet_surface' ? _planetSurfScene
+                    : scene;
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const mesh = new THREE.Mesh(_grenadeGeo, _grenadeMat);
+  mesh.position.copy(camera.position).addScaledVector(dir, 6);
+  activeScene.add(mesh);
+
+  _thrownGrenades.push({
+    mesh,
+    scene: activeScene,
+    vel: dir.clone().multiplyScalar(GRENADE_THROW_SPEED),
+    fuse: GRENADE_FUSE_FRAMES,
+  });
+}
+
+function _explodeGrenade(g) {
+  _spawnGrenadeBlast(g.mesh.position.clone(), g.scene);
+  _getRemotePlayerHitTargets().forEach(m => {
+    const dist = g.mesh.position.distanceTo(m.position);
+    if (dist > GRENADE_BLAST_RADIUS) return;
+    const dmg = Math.round(GRENADE_MAX_DAMAGE * (1 - dist / GRENADE_BLAST_RADIUS));
+    if (dmg > 0) socket.emit('player_hit', { targetId: m.userData.playerId, damage: dmg });
+  });
+}
+
+function _updateGrenades() {
+  if (_grenadeThrowCooldown > 0) _grenadeThrowCooldown--;
+  for (let i = _thrownGrenades.length - 1; i >= 0; i--) {
+    const g = _thrownGrenades[i];
+    g.vel.y -= GRENADE_GRAVITY;
+    const prevPos = g.mesh.position.clone();
+    g.mesh.position.add(g.vel);
+    g.fuse--;
+
+    // One bounce off whatever's in the way — reflect velocity around the surface normal
+    // and lose most of the energy, so it doesn't just phase through walls/floor.
+    const collidables = gameMode === 'lobby'          ? _lobbyCollidables
+                      : gameMode === 'docked'         ? _roomCollidables
+                      : gameMode === 'range'          ? _rangeCollidables
+                      : gameMode === 'tdm'            ? _tdmArenaCollidables
+                      : gameMode === 'planet_surface' ? [_surfTerrainMesh || _surfGround]
+                      : [];
+    if (collidables.length > 0 && g.vel.lengthSq() > 1e-6) {
+      const segLen = prevPos.distanceTo(g.mesh.position);
+      const rc = new THREE.Raycaster(prevPos, g.vel.clone().normalize(), 0, segLen || 0.001);
+      const hits = rc.intersectObjects(collidables, false);
+      if (hits.length > 0) {
+        const n = hits[0].face
+          ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld).normalize()
+          : new THREE.Vector3(0, 1, 0);
+        g.mesh.position.copy(hits[0].point).addScaledVector(n, 0.5);
+        g.vel.reflect(n).multiplyScalar(0.4);
+      }
+    }
+
+    if (g.fuse <= 0) {
+      _explodeGrenade(g);
+      g.scene.remove(g.mesh);
+      _thrownGrenades.splice(i, 1);
+    }
+  }
+}
+
+document.addEventListener('mousedown', e => {
+  if (e.button === 0 && _grenadeSelected) _throwGrenade();
+});
 
 // Starts the reload shake; refills ammo once _reloadDuration frames pass (see _updateSniperShots).
 function _startReload() {
@@ -6574,6 +6757,7 @@ function animate(t) {
     dockPrompt.style.display = (gameMode === 'flight' && dockDist < 400) ? 'block' : 'none';
   }
   _updateSniperShots(); // always run — handles hand model + shots in all modes
+  _updateGrenades(); // always run — thrown grenades keep arcing/ticking regardless of mode changes mid-flight
   if (_hangarShip) {
     _hangarShip.rotation.y = t * 0.0004;
     _hangarShip.position.y = 22 + Math.sin(t * 0.0008) * 3;
