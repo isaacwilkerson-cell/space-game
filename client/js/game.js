@@ -2897,6 +2897,15 @@ const _grenadeMat = new THREE.MeshStandardMaterial({ color: 0x33552a, roughness:
 const _thrownGrenades = [];
 let _grenadeThrowCooldown = 0;
 
+// Real grenade model, preloaded once and cloned per throw — falls back to a plain sphere
+// if it hasn't finished downloading yet (or fails), same pattern as the procedural
+// astronaut fallback elsewhere.
+let _grenadeTemplate = null;
+loadModel('assets/grenade.glb', 3, model => { if (model) _grenadeTemplate = model; });
+function _makeGrenadeMesh() {
+  return _grenadeTemplate ? _grenadeTemplate.clone() : new THREE.Mesh(_grenadeGeo, _grenadeMat);
+}
+
 function _spawnGrenadeBlast(pos, activeScene) {
   const light = new THREE.PointLight(0xff6600, 120, 150);
   light.position.copy(pos);
@@ -2935,7 +2944,7 @@ function _throwGrenade() {
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  const mesh = new THREE.Mesh(_grenadeGeo, _grenadeMat);
+  const mesh = _makeGrenadeMesh();
   mesh.position.copy(camera.position).addScaledVector(dir, 6);
   activeScene.add(mesh);
 
