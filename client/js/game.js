@@ -3168,6 +3168,13 @@ function _updateHealthRegen() {
 function _respawnInRoom() {
   enterStation();
   lobbyScene.visible = false;
+  // Freezing to death in eject mode is one path into this respawn, and its frost overlay
+  // was never hidden/reset here — it kept covering the screen with icicles even after
+  // landing back in the room. Also reset the timers so a future eject starts icing over
+  // from a clean slate instead of picking up wherever the last one left off.
+  frostCanvas.style.display = 'none';
+  _ejectTime = 0;
+  _ejectFreezeDamageTimer = 0;
   for (let i = 0; i < INVENTORY_SIZE; i++) {
     _inventory[i] = null;
     _invSlotEls[i].icon.textContent = '';
