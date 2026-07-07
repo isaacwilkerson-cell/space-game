@@ -463,17 +463,15 @@ loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
 // corners (the wall it's mounted on isn't perfectly axis-aligned, so each corner gets its
 // own position rather than assuming a flat rectangle).
 (function _addBetaThankYouScreen() {
-  // Corrected measurement: user gave the top-left corner and the diagonally-opposite
-  // (bottom-right) corner — the other two are derived by pairing each corner's own x
-  // side with the other's y level, using the near-side corner's z (z varies by x side,
-  // not by y level, same pattern as the original 4-corner measurement).
-  const _topLeft     = new THREE.Vector3(2.0, 5.3, -56.7);
-  const _bottomRight = new THREE.Vector3(54.2, -6.3, -56.1);
+  // Measured directly off the room's own black monitor prop ("Object_10" in the lobby
+  // GLB — a flat, near-black panel at x:[0.94, 50.94] y:[0.41, 22.54] z:-67.366), so the
+  // thank-you text sits exactly over that existing screen instead of floating near it.
+  const _left = 0.94, _right = 50.94, _bottom = 0.41, _top = 22.54, _z = -67.366;
   const corners = {
-    topLeft:     _topLeft,
-    bottomLeft:  new THREE.Vector3(_topLeft.x, _bottomRight.y, _topLeft.z),
-    topRight:    new THREE.Vector3(_bottomRight.x, _topLeft.y, _bottomRight.z),
-    bottomRight: _bottomRight,
+    topLeft:     new THREE.Vector3(_left, _top, _z),
+    bottomLeft:  new THREE.Vector3(_left, _bottom, _z),
+    topRight:    new THREE.Vector3(_right, _top, _z),
+    bottomRight: new THREE.Vector3(_right, _bottom, _z),
   };
   // The measured corners sit almost exactly on the room's own wall surface, which
   // z-fights with the wall mesh underneath — nudge the whole plane out along its own
