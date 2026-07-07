@@ -5136,6 +5136,15 @@ let pointerLocked = false;
 const RETICLE_RADIUS = 160;
 let reticleX = 0, reticleY = 0;
 
+// Missile lock-on: hitting a ship with the laser marks it as the current target. Keeping
+// its on-screen square inside the steering circle for SHIP_LOCK_TIME_MS builds up a lock;
+// once full, right-click fires a homing missile at it.
+const SHIP_LOCK_TIME_MS = 3000;
+const MISSILE_COOLDOWN_FRAMES = 90;
+let _shipTarget = null; // { id, lockedMs, screenX, screenY, onScreen, inCircle }
+let _missileCooldown = 0;
+const _missiles = [];
+
 // Reticle canvas overlay
 const reticleCanvas = document.createElement('canvas');
 reticleCanvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10';
@@ -5366,6 +5375,33 @@ function drawReticle() {
     rCtx.fill();
     rCtx.beginPath(); rCtx.moveTo(cx, cy); rCtx.lineTo(dx, dy);
     rCtx.strokeStyle = 'rgba(0,255,200,0.2)'; rCtx.lineWidth = 1; rCtx.stroke();
+  }
+
+  // Ship lock-on target square — pops up wherever the ship you just hit is on screen.
+  // Fills in as an arc while it sits inside the steering circle; a full green ring means
+  // the missile lock is ready (right-click to fire).
+  if (_shipTarget && _shipTarget.onScreen) {
+    const sx = _shipTarget.screenX, sy = _shipTarget.screenY;
+    const locked = _shipTarget.lockedMs >= SHIP_LOCK_TIME_MS;
+    const pct = _shipTarget.lockedMs / SHIP_LOCK_TIME_MS;
+    const boxCol = locked ? '#00ff66' : _shipTarget.inCircle ? '#ffcc33' : '#ff4444';
+    const s = 22;
+    rCtx.save();
+    rCtx.strokeStyle = boxCol;
+    rCtx.lineWidth = 2;
+    rCtx.strokeRect(sx - s/2, sy - s/2, s, s);
+    if (pct > 0) {
+      rCtx.beginPath();
+      rCtx.arc(sx, sy, s * 0.85, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2);
+      rCtx.strokeStyle = boxCol;
+      rCtx.lineWidth = 3;
+      rCtx.stroke();
+    }
+    rCtx.fillStyle = boxCol;
+    rCtx.font = 'bold 11px monospace';
+    rCtx.textAlign = 'center';
+    rCtx.fillText(locked ? 'LOCKED — FIRE' : 'TARGET', sx, sy + s/2 + 14);
+    rCtx.restore();
   }
 
   // Waypoint helper — works at any distance using direction projection
@@ -5926,6 +5962,9 @@ function updateLasers() {
     if (hitId) {
       socket.emit('player_hit', { targetId: hitId, damage: LASER_DAMAGE });
       _spawnShipImpact(l.mesh.position.clone());
+      // A hit on a new ship starts a fresh lock; re-hitting the ship already being
+      // tracked doesn't reset progress already built up toward the 3-second lock.
+      if (!_shipTarget || _shipTarget.id !== hitId) _shipTarget = { id: hitId, lockedMs: 0 };
     }
 
     const t = l.life / LASER_LIFETIME;
@@ -5936,11 +5975,122 @@ function updateLasers() {
       _lasers.splice(i, 1);
     }
   }
+
+  _updateShipTargeting();
+  _updateMissiles();
+}
+
+// Projects the current lock target's world position to reticle-canvas screen space, same
+// math as drawWaypoint() above but kept standalone since that helper is local to
+// drawReticle() and this needs to run every frame regardless of the HUD redraw, to build
+// up lock time even on frames where drawing itself is skipped.
+function _updateShipTargeting() {
+  if (_missileCooldown > 0) _missileCooldown--;
+  if (!_shipTarget) return;
+  const rp = remotePlayers[_shipTarget.id];
+  const alive = rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone);
+  if (!alive) { _shipTarget = null; return; }
+
+  const dir = rp.mesh.position.clone().sub(camera.position).normalize();
+  const near = camera.position.clone().addScaledVector(dir, 1);
+  near.project(camera);
+  const sx = (near.x * 0.5 + 0.5) * reticleCanvas.width;
+  const sy = (-near.y * 0.5 + 0.5) * reticleCanvas.height;
+  const cx = reticleCanvas.width / 2, cy = reticleCanvas.height / 2;
+  const onScreen = near.z < 1 && sx > 0 && sx < reticleCanvas.width && sy > 0 && sy < reticleCanvas.height;
+  const inCircle = onScreen && Math.hypot(sx - cx, sy - cy) <= RETICLE_RADIUS;
+
+  _shipTarget.screenX = sx;
+  _shipTarget.screenY = sy;
+  _shipTarget.onScreen = onScreen;
+  _shipTarget.inCircle = inCircle;
+  if (inCircle) {
+    _shipTarget.lockedMs = Math.min(SHIP_LOCK_TIME_MS, _shipTarget.lockedMs + 1000 / 60);
+  } else {
+    _shipTarget.lockedMs = Math.max(0, _shipTarget.lockedMs - 1000 / 60); // decays, doesn't reset instantly
+  }
+}
+
+const MISSILE_SPEED = 55;
+const MISSILE_TURN  = 0.09;   // how sharply it steers toward the target each frame
+const MISSILE_LIFETIME = 220; // frames before it gives up and self-destructs
+const MISSILE_DAMAGE = 40;
+const _missileGeo = new THREE.CylinderGeometry(0.9, 0.9, 10, 8);
+_missileGeo.rotateX(Math.PI / 2);
+const _missileMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0xff3300, emissiveIntensity: 0.5 });
+
+function _fireMissile() {
+  if (gameMode !== 'flight' || !self || self.inSafeZone) return;
+  if (!_shipTarget || _shipTarget.lockedMs < SHIP_LOCK_TIME_MS) return;
+  if (_missileCooldown > 0) return;
+  const rp = remotePlayers[_shipTarget.id];
+  if (!rp || !rp.mesh.visible) return;
+  _missileCooldown = MISSILE_COOLDOWN_FRAMES;
+
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(selfMesh.quaternion);
+  const mesh = new THREE.Mesh(_missileGeo, _missileMat);
+  mesh.position.copy(selfMesh.position).addScaledVector(fwd, 16);
+  mesh.quaternion.copy(selfMesh.quaternion);
+  scene.add(mesh);
+  const flame = new THREE.PointLight(0xff8833, 40, 200);
+  flame.position.copy(mesh.position);
+  scene.add(flame);
+
+  // Launch velocity aims straight at the target's current position rather than the ship's
+  // own forward vector — at long range even a few degrees of initial offset needs many
+  // frames of the gradual homing turn to correct, and by then a fast missile has already
+  // flown straight past its target's z-plane without ever coming within hit range (closest
+  // approach still 50+ units on a shot that "should" have connected). Aiming at the target
+  // immediately means homing only has to correct for the target's own movement afterward.
+  const toTargetInitial = rp.mesh.position.clone().sub(mesh.position).normalize();
+  _missiles.push({
+    mesh, flame,
+    targetId: _shipTarget.id,
+    vel: toTargetInitial.multiplyScalar(MISSILE_SPEED),
+    life: MISSILE_LIFETIME,
+  });
+  // Firing consumes the lock — has to be rebuilt (re-hit + hold) for another shot.
+  _shipTarget.lockedMs = 0;
+}
+
+function _updateMissiles() {
+  for (let i = _missiles.length - 1; i >= 0; i--) {
+    const m = _missiles[i];
+    m.life--;
+    const rp = remotePlayers[m.targetId];
+    const targetAlive = rp && rp.mesh.visible && !(rp.data && rp.data.inSafeZone);
+    if (targetAlive) {
+      // Steer velocity toward the target — a homing turn, not an instant snap.
+      const toTarget = rp.mesh.position.clone().sub(m.mesh.position).normalize();
+      m.vel.lerp(toTarget.multiplyScalar(MISSILE_SPEED), MISSILE_TURN).setLength(MISSILE_SPEED);
+    }
+    const _prevPos = m.mesh.position.clone();
+    m.mesh.position.add(m.vel);
+    m.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), m.vel.clone().normalize());
+    m.flame.position.copy(m.mesh.position);
+
+    let hit = false;
+    if (targetAlive && _pointToSegmentDistance(rp.mesh.position, _prevPos, m.mesh.position) < SHIP_HIT_RADIUS) {
+      socket.emit('player_hit', { targetId: m.targetId, damage: MISSILE_DAMAGE });
+      _spawnShipImpact(m.mesh.position.clone(), true);
+      hit = true;
+    }
+
+    if (hit || m.life <= 0) {
+      scene.remove(m.mesh);
+      scene.remove(m.flame);
+      _missiles.splice(i, 1);
+    }
+  }
 }
 
 let _mouseFireHeld = false;
 document.addEventListener('mousedown', e => { if (e.button === 0) _mouseFireHeld = true; });
 document.addEventListener('mouseup',   e => { if (e.button === 0) _mouseFireHeld = false; });
+document.addEventListener('mousedown', e => {
+  if (e.button === 2 && gameMode === 'flight' && pointerLocked) { e.preventDefault(); _fireMissile(); }
+});
+document.addEventListener('contextmenu', e => { if (gameMode === 'flight') e.preventDefault(); });
 
 // ── Physics ───────────────────────────────────────────────────────────────────
 const THRUST        = 0.4;
