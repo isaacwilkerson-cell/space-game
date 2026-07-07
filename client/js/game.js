@@ -794,16 +794,6 @@ const TDM_MATCH_DURATION_MS = 3 * 60 * 1000;
 let _tdmLastFloor = null; // last accepted ground height, used to clamp step-up size
 let _tdmWasGrounded = true; // tracks previous frame's grounded state — step-up clamp only applies while walking, not landing from a jump
 const _tdmGroundRaycaster = new THREE.Raycaster();
-// Lobby gets the exact same "stand on top of stuff" step-up climbing TDM has, instead of
-// a single flat floor constant that let you walk straight through crates/furniture at
-// ground level. Separate state from TDM's since the two run independently and lobby's
-// fpPos.y is a plain ground-relative value (no eye-height offset baked in).
-let _lobbyLastFloor = null;
-let _lobbyWasGrounded = true;
-let _lobbyStandingMesh = null;
-let _lobbyLastFilteredStandingMesh = undefined;
-let _lobbyFilteredCollidables = _lobbyCollidables;
-const _lobbyGroundRaycaster = new THREE.Raycaster();
 // Raw downward raycast at one XZ point — null if nothing is directly below (outside the
 // map footprint), instead of silently falling through to the map's basement/underside.
 function _tdmRaycastGroundY(x, z, fromY) {
@@ -981,9 +971,6 @@ function enterLobby() {
   fpPos.set(0, -7.5, 0);
   fpVel.set(0, 0, 0);
   _fpJumpVel = 0;
-  _lobbyLastFloor = -7.5; // reset step-up clamp for the new run
-  _lobbyWasGrounded = true;
-  _lobbyStandingMesh = null;
   fpYaw = 0; fpPitch = 0;
   _fpMouseDX = 0; _fpMouseDY = 0;
   camera.quaternion.identity();
@@ -3650,11 +3637,7 @@ function updateFP() {
     _tdmLastFilteredStandingMesh = _tdmStandingMesh;
     _tdmFilteredCollidables = _tdmStandingMesh ? _tdmArenaCollidables.filter(m => m !== _tdmStandingMesh) : _tdmArenaCollidables;
   }
-  if (gameMode === 'lobby' && _lobbyStandingMesh !== _lobbyLastFilteredStandingMesh) {
-    _lobbyLastFilteredStandingMesh = _lobbyStandingMesh;
-    _lobbyFilteredCollidables = _lobbyStandingMesh ? _lobbyCollidables.filter(m => m !== _lobbyStandingMesh) : _lobbyCollidables;
-  }
-  const _activeCollidables = gameMode === 'lobby' ? _lobbyFilteredCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables
+  const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables
     : gameMode === 'tdm' ? _tdmFilteredCollidables
     : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
@@ -3672,9 +3655,8 @@ function updateFP() {
     // to be auto-climbed by the floor step-up logic, not blocked here. Sampling any lower
     // both (a) fights the step-up logic, since you can never walk into a climbable object
     // to begin with, and (b) can catch the top edge/lip of whatever you're currently
-    // standing on when you try to walk off it. Lobby now climbs the same way TDM does, so
-    // it gets the same multi-height sampling instead of a single fixed-height ray.
-    const _heightOffsets = (gameMode === 'tdm' || gameMode === 'lobby') ? [_TDM_MAX_STEP_UP + 1, _TDM_MAX_STEP_UP + 3, _TDM_MAX_STEP_UP + 6, _TDM_MAX_STEP_UP + 10] : [1];
+    // standing on when you try to walk off it.
+    const _heightOffsets = gameMode === 'tdm' ? [_TDM_MAX_STEP_UP + 1, _TDM_MAX_STEP_UP + 3, _TDM_MAX_STEP_UP + 6, _TDM_MAX_STEP_UP + 10] : [1];
 
     // Try X and Z axes independently (slide)
     const axes = [
@@ -3776,20 +3758,7 @@ function updateFP() {
   // of an object/wall the player just walked into — treat that as a wall (blocked by
   // the horizontal collision above) instead of snapping the player up onto it.
   let _fpFloor;
-  if (gameMode === 'lobby') {
-    // Same "stand on top of stuff" step-up climbing as TDM: raycast straight down from
-    // just above head height, so crates/furniture/ledges act as real ground instead of
-    // being walked straight through at the old fixed floor height.
-    _lobbyGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 6, fpPos.z), new THREE.Vector3(0, -1, 0));
-    const _groundHits = _lobbyCollidables.length > 0 ? _lobbyGroundRaycaster.intersectObjects(_lobbyCollidables, false) : [];
-    _lobbyStandingMesh = _groundHits.length > 0 ? _groundHits[0].object : null;
-    const _rawGround = _groundHits.length > 0 ? _groundHits[0].point.y : _groundHeightAt(_lobbyCollidables, fpPos.x, fpPos.z, -7.5);
-    const MAX_STEP_UP = _TDM_MAX_STEP_UP;
-    if (_lobbyLastFloor === null || _rawGround <= _lobbyLastFloor + MAX_STEP_UP || _rawGround < _lobbyLastFloor || !_lobbyWasGrounded) {
-      _lobbyLastFloor = _rawGround;
-    }
-    _fpFloor = _lobbyLastFloor;
-  }
+  if (gameMode === 'lobby') _fpFloor = -7.5;
   else if (gameMode === 'range') _fpFloor = 0;
   else if (gameMode === 'tdm') {
     _tdmGroundRaycaster.set(new THREE.Vector3(fpPos.x, fpPos.y + 6, fpPos.z), new THREE.Vector3(0, -1, 0));
@@ -3808,7 +3777,6 @@ function updateFP() {
   } else _fpFloor = 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   if (gameMode === 'tdm') _tdmWasGrounded = _fpGrounded;
-  if (gameMode === 'lobby') _lobbyWasGrounded = _fpGrounded;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
   const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm';
