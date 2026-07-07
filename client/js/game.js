@@ -463,11 +463,17 @@ loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
 // corners (the wall it's mounted on isn't perfectly axis-aligned, so each corner gets its
 // own position rather than assuming a flat rectangle).
 (function _addBetaThankYouScreen() {
+  // Corrected measurement: user gave the top-left corner and the diagonally-opposite
+  // (bottom-right) corner — the other two are derived by pairing each corner's own x
+  // side with the other's y level, using the near-side corner's z (z varies by x side,
+  // not by y level, same pattern as the original 4-corner measurement).
+  const _topLeft     = new THREE.Vector3(2.0, 5.3, -56.7);
+  const _bottomRight = new THREE.Vector3(54.2, -6.3, -56.1);
   const corners = {
-    topLeft:     new THREE.Vector3(0.6, 5.3, -57.8),
-    bottomLeft:  new THREE.Vector3(0.6, -4.1, -58),
-    topRight:    new THREE.Vector3(51.3, 6.8, -58.3),
-    bottomRight: new THREE.Vector3(51.3, -2.6, -60.7),
+    topLeft:     _topLeft,
+    bottomLeft:  new THREE.Vector3(_topLeft.x, _bottomRight.y, _topLeft.z),
+    topRight:    new THREE.Vector3(_bottomRight.x, _topLeft.y, _bottomRight.z),
+    bottomRight: _bottomRight,
   };
   // The measured corners sit almost exactly on the room's own wall surface, which
   // z-fights with the wall mesh underneath — nudge the whole plane out along its own
