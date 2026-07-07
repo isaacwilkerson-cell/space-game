@@ -6018,7 +6018,7 @@ document.addEventListener('click', () => {
       socket.connect();
     }
   }
-  if (hubOpen || shopOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
+  if (hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
   if (!document.pointerLockElement && !lockRequested) {
     lockRequested = true;
     setTimeout(() => { lockRequested = false; }, 2000);
@@ -6029,7 +6029,7 @@ document.addEventListener('click', () => {
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = !!document.pointerLockElement;
   const mapIsOpen = document.getElementById('galaxy-map').classList.contains('open');
-  const menuOpen = hubOpen || shopOpen || roomCustomOpen || shipUpgradeOpen || mapIsOpen || (window._chatOpen && window._chatOpen()) || gameMode === 'hangar';
+  const menuOpen = hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || mapIsOpen || (window._chatOpen && window._chatOpen()) || gameMode === 'hangar';
   if (!menuOpen) overlay.classList.toggle('hidden', pointerLocked);
   if (!pointerLocked) { reticleX = 0; reticleY = 0; }
   // body has cursor:none globally so the game can draw its own reticle instead of the OS
