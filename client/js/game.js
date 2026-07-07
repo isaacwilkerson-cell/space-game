@@ -6666,25 +6666,52 @@ let _iAmCarryingCrate = false;
 // once — so this mesh lives in that shared scene and is only ever made visible while the
 // player has actually landed on the SPECIFIC planet the crate is on (checked against
 // _surfCurrentPlanet), not just any planet using the same terrain art.
-const _eventCratePlanetMesh = (() => {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xffcc44, roughness: 0.5, emissive: 0x664400, emissiveIntensity: 0.6 })
-  );
-  mesh.visible = false;
-  return mesh;
-})();
+//
+// Both crate representations are Group wrappers around the real crate_03.glb model (same
+// asset the decorative planet crates use) instead of a plain colored box — populated with
+// a plain-box placeholder immediately, then swapped for the real model once it finishes
+// downloading (same fallback-then-upgrade pattern used for grenades/skybox elsewhere).
+const _eventCratePlanetMesh = new THREE.Group();
+_eventCratePlanetMesh.visible = false;
 
-// Crate mesh for when it's floating loose in open space (dropped from a carrier).
-const _floatingCrateMesh = (() => {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(10, 10, 10),
-    new THREE.MeshStandardMaterial({ color: 0xddaa33, roughness: 0.6, emissive: 0x442200, emissiveIntensity: 0.4 })
-  );
-  mesh.visible = false;
-  scene.add(mesh);
-  return mesh;
-})();
+const _floatingCrateMesh = new THREE.Group();
+_floatingCrateMesh.visible = false;
+scene.add(_floatingCrateMesh);
+
+let _eventCrateTemplate = null;
+function _populateCrateMesh(group, size) {
+  while (group.children.length) group.remove(group.children[0]);
+  if (_eventCrateTemplate) {
+    const clone = _eventCrateTemplate.clone(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const scale = size / Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z, 1e-5);
+    clone.scale.setScalar(scale);
+    const box2 = new THREE.Box3().setFromObject(clone);
+    clone.position.y -= box2.min.y; // sit flush on the ground instead of centered on it
+    group.add(clone);
+  } else {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size, size),
+      new THREE.MeshStandardMaterial({ color: 0xffcc44, roughness: 0.5, emissive: 0x664400, emissiveIntensity: 0.6 })
+    );
+    mesh.position.y = size / 2;
+    group.add(mesh);
+  }
+}
+_populateCrateMesh(_eventCratePlanetMesh, 6);
+_populateCrateMesh(_floatingCrateMesh, 10);
+loadModel('assets/crate_03.glb', 8, model => {
+  if (!model) return;
+  model.traverse(c => {
+    if (c.isMesh && c.material) {
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m.emissive !== undefined) { m.emissive = new THREE.Color(0x664400); m.emissiveIntensity = 0.5; } });
+    }
+  });
+  _eventCrateTemplate = model;
+  _populateCrateMesh(_eventCratePlanetMesh, 6);
+  _populateCrateMesh(_floatingCrateMesh, 10);
+});
 
 // Shows/hides/positions the on-planet crate mesh for whatever planet the player is
 // CURRENTLY standing on — called both right after a fresh spawn and every time a landing
