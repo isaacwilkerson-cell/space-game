@@ -530,13 +530,17 @@ loadModel('assets/free_fire_ob39_lobby_3d_model.glb', 400, model => {
 let _roomWelcomeScreen = null;
 function _addRoomWelcomeScreen() {
   if (_roomWelcomeScreen) return; // room model can't reload while the tab is open, but guard anyway
-  const _topLeft     = new THREE.Vector3(-33.5, 2, -88.4);
-  const _bottomRight = new THREE.Vector3(-81.8, 26.7, -126.3);
+  // Measured directly off the room's own black monitor prop ("TV_Screen_0" in the
+  // interior GLB — a thin flat panel facing +x at x≈-81.33, y:[-13.22, 26.42],
+  // z:[-125.86, -72.99]), so the text sits exactly on that existing TV instead of
+  // floating nearby at guessed coordinates. The room is entered facing roughly -x, so
+  // "left" (the viewer's left) is the higher-z side of the panel.
+  const _x = -81.33, _top = 26.42, _bottom = -13.22, _zLeft = -72.99, _zRight = -125.86;
   const corners = {
-    topLeft:     _topLeft,
-    bottomLeft:  new THREE.Vector3(_topLeft.x, _bottomRight.y, _topLeft.z),
-    topRight:    new THREE.Vector3(_bottomRight.x, _topLeft.y, _bottomRight.z),
-    bottomRight: _bottomRight,
+    topLeft:     new THREE.Vector3(_x, _top, _zLeft),
+    bottomLeft:  new THREE.Vector3(_x, _bottom, _zLeft),
+    topRight:    new THREE.Vector3(_x, _top, _zRight),
+    bottomRight: new THREE.Vector3(_x, _bottom, _zRight),
   };
   const _edge1 = corners.bottomLeft.clone().sub(corners.topLeft);
   const _edge2 = corners.topRight.clone().sub(corners.topLeft);
@@ -554,11 +558,7 @@ function _addRoomWelcomeScreen() {
     corners.topRight.x, corners.topRight.y, corners.topRight.z,
     corners.bottomRight.x, corners.bottomRight.y, corners.bottomRight.z,
   ]);
-  // The given "top" corner actually sits at a lower world y than the given "bottom"
-  // corner (this panel is mounted on the room's slanted overhang), so mapping UVs the
-  // same way as the lobby screen rendered the text upside-down and mirrored — flipped
-  // both axes here to counter that instead of re-guessing the world-space corners.
-  const uvs = new Float32Array([1, 0,  1, 1,  0, 0,  0, 1]);
+  const uvs = new Float32Array([0, 1,  0, 0,  1, 1,  1, 0]);
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setIndex([0, 1, 2,  1, 3, 2]);
