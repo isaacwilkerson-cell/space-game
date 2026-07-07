@@ -50,12 +50,14 @@ let _nextEventCrateAt = Date.now() + 20000; // first one appears reasonably soon
 
 function spawnEventCrate() {
   const planetIndex = Math.floor(Math.random() * EVENT_CRATE_PLANET_COUNT);
-  // Angular placement on the planet's surface — client resolves this to an actual world
-  // position using its own copy of that planet's real position/radius (same approach
-  // already used for the decorative crates every planet has).
-  const ang = Math.random() * Math.PI * 2;
-  const elev = 0.3 + Math.random() * 0.5;
-  _eventCrate = { status: 'planet', planetIndex, ang, elev };
+  // A local XZ offset within the LANDED terrain scene (not the flying/orbit sphere) —
+  // the client places this on whichever actual ground asset that planet's terrain type
+  // uses (mountains, dunes, ice, etc), raycasting down to it for the real ground height.
+  // Kept modest so it's safely within bounds regardless of which terrain (or the flat
+  // fallback ground) ends up representing this particular planet.
+  const localX = (Math.random() - 0.5) * 600;
+  const localZ = (Math.random() - 0.5) * 600;
+  _eventCrate = { status: 'planet', planetIndex, localX, localZ };
   io.emit('event_crate_spawned', _eventCrate);
 }
 

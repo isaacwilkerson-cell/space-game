@@ -1499,6 +1499,10 @@ function _enterPlanetSurface(planet) {
 
   gameMode = 'planet_surface';
   if (_surfHudEl) _surfHudEl.style.display = 'none'; // hidden during landing
+  // Whatever planet the crate is actually on, this is the moment to find out — show/hide/
+  // reposition its ground mesh for whichever planet was just landed on (function itself
+  // checks whether this is even the right one).
+  if (typeof _syncEventCratePlanetMesh === 'function') _syncEventCratePlanetMesh();
 
   // Start landing animation — clone ship into surface scene
   _surfLanding = true;
@@ -6651,14 +6655,17 @@ function _updateMissiles() {
 const CRATE_PICKUP_RADIUS = 80; // matches server's CRATE_COLLECT_RADIUS
 const PLANET_CRATE_PICKUP_RADIUS = 30; // tighter on foot than in a ship
 
-// Full state mirrors the server's _eventCrate: { status: 'planet', planetIndex, ang, elev }
+// Full state mirrors the server's _eventCrate: { status: 'planet', planetIndex, localX, localZ }
 // | { status: 'carried', holderId, holderName } | { status: 'floating', position } | null.
 let _eventCrateState = null;
 let _iAmCarryingCrate = false;
 
-// Crate mesh for when it's sitting on a planet's surface — parented directly to the
-// target planet object (same trick the decorative crates use) so it automatically tracks
-// that planet's position/rotation without any extra bookkeeping.
+// Crate mesh for when it's sitting on a planet's surface. Landing on a planet doesn't
+// give it its own unique scene/geometry — every planet that shares a terrain type (icy,
+// desert, volcanic, etc) reuses the exact same terrain mesh in _planetSurfScene, loaded
+// once — so this mesh lives in that shared scene and is only ever made visible while the
+// player has actually landed on the SPECIFIC planet the crate is on (checked against
+// _surfCurrentPlanet), not just any planet using the same terrain art.
 const _eventCratePlanetMesh = (() => {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(6, 6, 6),
@@ -6679,20 +6686,26 @@ const _floatingCrateMesh = (() => {
   return mesh;
 })();
 
-function _placeCrateOnPlanet(planetIndex, ang, elev) {
-  if (typeof planets === 'undefined' || !planets[planetIndex]) return;
-  const planet = planets[planetIndex];
-  const r = planet.userData.collisionRadius || 500;
-  const localNorm = new THREE.Vector3(
-    Math.cos(elev) * Math.cos(ang),
-    Math.sin(elev),
-    Math.cos(elev) * Math.sin(ang)
-  ).normalize();
-  _eventCratePlanetMesh.position.copy(localNorm.clone().multiplyScalar(r + 3));
-  _eventCratePlanetMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), localNorm);
-  if (_eventCratePlanetMesh.parent !== planet) {
+// Shows/hides/positions the on-planet crate mesh for whatever planet the player is
+// CURRENTLY standing on — called both right after a fresh spawn and every time a landing
+// completes, since the crate's target planet might not be the one just landed on.
+const _crateGroundRaycaster = new THREE.Raycaster();
+function _syncEventCratePlanetMesh() {
+  if (!_eventCrateState || _eventCrateState.status !== 'planet') { _eventCratePlanetMesh.visible = false; return; }
+  if (gameMode !== 'planet_surface' || _surfCurrentPlanet !== planets[_eventCrateState.planetIndex]) {
+    _eventCratePlanetMesh.visible = false;
+    return;
+  }
+  const { localX, localZ } = _eventCrateState;
+  const groundMesh = _surfTerrainMesh || _surfGround;
+  _crateGroundRaycaster.set(new THREE.Vector3(localX, 3000, localZ), new THREE.Vector3(0, -1, 0));
+  const hits = _crateGroundRaycaster.intersectObject(groundMesh, true);
+  const groundY = hits.length > 0 ? hits[0].point.y : 0;
+  _eventCratePlanetMesh.position.set(localX, groundY + 3, localZ);
+  _eventCratePlanetMesh.quaternion.identity();
+  if (_eventCratePlanetMesh.parent !== _planetSurfScene) {
     if (_eventCratePlanetMesh.parent) _eventCratePlanetMesh.parent.remove(_eventCratePlanetMesh);
-    planet.add(_eventCratePlanetMesh);
+    _planetSurfScene.add(_eventCratePlanetMesh);
   }
   _eventCratePlanetMesh.visible = true;
 }
@@ -6701,7 +6714,7 @@ function _onEventCrateSpawned(data) {
   _eventCrateState = data;
   _iAmCarryingCrate = false;
   _floatingCrateMesh.visible = false;
-  _placeCrateOnPlanet(data.planetIndex, data.ang, data.elev);
+  _syncEventCratePlanetMesh();
   const planetName = (typeof planets !== 'undefined' && planets[data.planetIndex] && planets[data.planetIndex].userData.mapName) || 'a nearby planet';
   if (window._chatAddMsg) window._chatAddMsg('📦 SERVER', `A crate has landed on ${planetName}! Get there and grab it before someone else does.`, false);
 }
@@ -6744,12 +6757,9 @@ document.body.appendChild(_cratePrompt);
 
 function _crateCollectCheck() {
   if (!_eventCrateState) return null;
-  if (_eventCrateState.status === 'planet' && gameMode === 'planet_walk' && _landedPlanet === planets[_eventCrateState.planetIndex]) {
-    // The crate mesh is parented to the planet, so its .position is planet-local — has to
-    // be resolved to a world position before comparing against the (world-space) camera.
-    const crateWorldPos = new THREE.Vector3();
-    _eventCratePlanetMesh.getWorldPosition(crateWorldPos);
-    if (camera.position.distanceTo(crateWorldPos) < PLANET_CRATE_PICKUP_RADIUS) {
+  if (_eventCrateState.status === 'planet' && gameMode === 'planet_surface'
+      && _surfCurrentPlanet === planets[_eventCrateState.planetIndex] && _eventCratePlanetMesh.visible) {
+    if (camera.position.distanceTo(_eventCratePlanetMesh.position) < PLANET_CRATE_PICKUP_RADIUS) {
       return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
     }
   } else if (_eventCrateState.status === 'floating' && (gameMode === 'flight' || gameMode === 'ejected')) {
@@ -7132,7 +7142,7 @@ if (socket) {
     // rather than re-announcing it as a fresh spawn.
     if (data.eventCrate) {
       const ec = data.eventCrate;
-      if (ec.status === 'planet') { _eventCrateState = ec; _placeCrateOnPlanet(ec.planetIndex, ec.ang, ec.elev); }
+      if (ec.status === 'planet') { _eventCrateState = ec; _syncEventCratePlanetMesh(); }
       else if (ec.status === 'carried') _onEventCratePickedUp(ec);
       else if (ec.status === 'floating') _onEventCrateDropped(ec);
     }
