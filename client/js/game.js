@@ -2409,6 +2409,7 @@ roomHubEl.innerHTML = `
   <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0ff;">ROOM HUB</div>
   <div style="display:flex;flex-direction:column;gap:12px;">
     <div class="hub-opt" data-opt="shop"  style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:14px;letter-spacing:3px;cursor:pointer;transition:background 0.2s;">SHOP</div>
+    <div class="hub-opt" data-opt="bounties" style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:14px;letter-spacing:3px;cursor:pointer;">BOUNTIES</div>
     <div class="hub-opt" data-opt="room"  style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:14px;letter-spacing:3px;cursor:pointer;">ROOM</div>
     <div class="hub-opt" data-opt="ship"  style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:14px;letter-spacing:3px;cursor:pointer;">SHIP</div>
   </div>
@@ -2423,13 +2424,14 @@ document.body.appendChild(hubApproachPrompt);
 
 let hubOpen = false;
 let hubSelected = 0;
-const hubOptions = ['SHOP', 'ROOM', 'SHIP'];
+const hubOptions = ['SHOP', 'BOUNTIES', 'ROOM', 'SHIP'];
 
 function hubSelect(idx) {
   hubOpen = false;
   roomHubEl.style.display = 'none';
   const opt = hubOptions[idx].toLowerCase();
   if (opt === 'shop') { openShop(); return; }
+  if (opt === 'bounties') { openBounties(); return; }
   if (opt === 'room') { openRoomCustom(); return; }
   if (opt === 'ship') { openShipUpgrades(); return; }
 }
@@ -2576,6 +2578,61 @@ function _updateShopAffordability() {
     btn.style.cursor = affordable ? 'pointer' : 'not-allowed';
   });
 }
+
+// ── Bounty board ─────────────────────────────────────────────────────────────
+// Lightweight repeatable objectives on top of the base per-kill/per-crate credit rewards
+// — tracked client-side per session (this game has no persistent accounts to save
+// progress against anyway; every other stat like tdmKills resets per-session too).
+// Claiming completed bounties re-arms them instead of being strictly one-time, so there's
+// always something to work toward during a long session.
+const BOUNTY_DEFS = [
+  { id: 'kills5',   label: 'Get 5 kills (any mode)',        target: 5, reward: 100, track: 'kills' },
+  { id: 'ships3',   label: 'Destroy 3 ships in combat',     target: 3, reward: 150, track: 'shipKills' },
+  { id: 'crate1',   label: 'Collect a supply crate',        target: 1, reward: 120, track: 'crates' },
+];
+const _bountyProgress = { kills: 0, shipKills: 0, crates: 0 };
+const _bountyClaimed = {}; // id -> progress value at last claim, so it can re-arm past that point
+
+const bountiesEl = makePanel('BOUNTIES', '#0ff', 'bounties');
+function _renderBounties() {
+  const rows = BOUNTY_DEFS.map(b => {
+    const have = _bountyProgress[b.track] - (_bountyClaimed[b.id] || 0);
+    const done = have >= b.target;
+    return `
+    <div style="border:1px solid #0ff4;border-radius:6px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:14px;">
+      <div style="text-align:left;">
+        <div style="font-size:13px;letter-spacing:1px;color:#fff;">${b.label}</div>
+        <div style="font-size:11px;color:#667;margin-top:5px;">${Math.min(have, b.target)} / ${b.target} — ⬙ ${b.reward} CR</div>
+      </div>
+      <button data-bounty="${b.id}" ${done ? '' : 'disabled'} style="background:${done ? '#0f42' : '#0af1'};border:1px solid ${done ? '#0f4' : '#0af6'};border-radius:4px;color:${done ? '#0f4' : '#0af8'};font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:${done ? 'pointer' : 'not-allowed'};white-space:nowrap;">${done ? 'CLAIM' : 'IN PROGRESS'}</button>
+    </div>`;
+  }).join('');
+  bountiesEl.innerHTML = `
+    <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0ff;">BOUNTIES</div>
+    <div style="max-height:50vh;overflow-y:auto;margin-bottom:10px;">${rows}</div>
+    <div style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="bounties-close">[ BACK ]</div>`;
+  bountiesEl.querySelectorAll('[data-bounty]').forEach(btn => {
+    btn.addEventListener('click', () => _claimBounty(btn.getAttribute('data-bounty')));
+  });
+  bountiesEl.querySelector('#bounties-close').addEventListener('click', closeBounties);
+}
+function _claimBounty(id) {
+  const b = BOUNTY_DEFS.find(x => x.id === id);
+  if (!b) return;
+  const have = _bountyProgress[b.track] - (_bountyClaimed[id] || 0);
+  if (have < b.target) return;
+  _bountyClaimed[id] = _bountyProgress[b.track]; // re-arms from this point forward
+  self.credits += b.reward;
+  _updateCreditsHUD();
+  _popCreditsReward(b.reward, 'bounty');
+  if (socket) socket.emit('claim_bounty', { amount: b.reward });
+  _renderBounties();
+  _updateShopAffordability();
+}
+let bountiesOpen = false;
+function openBounties()  { bountiesOpen = true;  _renderBounties(); bountiesEl.style.display = 'block'; document.exitPointerLock(); }
+function closeBounties() { bountiesOpen = false; bountiesEl.style.display = 'none'; }
+document.addEventListener('keydown', e => { if (bountiesOpen && e.key === 'Escape') { closeBounties(); e.stopPropagation(); } });
 
 // ── Weapon System (all weapons share this exact fire/scope/recoil behavior) ────
 // _hasSniper, _sniperMesh, _weaponMeshes declared earlier near inventory system
@@ -7043,11 +7100,23 @@ if (socket) {
     _updateHealthHUD();
     _flashDamageVignette();
   });
-  socket.on('credits_update', ({ credits, reward, reason }) => {
+  socket.on('credits_update', ({ credits, reward, reason, kind }) => {
     self.credits = credits;
     _updateCreditsHUD();
     if (reward) _popCreditsReward(reward, reason);
     _updateShopAffordability();
+    if (reason === 'kill') {
+      _bountyProgress.kills++;
+      if (kind === 'ship') _bountyProgress.shipKills++;
+      if (bountiesOpen) _renderBounties();
+    }
+    // reason==='crate' only ever arrives via io.to(socket.id) — i.e. this fires just for
+    // whoever actually collected it, unlike the broadcast 'crate_collected' event below
+    // (sent to everyone, purely so all clients hide the now-gone crate mesh).
+    if (reason === 'crate') {
+      _bountyProgress.crates++;
+      if (bountiesOpen) _renderBounties();
+    }
   });
   socket.on('cargo_ship_spawned', (data) => _onCargoShipSpawned(data));
   socket.on('cargo_ship_damaged', ({ hp }) => { if (_cargoShipState) _cargoShipState.hp = hp; });

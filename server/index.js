@@ -174,11 +174,11 @@ io.on('connection', (socket) => {
         // TDM the least (matches are long and kills are frequent there), anything else
         // (FP combat in the lobby/range/etc.) in between.
         if (killer) {
-          const reward = (killer.fpMode === 'tdm' && target.fpMode === 'tdm') ? CREDIT_REWARD.tdm
-                       : (killer.fpMode === null && target.fpMode === null)   ? CREDIT_REWARD.ship
-                       : CREDIT_REWARD.fp;
+          const isShipKill = killer.fpMode === null && target.fpMode === null;
+          const isTdmKill  = killer.fpMode === 'tdm' && target.fpMode === 'tdm';
+          const reward = isTdmKill ? CREDIT_REWARD.tdm : isShipKill ? CREDIT_REWARD.ship : CREDIT_REWARD.fp;
           killer.credits += reward;
-          io.to(socket.id).emit('credits_update', { credits: killer.credits, reward, reason: 'kill' });
+          io.to(socket.id).emit('credits_update', { credits: killer.credits, reward, reason: 'kill', kind: isShipKill ? 'ship' : isTdmKill ? 'tdm' : 'fp' });
         }
       }
     } catch(e) {
@@ -247,6 +247,20 @@ io.on('connection', (socket) => {
       _floatingCrate = null;
     } catch(e) {
       console.error('collect_crate error:', e.message);
+    }
+  });
+
+  // Bounty completion is tracked and decided client-side (session-only progress, same
+  // trust level as the shop below) — this just mirrors the reward into the server-held
+  // balance, capped well above any real bounty reward so a tampered client can't just
+  // claim arbitrary amounts.
+  socket.on('claim_bounty', (data) => {
+    try {
+      const player = players[socket.id];
+      if (!player || typeof data.amount !== 'number' || !isFinite(data.amount) || data.amount <= 0) return;
+      player.credits += Math.min(500, data.amount);
+    } catch(e) {
+      console.error('claim_bounty error:', e.message);
     }
   });
 
