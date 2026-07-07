@@ -4732,36 +4732,65 @@ const planets = [];
     ctx.fill();
 
     // Planets
-    planets.forEach(p => {
+    planets.forEach((p, pi) => {
       const [mx, my] = worldToMap(p.position.x, p.position.z);
       const selected = p.userData.mapSelected;
-      const col = p.userData.diamond
+      // The crate's current planet is always highlighted, whether or not it's also been
+      // manually marked — it's an active, time-limited event worth surfacing on its own.
+      const hasCrate = _eventCrateState && _eventCrateState.status === 'planet' && _eventCrateState.planetIndex === pi;
+      const col = hasCrate
+        ? '#ffcc44'
+        : p.userData.diamond
         ? '#' + p.userData.diamond.material.color.getHexString()
         : '#aaccff';
 
       // Dot
       ctx.beginPath();
-      ctx.arc(mx, my, selected ? 7 : 5, 0, Math.PI*2);
-      ctx.fillStyle = selected ? col : 'rgba(150,180,220,0.5)';
+      ctx.arc(mx, my, (selected || hasCrate) ? 7 : 5, 0, Math.PI*2);
+      ctx.fillStyle = (selected || hasCrate) ? col : 'rgba(150,180,220,0.5)';
       ctx.fill();
-      if (selected) {
+      if (selected || hasCrate) {
         ctx.strokeStyle = col;
         ctx.lineWidth = 2;
         ctx.stroke();
-        // Outer glow ring
+        // Outer glow ring — pulses for the crate planet so it reads as "active event", not
+        // just a regularly-marked one.
+        const glowR = hasCrate ? 12 + 3 * Math.sin(Date.now() * 0.005) : 12;
         ctx.beginPath();
-        ctx.arc(mx, my, 12, 0, Math.PI*2);
+        ctx.arc(mx, my, glowR, 0, Math.PI*2);
         ctx.strokeStyle = col + '55';
         ctx.lineWidth = 1;
         ctx.stroke();
       }
 
       // Name — prefixed with an emoji showing the planet's biome/type at a glance
-      ctx.fillStyle = selected ? col : 'rgba(120,160,200,0.7)';
-      ctx.font = selected ? 'bold 11px Courier New' : '10px Courier New';
-      const _label = (p.userData.mapEmoji ? p.userData.mapEmoji + ' ' : '') + (p.userData.mapName || '?');
+      ctx.fillStyle = (selected || hasCrate) ? col : 'rgba(120,160,200,0.7)';
+      ctx.font = (selected || hasCrate) ? 'bold 11px Courier New' : '10px Courier New';
+      const _emoji = hasCrate ? '📦' : (p.userData.mapEmoji || '');
+      const _label = (_emoji ? _emoji + ' ' : '') + (p.userData.mapName || '?');
       ctx.fillText(_label, mx + 9, my + 4);
     });
+
+    // Trading stations — small cyan squares, same "only shown once marked" rule applies
+    // to their in-world waypoint, but they're always visible here on the map itself so
+    // there's a way to discover and mark them in the first place.
+    if (typeof _tradingStations !== 'undefined') {
+      _tradingStations.forEach(s => {
+        const [mx, my] = worldToMap(s.position.x, s.position.z);
+        const selected = s.userData.mapSelected;
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.rect(selected ? -6 : -4, selected ? -6 : -4, selected ? 12 : 8, selected ? 12 : 8);
+        ctx.fillStyle = selected ? '#00ccff' : 'rgba(0,200,255,0.4)';
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = selected ? '#00ccff' : 'rgba(0,200,255,0.6)';
+        ctx.font = selected ? 'bold 10px Courier New' : '9px Courier New';
+        ctx.fillText(s.userData.mapName || 'TRADE STATION', mx + 8, my + 4);
+      });
+    }
 
     // Player position
     const pp = window.selfMesh ? window.selfMesh.position : null;
@@ -4808,14 +4837,27 @@ const planets = [];
     const my = e.clientY - rect.top;
     const SCALE = W * 0.44 / 80000;
 
-    let closest = null, closestDist = 18;
+    let closest = null, closestDist = 18, closestIsStation = false;
     planets.forEach(p => {
       const [px, py2] = worldToMap(p.position.x, p.position.z);
       const d = Math.hypot(mx - px, my - py2);
-      if (d < closestDist) { closestDist = d; closest = p; }
+      if (d < closestDist) { closestDist = d; closest = p; closestIsStation = false; }
     });
+    if (typeof _tradingStations !== 'undefined') {
+      _tradingStations.forEach(s => {
+        const [px, py2] = worldToMap(s.position.x, s.position.z);
+        const d = Math.hypot(mx - px, my - py2);
+        if (d < closestDist) { closestDist = d; closest = s; closestIsStation = true; }
+      });
+    }
 
-    if (closest) {
+    if (closest && closestIsStation) {
+      closest.userData.mapSelected = !closest.userData.mapSelected;
+      mapInfo.textContent = closest.userData.mapSelected
+        ? '► ' + closest.userData.mapName + ' — marker enabled'
+        : '  ' + closest.userData.mapName + ' — marker hidden';
+      drawMap();
+    } else if (closest) {
       closest.userData.mapSelected = !closest.userData.mapSelected;
       if (closest.userData.mapSelected) {
         _showDiamond(closest);
@@ -5860,7 +5902,13 @@ function drawReticle() {
     // status === 'carried': nothing to point at — it's with whoever picked it up.
   }
   if (gameMode === 'flight') {
-    _tradingStations.forEach(s => drawWaypoint(s.position, 0, 'rgba(0,200,255,A)', 'TRADE STATION'));
+    // Only show a trading station's waypoint once it's been marked on the galaxy map, or
+    // while actively carrying the crate (worth knowing where the nearest one is if you're
+    // hauling something valuable) — otherwise 4 permanent markers scattered across the map
+    // is clutter for something most flights never need.
+    _tradingStations.forEach(s => {
+      if (s.userData.mapSelected || _iAmCarryingCrate) drawWaypoint(s.position, 0, 'rgba(0,200,255,A)', 'TRADE STATION');
+    });
   }
 
   // Admin noclip dot + world coords of looked-at point
@@ -6825,9 +6873,11 @@ let _tradingStationTemplate = null;
 loadModel('assets/space_station_v_2001_a_space_odyssey.glb', 900, model => {
   if (!model) return;
   _tradingStationTemplate = model;
-  TRADING_STATION_POSITIONS.forEach(pos => {
+  TRADING_STATION_POSITIONS.forEach((pos, i) => {
     const clone = model.clone(true);
     clone.position.copy(pos);
+    clone.userData.mapSelected = false; // only shown in-world once marked on the galaxy map (or while carrying the crate)
+    clone.userData.mapName = `Trade Station ${i + 1}`;
     scene.add(clone);
     _tradingStations.push(clone);
   });
@@ -7074,7 +7124,14 @@ function updateHUD() {
   const hint      = document.getElementById('chat-hint');
   let chatOpen    = false;
   window._chatOpen = () => chatOpen;
-  const fadeDelay = 7000; // ms before a message fades out
+  const fadeDelay     = 7000;  // ms before a message fades out normally
+  const fadeDelayOpen = 25000; // ms while the chat bar is actively open — you're reading it, give it longer
+  const _activeMsgTimers = []; // { el, t } for every message not yet removed
+
+  function _scheduleFade(el) {
+    const t = setTimeout(() => el.classList.add('fading'), chatOpen ? fadeDelayOpen : fadeDelay);
+    _activeMsgTimers.push({ el, t });
+  }
 
   function addMsg(name, text, isOwn) {
     const el = document.createElement('div');
@@ -7083,12 +7140,17 @@ function updateHUD() {
     if (isOwn) el.style.borderLeft = '2px solid #0ff4';
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
-    // Fade out after delay
-    const t = setTimeout(() => el.classList.add('fading'), fadeDelay);
-    el.addEventListener('transitionend', () => el.remove());
+    _scheduleFade(el);
+    el.addEventListener('transitionend', () => {
+      el.remove();
+      const idx = _activeMsgTimers.findIndex(x => x.el === el);
+      if (idx !== -1) _activeMsgTimers.splice(idx, 1);
+    });
     // Hovering the log resets fade
     log.addEventListener('mouseenter', () => {
-      clearTimeout(t); el.classList.remove('fading');
+      const entry = _activeMsgTimers.find(x => x.el === el);
+      if (entry) clearTimeout(entry.t);
+      el.classList.remove('fading');
     }, { once: true });
   }
 
@@ -7099,6 +7161,14 @@ function updateHUD() {
     hint.style.display = 'none';
     document.exitPointerLock();
     setTimeout(() => input.focus(), 20);
+    // Give every message currently on screen a fresh, longer countdown now that the bar
+    // is open — otherwise a message that arrived just before you opened chat could still
+    // fade out on its original short timer while you're actively reading it.
+    _activeMsgTimers.forEach(entry => {
+      clearTimeout(entry.t);
+      entry.el.classList.remove('fading');
+      entry.t = setTimeout(() => entry.el.classList.add('fading'), fadeDelayOpen);
+    });
   }
 
   function closeChat() {
@@ -7107,6 +7177,11 @@ function updateHUD() {
     hint.style.display = '';
     input.value = '';
     setTimeout(() => document.body.requestPointerLock(), 100);
+    // Back to the normal (shorter) fade timing for whatever's still visible.
+    _activeMsgTimers.forEach(entry => {
+      clearTimeout(entry.t);
+      entry.t = setTimeout(() => entry.el.classList.add('fading'), fadeDelay);
+    });
   }
 
   function sendMsg() {
