@@ -3971,6 +3971,7 @@ const planets = [];
   const p = createPlanet(-60980, -23362, 900, 0x3a7acc, 0x5599dd);
   p.position.y = -43048;
   p.userData.mapName = 'Aqua Prime';
+  p.userData.mapEmoji = '💧';
   p.userData.atmosphere = {
     skyColor:  new THREE.Color(0x1a5599),   // deep ocean blue
     fogColor:  new THREE.Color(0x3377cc),
@@ -3985,6 +3986,7 @@ const planets = [];
   const p = createPlanet(42000, -42000, 700, 0xcc6644, 0x886644);
   p.position.y = 25000;
   p.userData.mapName = 'Phoenix';
+  p.userData.mapEmoji = '🔥';
   p.userData.atmosphere = {
     skyColor:   new THREE.Color(0xbb3300),
     fogColor:   new THREE.Color(0xff5500),
@@ -4087,10 +4089,26 @@ const planets = [];
     'Emerald Valley',
   ];
 
+  // One emoji per planet, matching the biome groupings in the `defs` comments above
+  // (icy, lava, jungle, desert x2, jungle-reassigned, dark/charcoal, sulfur, neon, extra).
+  const PLANET_EMOJIS = [
+    '❄️','❄️','❄️','❄️',
+    '🔥','🔥','🔥','🔥',
+    '🌴','🌴','🌴','🌴',
+    '🏜️','🏜️','🏜️','🏜️',
+    '🏜️','🏜️','🏜️','🏜️',
+    '🌴','🌴','🌴',
+    '🌑','🌑','🌑','🌑',
+    '☢️','☢️','☢️','☢️',
+    '✨','✨','✨','✨',
+    '🌴',
+  ];
+
   defs.forEach(([x, y, z, r, col, ring, skyC, fogC, fogD, dCol, extraRing], i) => {
     const p = createPlanet(x, z, r, col, ring);
     p.position.y = y;
     p.userData.mapName = PLANET_NAMES[i] || ('Planet ' + (i + 1));
+    p.userData.mapEmoji = PLANET_EMOJIS[i] || '🪐';
 
     // Second ring for gas giants
     if (extraRing) {
@@ -4177,10 +4195,11 @@ const planets = [];
         ctx.stroke();
       }
 
-      // Name
+      // Name — prefixed with an emoji showing the planet's biome/type at a glance
       ctx.fillStyle = selected ? col : 'rgba(120,160,200,0.7)';
       ctx.font = selected ? 'bold 11px Courier New' : '10px Courier New';
-      ctx.fillText(p.userData.mapName || '?', mx + 9, my + 4);
+      const _label = (p.userData.mapEmoji ? p.userData.mapEmoji + ' ' : '') + (p.userData.mapName || '?');
+      ctx.fillText(_label, mx + 9, my + 4);
     });
 
     // Player position
