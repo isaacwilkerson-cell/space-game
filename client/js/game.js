@@ -2503,6 +2503,7 @@ function makePanel(title, color, id) {
 }
 
 // ── Shop ──────────────────────────────────────────────────────────────────────
+const CREDIT_REWARD_CRATE = 150; // must match server's CREDIT_REWARD.crate
 const shopEl = makePanel('SHOP', '#0af', 'shop');
 // Replace default "COMING SOON" content with actual shop items
 const _weaponShopRows = Object.entries(WEAPON_DEFS).map(([id, def]) => `
@@ -2530,13 +2531,34 @@ const _grenadeShopRows = Object.entries(GRENADE_TYPES).map(([id, def]) => `
 shopEl.innerHTML = `
   <div style="font-size:18px;letter-spacing:4px;margin-bottom:20px;text-shadow:0 0 10px #0af;">SHOP</div>
   <div style="color:#ffd24d;font-size:13px;letter-spacing:2px;margin-bottom:14px;">⬙ <span id="shop-credits-display">0</span> CR</div>
+  <div id="shop-sell-crate-row" style="display:none;border:1px solid #f804;border-radius:6px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:18px;background:rgba(255,80,80,0.06);">
+    <div style="text-align:left;">
+      <div style="font-size:14px;letter-spacing:2px;color:#fff;">📦 SELL THE CRATE</div>
+      <div style="font-size:11px;color:#667;margin-top:5px;line-height:1.6;">No questions asked — fence it here instead of hauling it all the way home.</div>
+      <div style="font-size:11px;color:#ffd24d;margin-top:4px;">⬙ ${CREDIT_REWARD_CRATE} CR</div>
+    </div>
+    <button id="shop-sell-crate-btn" style="background:#f802;border:1px solid #f80;border-radius:4px;color:#f80;font-family:'Courier New',monospace;font-size:12px;letter-spacing:1px;padding:8px 16px;cursor:pointer;white-space:nowrap;">SELL</button>
+  </div>
   <div style="color:#0af8;font-size:11px;letter-spacing:2px;margin-bottom:18px;">WEAPONS</div>
   <div style="max-height:34vh;overflow-y:auto;margin-bottom:10px;">${_weaponShopRows}</div>
   <div style="color:#fa08;font-size:11px;letter-spacing:2px;margin-bottom:18px;">GRENADES</div>
   <div style="max-height:20vh;overflow-y:auto;margin-bottom:10px;">${_grenadeShopRows}</div>
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
+shopEl.querySelector('#shop-sell-crate-btn').addEventListener('click', () => {
+  if (!_iAmCarryingCrate) return;
+  socket.emit('sell_crate_at_station');
+});
 let shopOpen = false;
-function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); _updateShopAffordability(); }
+function openShop() {
+  shopOpen = true;
+  shopEl.style.display = 'block';
+  document.exitPointerLock();
+  _updateShopAffordability();
+  // Selling the crate only makes sense at a trading station (not the home hangar's shop
+  // tab), and obviously only while actually carrying it.
+  const sellRow = shopEl.querySelector('#shop-sell-crate-row');
+  if (sellRow) sellRow.style.display = (_shopOpenedFromTradeStation && _iAmCarryingCrate) ? 'flex' : 'none';
+}
 function closeShop() {
   shopOpen = false;
   shopEl.style.display = 'none';
@@ -6756,8 +6778,8 @@ function _populateCrateMesh(group, size) {
     group.add(mesh);
   }
 }
-_populateCrateMesh(_eventCratePlanetMesh, 6);
-_populateCrateMesh(_floatingCrateMesh, 10);
+_populateCrateMesh(_eventCratePlanetMesh, 16);
+_populateCrateMesh(_floatingCrateMesh, 22);
 loadModel('assets/crate_03.glb', 8, model => {
   if (!model) return;
   model.traverse(c => {
@@ -6767,8 +6789,8 @@ loadModel('assets/crate_03.glb', 8, model => {
     }
   });
   _eventCrateTemplate = model;
-  _populateCrateMesh(_eventCratePlanetMesh, 6);
-  _populateCrateMesh(_floatingCrateMesh, 10);
+  _populateCrateMesh(_eventCratePlanetMesh, 16);
+  _populateCrateMesh(_floatingCrateMesh, 22);
 });
 
 // Shows/hides/positions the on-planet crate mesh for whatever planet the player is
@@ -6824,6 +6846,10 @@ function _onEventCrateDelivered() {
   _iAmCarryingCrate = false;
   _eventCratePlanetMesh.visible = false;
   _floatingCrateMesh.visible = false;
+  // Covers selling at a trading station too (same event fires either way) — hide the
+  // sell row immediately instead of leaving a stale "SELL" button up with nothing to sell.
+  const sellRow = document.getElementById('shop-sell-crate-row');
+  if (sellRow) sellRow.style.display = 'none';
 }
 
 // Slow tumble so both crate representations read as physical objects, not static props.
@@ -7496,6 +7522,13 @@ function animate(t) {
     updateLandedShip(); // keep ship glued to planet surface, not following player
     updatePlanetWalk();
     updateAtmosphere();
+  } else if (gameMode === 'hangar' || gameMode === 'trade_station') {
+    // Docked at a static interior view (home hangar or a trading station) — nothing to
+    // simulate. Crucially, this must NOT fall into the flight branch below: updateShip()
+    // unconditionally moves the ship on WASD input and lerps the camera toward a chase-cam
+    // position every frame regardless of pointer lock, which was fighting the fixed
+    // interior camera framing and effectively made the trading station undockable/broken
+    // the instant you entered it.
   } else {
     updateShip();
     updateLasers();

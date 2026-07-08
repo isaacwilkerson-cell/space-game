@@ -256,6 +256,28 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Selling the crate at a trading station — a second, more convenient way to cash it in
+  // besides flying it all the way back to the home safe zone (thematically: smugglers
+  // fencing the goods at the nearest black market instead of hauling it home). Station
+  // positions live entirely client-side (same as planets), so this trusts the client's
+  // claim of "I'm at a trading station" — same trust level collect_crate already gives
+  // the 'planet' pickup case.
+  socket.on('sell_crate_at_station', () => {
+    try {
+      if (!_eventCrate || _eventCrate.status !== 'carried' || _eventCrate.holderId !== socket.id) return;
+      const player = players[socket.id];
+      if (!player) return;
+      player.credits += CREDIT_REWARD.crate;
+      io.to(socket.id).emit('credits_update', { credits: player.credits, reward: CREDIT_REWARD.crate, reason: 'crate' });
+      io.emit('event_crate_delivered', { by: player.name });
+      io.emit('chat', { name: '📦 SERVER', text: `${player.name} sold the crate at a trading station!` });
+      _eventCrate = null;
+      _nextEventCrateAt = Date.now() + EVENT_CRATE_SPAWN_MIN_MS + Math.random() * (EVENT_CRATE_SPAWN_MAX_MS - EVENT_CRATE_SPAWN_MIN_MS);
+    } catch(e) {
+      console.error('sell_crate_at_station error:', e.message);
+    }
+  });
+
   // Bounty completion is tracked and decided client-side (session-only progress, same
   // trust level as the shop below) — this just mirrors the reward into the server-held
   // balance, capped well above any real bounty reward so a tampered client can't just
