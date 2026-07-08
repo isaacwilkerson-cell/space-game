@@ -369,7 +369,9 @@ const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the sl
 const SLIDE_COOLDOWN = 45; // frames after a slide ends before another can be triggered — stops spam-sliding
 let _slideCooldownTimer = 0;
 let fpBobT = 0;
-let _footstepTimer = 0;
+const _footstepAudio = new Audio('assets/sounds/footsteps.mp3');
+_footstepAudio.loop = true;
+_footstepAudio.volume = 0.28;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _fpQuat  = new THREE.Quaternion();
@@ -4475,20 +4477,19 @@ function updateFP() {
   if (_bobAdvancing) fpBobT += bobSpeed;
   else fpBobT += (Math.round(fpBobT / Math.PI) * Math.PI - fpBobT) * 0.12;
   const bob = Math.sin(fpBobT) * bobAmp * (moving ? 1 : Math.exp(-0.1));
-  // Footsteps: a plain frame-counter timer, completely decoupled from the bob's easing
-  // curve — tying step triggers to fpBobT's asymptotic decay let it hover right at a phase
-  // boundary while slowing to a stop and refire several times in a row (the "looping"
-  // bug). No footsteps while sliding or airborne, and the timer resets the instant you
-  // stop moving so there's no trailing step after you let go of the key.
+  // Footsteps: footsteps.mp3 is actually a multi-second walking-loop sample (not one
+  // single step), so retriggering a fresh Audio() per step played the whole several-second
+  // clip every time and they piled up into a mess that kept going after you'd stopped.
+  // Instead treat it as one continuous loop tied directly to movement: play() when you
+  // start moving, pause() the instant you stop/slide/leave the ground, and speed up
+  // (playbackRate) while sprinting so the cadence actually matches your speed.
   const _canFootstep = moving && _fpGrounded && !(_slideTimer > 0);
   if (_canFootstep) {
-    _footstepTimer--;
-    if (_footstepTimer <= 0) {
-      _footstepTimer = _fpSprinting2 ? 14 : 22; // frames between steps — faster while sprinting
-      _playSfx('assets/sounds/footsteps.mp3', (_fpSprinting2 ? 0.4 : 0.28) + Math.random() * 0.08);
-    }
-  } else {
-    _footstepTimer = 0; // next step plays immediately once movement resumes
+    _footstepAudio.playbackRate = _fpSprinting2 ? 1.5 : 1.0;
+    _footstepAudio.volume = _fpSprinting2 ? 0.4 : 0.28;
+    if (_footstepAudio.paused) _footstepAudio.play().catch(() => {});
+  } else if (!_footstepAudio.paused) {
+    _footstepAudio.pause();
   }
   if (window._adminMode) {
     camera.position.copy(fpPos);
