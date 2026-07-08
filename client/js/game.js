@@ -6970,18 +6970,26 @@ loadModel('assets/space_smugglers_club_house_-_dark_version.glb', 300, model => 
   model.traverse(c => { if (c.isMesh) _tradeStationCollidables.push(c); });
   _tradeStationScene.add(model);
   _tradeStationBBox = new THREE.Box3().setFromObject(model);
-  // Floor height + a walkable spawn point: raycast straight down from just under the
-  // ceiling at the model's XZ center to find the actual floor, instead of guessing a flat
-  // Y like the simpler room-box interiors get away with — this asset's floor isn't
-  // necessarily at y=0 relative to how loadModel auto-centered it.
-  const center = _tradeStationBBox.getCenter(new THREE.Vector3());
-  const rc = new THREE.Raycaster(new THREE.Vector3(center.x, _tradeStationBBox.max.y - 1, center.z), new THREE.Vector3(0, -1, 0));
-  const hits = rc.intersectObjects(_tradeStationCollidables, false);
-  _tradeStationFloorY = hits.length > 0 ? hits[0].point.y + 2 : _tradeStationBBox.min.y + 2;
-  _tradeStationShopPos.set(center.x, _tradeStationFloorY, center.z);
-  // Spawn near one edge of the footprint (roughly "the entrance"), not dead center where
-  // the shop counter is — same point doubles as the exit-interaction zone.
-  _tradeStationSpawn.set(center.x, _tradeStationFloorY, _tradeStationBBox.max.z - 15);
+  // Floor height + a walkable spawn point. Raycasting straight down from the model's XZ
+  // CENTER turned out to land in an open void (an atrium/stairwell with no floor directly
+  // beneath it), silently falling through to a "no hit" fallback based on the building's
+  // lowest point overall (basement level) rather than the real floor anywhere walkable —
+  // that's what was putting the camera almost at ground level. Raycast at the actual
+  // spawn point instead (measured to have ~35 units of headroom above it), and use a
+  // proper eye-height offset instead of the flat +2 tuned for a completely different,
+  // much smaller room model.
+  const _tsCenter = _tradeStationBBox.getCenter(new THREE.Vector3());
+  const _tsEyeHeight = 6;
+  function _tsFloorAt(x, z) {
+    const rc = new THREE.Raycaster(new THREE.Vector3(x, _tradeStationBBox.max.y - 1, z), new THREE.Vector3(0, -1, 0));
+    const hits = rc.intersectObjects(_tradeStationCollidables, false);
+    return hits.length > 0 ? hits[0].point.y : _tradeStationBBox.min.y;
+  }
+  const _spawnX = _tsCenter.x, _spawnZ = _tradeStationBBox.max.z - 15;
+  const _spawnFloorY = _tsFloorAt(_spawnX, _spawnZ);
+  _tradeStationSpawn.set(_spawnX, _spawnFloorY + _tsEyeHeight, _spawnZ);
+  _tradeStationFloorY = _spawnFloorY + _tsEyeHeight; // used as the flat _fpFloor for the whole interior
+  _tradeStationShopPos.set(_tsCenter.x, _tradeStationFloorY, _tsCenter.z);
   _tradeStationInteriorReady = true;
 });
 
