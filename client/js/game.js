@@ -6104,8 +6104,22 @@ function drawReticle() {
 
 const overlay = document.getElementById('click-overlay');
 
+// ── Background music ──────────────────────────────────────────────────────────
+// Autoplay-with-sound is blocked until a real user gesture, so this only actually
+// starts inside the click handler below (which already exists to grab pointer lock).
+const _bgMusic = new Audio('assets/sounds/bg_music.mp4');
+_bgMusic.loop = true;
+_bgMusic.volume = 0.25;
+let _bgMusicStarted = false;
+function _startBgMusic() {
+  if (_bgMusicStarted) return;
+  _bgMusicStarted = true;
+  _bgMusic.play().catch(() => { _bgMusicStarted = false; }); // retry on the next click if it was blocked
+}
+
 let lockRequested = false;
 document.addEventListener('click', () => {
+  _startBgMusic();
   // Dismiss the title screen on the very first click once it's actually ready — the same
   // click that follows also requests pointer lock below, so this doesn't need its own
   // separate "Play" button wiring.
