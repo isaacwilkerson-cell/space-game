@@ -2537,7 +2537,17 @@ shopEl.innerHTML = `
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
 let shopOpen = false;
 function openShop()  { shopOpen = true;  shopEl.style.display = 'block'; document.exitPointerLock(); _updateShopAffordability(); }
-function closeShop() { shopOpen = false; shopEl.style.display = 'none'; }
+function closeShop() {
+  shopOpen = false;
+  shopEl.style.display = 'none';
+  // If the shop was opened by docking at a remote trading station (rather than from the
+  // home station's room hub), closing it means leaving that station's interior too —
+  // there's no separate "undock" step, backing out of the shop IS backing out of the dock.
+  if (typeof _shopOpenedFromTradeStation !== 'undefined' && _shopOpenedFromTradeStation) {
+    _shopOpenedFromTradeStation = false;
+    exitTradeStation();
+  }
+}
 shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
 document.addEventListener('keydown', e => { if (shopOpen  && e.key === 'Escape') { closeShop(); e.stopPropagation(); } });
 
@@ -6905,8 +6915,57 @@ function _updateTradingStations() {
   _tradeStationPrompt.style.display = _nearestTradingStation ? 'block' : 'none';
 }
 
+// Trading-station interior — same "static camera looking at a scene, shop panel over the
+// top" presentation the home station's hangar uses, just a different (smuggler-themed)
+// room instead of your own ship bay, and no customize tabs since it's not your hangar.
+const _tradeStationScene = new THREE.Group();
+scene.add(_tradeStationScene);
+_tradeStationScene.visible = false;
+const _tradeStationAmbient = new THREE.AmbientLight(0xffddbb, 0);
+_tradeStationScene.add(_tradeStationAmbient);
+const _tradeStationLight = new THREE.PointLight(0xffaa66, 0, 800);
+_tradeStationLight.position.set(0, 40, 20);
+_tradeStationScene.add(_tradeStationLight);
+let _tradeStationInteriorReady = false;
+loadModel('assets/space_smugglers_club_house_-_dark_version.glb', 300, model => {
+  if (!model) return;
+  _tradeStationScene.add(model);
+  _tradeStationInteriorReady = true;
+});
+
+let _shopOpenedFromTradeStation = false;
+function enterTradeStation() {
+  gameMode = 'trade_station';
+  _restoreSceneLights(); // reset from flight first, then kill, same order enterHangarFromFlight uses
+  _killAllExteriorLights();
+  interiorScene.visible = false;
+  lobbyScene.visible = false;
+  hangarScene.visible = false;
+  _tradeStationScene.visible = true;
+  _tradeStationAmbient.intensity = 1.0;
+  _tradeStationLight.intensity = 1.3;
+  _tradeStationPrompt.style.display = 'none';
+  document.exitPointerLock();
+  document.body.style.cursor = 'default';
+  camera.position.set(0, 14, 45);
+  camera.lookAt(0, 10, 0);
+  renderer.toneMappingExposure = 0.7;
+  _shopOpenedFromTradeStation = true;
+  openShop();
+}
+
+function exitTradeStation() {
+  gameMode = 'flight';
+  _tradeStationScene.visible = false;
+  _tradeStationAmbient.intensity = 0;
+  _tradeStationLight.intensity = 0;
+  document.body.style.cursor = 'none';
+  renderer.toneMappingExposure = 1.0;
+  setTimeout(() => document.body.requestPointerLock(), 150);
+}
+
 document.addEventListener('keydown', e => {
-  if ((e.key === 'e' || e.key === 'E') && _nearestTradingStation && gameMode === 'flight') openShop();
+  if ((e.key === 'e' || e.key === 'E') && _nearestTradingStation && gameMode === 'flight') enterTradeStation();
 });
 
 let _mouseFireHeld = false;
