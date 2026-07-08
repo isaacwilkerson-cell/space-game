@@ -4273,7 +4273,7 @@ function updateFP() {
   const _crouchKeyDown = !window._adminMode && (keys['c'] || keys['alt']);
   // Crouching while sprinting triggers a slide — a one-shot burst that decays back down.
   // Once triggered it plays out fully; you don't need to keep holding the key.
-  const _wasSprintingFP = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'] && fpVel.lengthSq() > 0.3;
+  const _wasSprintingFP = (gameMode === 'lobby' || gameMode === 'tdm' || gameMode === 'trade_station') && keys['shift'] && fpVel.lengthSq() > 0.3;
   if (_crouchKeyDown && !_prevCrouchKey && _wasSprintingFP && _slideCooldownTimer <= 0) {
     _slideTimer = SLIDE_DURATION;
     _slideCooldownTimer = SLIDE_DURATION + SLIDE_COOLDOWN;
@@ -4284,7 +4284,7 @@ function updateFP() {
   const _crouching = _crouchKeyDown || _slideTimer > 0; // stay low for the whole slide
   _crouchAmount += ((_crouching ? 1 : 0) - _crouchAmount) * 0.2;
 
-  const _fpSprinting = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'] && !_crouching;
+  const _fpSprinting = (gameMode === 'lobby' || gameMode === 'tdm' || gameMode === 'trade_station') && keys['shift'] && !_crouching;
   const _fpSpeedMul  = 1 - CROUCH_SPEED_MUL * _crouchAmount;
   let _fpSpeedCap  = FP_SPEED * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
   const _fpAccel     = FP_ACCEL * (_fpSprinting ? FP_SPRINT_MUL : 1) * _fpSpeedMul;
@@ -4458,7 +4458,7 @@ function updateFP() {
   if (gameMode === 'tdm') _tdmWasGrounded = _fpGrounded;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
-  const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm';
+  const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm' || gameMode === 'trade_station';
   const bobSpeed = _bobbyMode ? (_fpSprinting2 ? 0.16 : 0.11) : 0.08;
   const bobAmp   = _bobbyMode ? 1.8 : 0.8;
   if (moving && (!_bobbyMode || _fpGrounded)) fpBobT += bobSpeed;
@@ -6774,6 +6774,8 @@ function _populateCrateMesh(group, size) {
   while (group.children.length) group.remove(group.children[0]);
   if (_eventCrateTemplate) {
     const clone = _eventCrateTemplate.clone(true);
+    clone.scale.setScalar(1); // loadModel() already baked its own targetSize scale into the template;
+    // reset to 1 first so the box below measures the raw geometry, not that inherited scale.
     const box = new THREE.Box3().setFromObject(clone);
     const scale = size / Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z, 1e-5);
     clone.scale.setScalar(scale);
@@ -6789,8 +6791,8 @@ function _populateCrateMesh(group, size) {
     group.add(mesh);
   }
 }
-_populateCrateMesh(_eventCratePlanetMesh, 16);
-_populateCrateMesh(_floatingCrateMesh, 22);
+_populateCrateMesh(_eventCratePlanetMesh, 40);
+_populateCrateMesh(_floatingCrateMesh, 55);
 loadModel('assets/crate_03.glb', 8, model => {
   if (!model) return;
   model.traverse(c => {
@@ -6800,8 +6802,8 @@ loadModel('assets/crate_03.glb', 8, model => {
     }
   });
   _eventCrateTemplate = model;
-  _populateCrateMesh(_eventCratePlanetMesh, 16);
-  _populateCrateMesh(_floatingCrateMesh, 22);
+  _populateCrateMesh(_eventCratePlanetMesh, 40);
+  _populateCrateMesh(_floatingCrateMesh, 55);
 });
 
 // Shows/hides/positions the on-planet crate mesh for whatever planet the player is
@@ -6979,7 +6981,7 @@ loadModel('assets/space_smugglers_club_house_-_dark_version.glb', 300, model => 
   // proper eye-height offset instead of the flat +2 tuned for a completely different,
   // much smaller room model.
   const _tsCenter = _tradeStationBBox.getCenter(new THREE.Vector3());
-  const _tsEyeHeight = 6;
+  const _tsEyeHeight = 11; // ~35 units of headroom measured at spawn, plenty of room to raise this
   function _tsFloorAt(x, z) {
     const rc = new THREE.Raycaster(new THREE.Vector3(x, _tradeStationBBox.max.y - 1, z), new THREE.Vector3(0, -1, 0));
     const hits = rc.intersectObjects(_tradeStationCollidables, false);
