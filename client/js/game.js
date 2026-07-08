@@ -7260,6 +7260,16 @@ function updateHUD() {
       closeChat();
       return;
     }
+    // Debug teleport straight into a trading station's interior — never sent to server
+    if (text === '/kettle') {
+      if (typeof enterTradeStation === 'function') {
+        if (gameMode !== 'flight') gameMode = 'flight'; // enterTradeStation only makes sense coming from flight
+        enterTradeStation();
+        addMsg('SYSTEM', '🏚️ Teleported into the trading station', false);
+      }
+      closeChat();
+      return;
+    }
     const name = self.name || 'You';
     addMsg(name, text, true);
     if (socket) socket.emit('chat', { name, text });
