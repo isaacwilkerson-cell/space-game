@@ -6958,8 +6958,12 @@ function _updateTradingStations() {
 // controller the room/lobby/range use), not just a static camera + shop overlay like the
 // home hangar. A fixed "shop counter" spot opens the shop panel on E, and walking back
 // near the entrance and pressing E leaves the station.
-const _tradeStationScene = new THREE.Group();
-scene.add(_tradeStationScene);
+// A genuine standalone THREE.Scene (like tdmScene/shootingRangeScene), not just a Group
+// hanging off the shared main `scene` — the club-house interior model sits near world
+// origin, the same coordinate range as the home station hub and other ships, so rendering
+// it as part of the main scene let that unrelated geometry clip straight through its walls.
+// Rendering this scene exclusively in the trade_station branch below avoids that entirely.
+const _tradeStationScene = new THREE.Scene();
 _tradeStationScene.visible = false;
 const _tradeStationAmbient = new THREE.AmbientLight(0xffddbb, 0);
 _tradeStationScene.add(_tradeStationAmbient);
@@ -6981,7 +6985,7 @@ loadModel('assets/space_smugglers_club_house_-_dark_version.glb', 300, model => 
   // proper eye-height offset instead of the flat +2 tuned for a completely different,
   // much smaller room model.
   const _tsCenter = _tradeStationBBox.getCenter(new THREE.Vector3());
-  const _tsEyeHeight = 11; // ~35 units of headroom measured at spawn, plenty of room to raise this
+  const _tsEyeHeight = 18; // ~35 units of headroom measured at spawn, raised further per feedback
   function _tsFloorAt(x, z) {
     const rc = new THREE.Raycaster(new THREE.Vector3(x, _tradeStationBBox.max.y - 1, z), new THREE.Vector3(0, -1, 0));
     const hits = rc.intersectObjects(_tradeStationCollidables, false);
@@ -7693,7 +7697,7 @@ function animate(t) {
   // Stars update every frame except when docked, in shooting range, or on a planet
   // surface — the surface scene renders separately and never shows the starfield,
   // so updating it there was pure wasted work hurting surface framerate.
-  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'tdm_intro' && gameMode !== 'planet_surface' && window._updateStars) {
+  if (gameMode !== 'docked' && gameMode !== 'range' && gameMode !== 'tdm' && gameMode !== 'tdm_intro' && gameMode !== 'planet_surface' && gameMode !== 'trade_station' && window._updateStars) {
     if (window._setStarsVisible) window._setStarsVisible(true);
     const p = camera.position;
     window._updateStars(p.x, p.y, p.z, camera.quaternion);
@@ -7709,6 +7713,8 @@ function animate(t) {
     renderer.setClearColor(_surfAtm ? _surfAtm.skyColor : 0x88bbff, 1);
     renderer.render(_planetSurfScene, camera);
     renderer.setClearColor(0x000000, 0);
+  } else if (gameMode === 'trade_station') {
+    renderer.render(_tradeStationScene, camera);
   } else {
     renderer.render(scene, camera);
   }
