@@ -6143,7 +6143,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', e => {
   if (!pointerLocked) return;
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station') {
     const cap = 40;
     _fpMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
