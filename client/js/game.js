@@ -2554,7 +2554,7 @@ shopEl.innerHTML = `
   <div style="border:1px solid #0af;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="shop-close">[ BACK ]</div>`;
 shopEl.querySelector('#shop-sell-crate-btn').addEventListener('click', () => {
   if (!_iAmCarryingCrate) return;
-  socket.emit('sell_crate_at_station');
+  if (socket) socket.emit('sell_crate_at_station');
 });
 let shopOpen = false;
 function openShop() {
