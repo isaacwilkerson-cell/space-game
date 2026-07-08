@@ -6108,10 +6108,14 @@ const overlay = document.getElementById('click-overlay');
 // Autoplay-with-sound is blocked until a real user gesture, so this only actually
 // starts inside the click handler below (which already exists to grab pointer lock).
 const _musicPlaylist = ['assets/sounds/bg_music.mp4', 'assets/sounds/bg_music_2.mp4'];
+// "Flashing Lights" (bg_music_2) is mixed quieter than the first track — boost its playback
+// volume relative to the user's slider so both tracks come out roughly as loud as each other.
+const _musicTrackGain = [1.0, 1.6];
 let _musicIndex = 0;
+let _musicUserVolume = 0.25; // the 0..1 level ArrowUp/ArrowDown actually adjust
 const _bgMusic = new Audio(_musicPlaylist[_musicIndex]);
 _bgMusic.loop = false; // looping/advancing the whole playlist is handled by the 'ended' listener below
-_bgMusic.volume = 0.25;
+_bgMusic.volume = _musicUserVolume * _musicTrackGain[_musicIndex];
 _bgMusic.addEventListener('ended', () => _musicSkip(1));
 let _bgMusicStarted = false;
 function _startBgMusic() {
@@ -6119,14 +6123,19 @@ function _startBgMusic() {
   _bgMusicStarted = true;
   _bgMusic.play().catch(() => { _bgMusicStarted = false; }); // retry on the next click if it was blocked
 }
+function _applyMusicVolume() {
+  _bgMusic.volume = Math.max(0, Math.min(1, _musicUserVolume * _musicTrackGain[_musicIndex]));
+}
 function _musicSkip(dir) {
   _musicIndex = (_musicIndex + dir + _musicPlaylist.length) % _musicPlaylist.length;
   _bgMusic.src = _musicPlaylist[_musicIndex];
   _bgMusic.currentTime = 0;
+  _applyMusicVolume();
   if (_bgMusicStarted) _bgMusic.play().catch(() => {});
 }
 function _musicVolume(delta) {
-  _bgMusic.volume = Math.max(0, Math.min(1, _bgMusic.volume + delta));
+  _musicUserVolume = Math.max(0, Math.min(1, _musicUserVolume + delta));
+  _applyMusicVolume();
 }
 document.addEventListener('keydown', e => {
   // Don't hijack arrow keys while typing in a text field (chat, username, etc.) or while
