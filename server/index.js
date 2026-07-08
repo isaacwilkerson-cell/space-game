@@ -292,6 +292,19 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Debug-only cheat command (client's /money chat command, never shown as a real chat
+  // message) — mirrors the same credits_update pattern as real rewards so the HUD updates.
+  socket.on('debug_add_credits', () => {
+    try {
+      const player = players[socket.id];
+      if (!player) return;
+      player.credits += 100000000;
+      io.to(socket.id).emit('credits_update', { credits: player.credits, reward: 100000000, reason: 'debug' });
+    } catch(e) {
+      console.error('debug_add_credits error:', e.message);
+    }
+  });
+
   // Shop purchases are decided client-side (no server-side item catalog to validate
   // against yet), but the spend still has to be mirrored into the server-held balance —
   // otherwise the next kill/crate reward would add onto a stale pre-purchase number and

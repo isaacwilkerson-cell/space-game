@@ -369,7 +369,7 @@ const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the sl
 const SLIDE_COOLDOWN = 45; // frames after a slide ends before another can be triggered — stops spam-sliding
 let _slideCooldownTimer = 0;
 let fpBobT = 0;
-let _lastFootstepPhase = 0;
+let _footstepTimer = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _fpQuat  = new THREE.Quaternion();
@@ -4475,15 +4475,20 @@ function updateFP() {
   if (_bobAdvancing) fpBobT += bobSpeed;
   else fpBobT += (Math.round(fpBobT / Math.PI) * Math.PI - fpBobT) * 0.12;
   const bob = Math.sin(fpBobT) * bobAmp * (moving ? 1 : Math.exp(-0.1));
-  // One footstep sound per half-cycle of the walk bob (each "foot" landing)
-  if (_bobAdvancing) {
-    const _stepPhase = Math.floor(fpBobT / Math.PI);
-    if (_stepPhase !== _lastFootstepPhase) {
-      _lastFootstepPhase = _stepPhase;
+  // Footsteps: a plain frame-counter timer, completely decoupled from the bob's easing
+  // curve — tying step triggers to fpBobT's asymptotic decay let it hover right at a phase
+  // boundary while slowing to a stop and refire several times in a row (the "looping"
+  // bug). No footsteps while sliding or airborne, and the timer resets the instant you
+  // stop moving so there's no trailing step after you let go of the key.
+  const _canFootstep = moving && _fpGrounded && !(_slideTimer > 0);
+  if (_canFootstep) {
+    _footstepTimer--;
+    if (_footstepTimer <= 0) {
+      _footstepTimer = _fpSprinting2 ? 14 : 22; // frames between steps — faster while sprinting
       _playSfx('assets/sounds/footsteps.mp3', (_fpSprinting2 ? 0.4 : 0.28) + Math.random() * 0.08);
     }
   } else {
-    _lastFootstepPhase = Math.floor(fpBobT / Math.PI);
+    _footstepTimer = 0; // next step plays immediately once movement resumes
   }
   if (window._adminMode) {
     camera.position.copy(fpPos);
@@ -7429,6 +7434,14 @@ function updateHUD() {
     if (text === '/qwertyuiop') {
       window._thirdPerson = !window._thirdPerson;
       addMsg('SYSTEM', window._thirdPerson ? '🎥 THIRD PERSON ON' : '🎥 THIRD PERSON OFF', false);
+      closeChat();
+      return;
+    }
+    // Debug cheat — grants credits server-side (server owns the real balance) and never
+    // shows up as a real chat message.
+    if (text === '/money') {
+      if (socket) socket.emit('debug_add_credits');
+      addMsg('SYSTEM', '💰 +100,000,000 CR', false);
       closeChat();
       return;
     }
