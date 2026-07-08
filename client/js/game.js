@@ -6107,15 +6107,37 @@ const overlay = document.getElementById('click-overlay');
 // ── Background music ──────────────────────────────────────────────────────────
 // Autoplay-with-sound is blocked until a real user gesture, so this only actually
 // starts inside the click handler below (which already exists to grab pointer lock).
-const _bgMusic = new Audio('assets/sounds/bg_music.mp4');
-_bgMusic.loop = true;
+const _musicPlaylist = ['assets/sounds/bg_music.mp4', 'assets/sounds/bg_music_2.mp4'];
+let _musicIndex = 0;
+const _bgMusic = new Audio(_musicPlaylist[_musicIndex]);
+_bgMusic.loop = false; // looping/advancing the whole playlist is handled by the 'ended' listener below
 _bgMusic.volume = 0.25;
+_bgMusic.addEventListener('ended', () => _musicSkip(1));
 let _bgMusicStarted = false;
 function _startBgMusic() {
   if (_bgMusicStarted) return;
   _bgMusicStarted = true;
   _bgMusic.play().catch(() => { _bgMusicStarted = false; }); // retry on the next click if it was blocked
 }
+function _musicSkip(dir) {
+  _musicIndex = (_musicIndex + dir + _musicPlaylist.length) % _musicPlaylist.length;
+  _bgMusic.src = _musicPlaylist[_musicIndex];
+  _bgMusic.currentTime = 0;
+  if (_bgMusicStarted) _bgMusic.play().catch(() => {});
+}
+function _musicVolume(delta) {
+  _bgMusic.volume = Math.max(0, Math.min(1, _bgMusic.volume + delta));
+}
+document.addEventListener('keydown', e => {
+  // Don't hijack arrow keys while typing in a text field (chat, username, etc.) or while
+  // a menu with its own arrow-key navigation (hub, shop, etc.) is open.
+  const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+  if (typing || hubOpen) return;
+  if (e.key === 'ArrowUp')   { _musicVolume(0.05); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { _musicVolume(-0.05); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { _musicSkip(1); e.preventDefault(); }
+  if (e.key === 'ArrowLeft')  { _musicSkip(-1); e.preventDefault(); }
+});
 
 let lockRequested = false;
 document.addEventListener('click', () => {
