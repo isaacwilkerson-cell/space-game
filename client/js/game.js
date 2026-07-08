@@ -393,6 +393,14 @@ interiorScene.add(_iOverhead);
 let _roomCollidables = [];
 let _roomBBox = null;
 
+// Trading station interior — collidables/bounds/floor filled in once the club house model
+// loads, mirroring how the room's own _roomCollidables/_roomBBox work.
+let _tradeStationCollidables = [];
+let _tradeStationBBox = null;
+let _tradeStationFloorY = 0;
+let _tradeStationSpawn = new THREE.Vector3(0, 2, 40);
+let _tradeStationShopPos = new THREE.Vector3(0, 2, 0);
+
 // ── Lobby scene ───────────────────────────────────────────────────────────────
 const lobbyScene = new THREE.Group();
 scene.add(lobbyScene);
@@ -2562,12 +2570,13 @@ function openShop() {
 function closeShop() {
   shopOpen = false;
   shopEl.style.display = 'none';
-  // If the shop was opened by docking at a remote trading station (rather than from the
-  // home station's room hub), closing it means leaving that station's interior too —
-  // there's no separate "undock" step, backing out of the shop IS backing out of the dock.
-  if (typeof _shopOpenedFromTradeStation !== 'undefined' && _shopOpenedFromTradeStation) {
-    _shopOpenedFromTradeStation = false;
-    exitTradeStation();
+  // The trading station is a real walkable space now — closing the shop panel just drops
+  // you back into walking around it (re-locking the pointer), same as backing out of the
+  // shop tab at the home station doesn't kick you out of your own room. Actually leaving
+  // is its own explicit action (walk to the entrance, press E) handled elsewhere.
+  if (typeof gameMode !== 'undefined' && gameMode === 'trade_station') {
+    document.body.style.cursor = 'none';
+    renderer.domElement.requestPointerLock();
   }
 }
 shopEl.querySelector('#shop-close').addEventListener('click', closeShop);
@@ -4307,6 +4316,7 @@ function updateFP() {
   }
   const _activeCollidables = gameMode === 'lobby' ? _lobbyCollidables : gameMode === 'hangar' ? _hangarCollidables : gameMode === 'range' ? _rangeCollidables
     : gameMode === 'tdm' ? _tdmFilteredCollidables
+    : gameMode === 'trade_station' ? _tradeStationCollidables
     : _roomCollidables;
   if (!window._adminMode && _activeCollidables.length > 0 && fpVel.lengthSq() > 0.0001) {
     const PLAYER_RADIUS = gameMode === 'tdm' ? 4 : 2.5; // was 10 — too wide to fit through building doorways
@@ -4405,7 +4415,7 @@ function updateFP() {
 
   if (!window._adminMode) {
     // Clamp to active scene bounding box
-    const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : gameMode === 'tdm' ? _tdmArenaBBox : _roomBBox;
+    const _activeBBox = gameMode === 'lobby' ? _lobbyBBox : gameMode === 'hangar' ? _hangarBBox : gameMode === 'range' ? _rangeBBox : gameMode === 'tdm' ? _tdmArenaBBox : gameMode === 'trade_station' ? _tradeStationBBox : _roomBBox;
     if (_activeBBox) {
       const PAD = 2.5;
       fpPos.x = Math.max(_activeBBox.min.x + PAD, Math.min(_activeBBox.max.x - PAD, fpPos.x));
@@ -4442,7 +4452,8 @@ function updateFP() {
       _tdmLastFloor = _rawGround;
     }
     _fpFloor = _tdmLastFloor;
-  } else _fpFloor = 2;
+  } else if (gameMode === 'trade_station') _fpFloor = _tradeStationFloorY;
+  else _fpFloor = 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   if (gameMode === 'tdm') _tdmWasGrounded = _fpGrounded;
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
@@ -6941,9 +6952,10 @@ function _updateTradingStations() {
   _tradeStationPrompt.style.display = _nearestTradingStation ? 'block' : 'none';
 }
 
-// Trading-station interior — same "static camera looking at a scene, shop panel over the
-// top" presentation the home station's hangar uses, just a different (smuggler-themed)
-// room instead of your own ship bay, and no customize tabs since it's not your hangar.
+// Trading-station interior — a real walkable FP space (same underlying updateFP()
+// controller the room/lobby/range use), not just a static camera + shop overlay like the
+// home hangar. A fixed "shop counter" spot opens the shop panel on E, and walking back
+// near the entrance and pressing E leaves the station.
 const _tradeStationScene = new THREE.Group();
 scene.add(_tradeStationScene);
 _tradeStationScene.visible = false;
@@ -6955,9 +6967,32 @@ _tradeStationScene.add(_tradeStationLight);
 let _tradeStationInteriorReady = false;
 loadModel('assets/space_smugglers_club_house_-_dark_version.glb', 300, model => {
   if (!model) return;
+  model.traverse(c => { if (c.isMesh) _tradeStationCollidables.push(c); });
   _tradeStationScene.add(model);
+  _tradeStationBBox = new THREE.Box3().setFromObject(model);
+  // Floor height + a walkable spawn point: raycast straight down from just under the
+  // ceiling at the model's XZ center to find the actual floor, instead of guessing a flat
+  // Y like the simpler room-box interiors get away with — this asset's floor isn't
+  // necessarily at y=0 relative to how loadModel auto-centered it.
+  const center = _tradeStationBBox.getCenter(new THREE.Vector3());
+  const rc = new THREE.Raycaster(new THREE.Vector3(center.x, _tradeStationBBox.max.y - 1, center.z), new THREE.Vector3(0, -1, 0));
+  const hits = rc.intersectObjects(_tradeStationCollidables, false);
+  _tradeStationFloorY = hits.length > 0 ? hits[0].point.y + 2 : _tradeStationBBox.min.y + 2;
+  _tradeStationShopPos.set(center.x, _tradeStationFloorY, center.z);
+  // Spawn near one edge of the footprint (roughly "the entrance"), not dead center where
+  // the shop counter is — same point doubles as the exit-interaction zone.
+  _tradeStationSpawn.set(center.x, _tradeStationFloorY, _tradeStationBBox.max.z - 15);
   _tradeStationInteriorReady = true;
 });
+
+const _tradeShopPrompt = document.createElement('div');
+_tradeShopPrompt.style.cssText = 'position:fixed;bottom:150px;left:50%;transform:translateX(-50%);color:#0ff;font-family:monospace;font-size:15px;letter-spacing:3px;text-shadow:0 0 10px #0ff;pointer-events:none;display:none;z-index:30;';
+_tradeShopPrompt.textContent = '[ E ]  TRADE';
+document.body.appendChild(_tradeShopPrompt);
+const _tradeExitPrompt = document.createElement('div');
+_tradeExitPrompt.style.cssText = 'position:fixed;bottom:150px;left:50%;transform:translateX(-50%);color:#0ff;font-family:monospace;font-size:15px;letter-spacing:3px;text-shadow:0 0 10px #0ff;pointer-events:none;display:none;z-index:30;';
+_tradeExitPrompt.textContent = '[ E ]  LEAVE STATION';
+document.body.appendChild(_tradeExitPrompt);
 
 let _shopOpenedFromTradeStation = false;
 function enterTradeStation() {
@@ -6971,27 +7006,51 @@ function enterTradeStation() {
   _tradeStationAmbient.intensity = 1.0;
   _tradeStationLight.intensity = 1.3;
   _tradeStationPrompt.style.display = 'none';
-  document.exitPointerLock();
-  document.body.style.cursor = 'default';
-  camera.position.set(0, 14, 45);
-  camera.lookAt(0, 10, 0);
   renderer.toneMappingExposure = 0.7;
-  _shopOpenedFromTradeStation = true;
-  openShop();
+  fpPos.copy(_tradeStationSpawn);
+  fpVel.set(0, 0, 0);
+  _fpJumpVel = 0;
+  // fpFwd = (-sin(yaw), 0, -cos(yaw)) — yaw 0 faces -Z, which is toward the shop counter
+  // at the model's center from the spawn point near the +Z edge.
+  fpYaw = 0; fpPitch = 0;
+  camera.quaternion.identity();
+  camera.position.copy(fpPos);
+  document.body.style.cursor = 'none';
+  renderer.domElement.requestPointerLock();
 }
 
 function exitTradeStation() {
   gameMode = 'flight';
+  _shopOpenedFromTradeStation = false;
   _tradeStationScene.visible = false;
   _tradeStationAmbient.intensity = 0;
   _tradeStationLight.intensity = 0;
+  _tradeShopPrompt.style.display = 'none';
+  _tradeExitPrompt.style.display = 'none';
   document.body.style.cursor = 'none';
   renderer.toneMappingExposure = 1.0;
   setTimeout(() => document.body.requestPointerLock(), 150);
 }
 
+// Exit-door prompt near the entrance; the shop itself is reachable from anywhere else
+// inside — the interior's actual layout (hallways/doors) isn't guaranteed to have a clear
+// straight path to any one fixed "counter" spot, so requiring you to reach one exact point
+// deep in unexplored geometry risked making the shop unreachable depending on the route.
+function _updateTradeStationInterior() {
+  if (gameMode !== 'trade_station') { _tradeShopPrompt.style.display = 'none'; _tradeExitPrompt.style.display = 'none'; return; }
+  const nearExit = fpPos.distanceTo(_tradeStationSpawn) < 20;
+  _tradeExitPrompt.style.display = (nearExit && !shopOpen) ? 'block' : 'none';
+  _tradeShopPrompt.style.display = (!nearExit && !shopOpen) ? 'block' : 'none';
+}
+
 document.addEventListener('keydown', e => {
-  if ((e.key === 'e' || e.key === 'E') && _nearestTradingStation && gameMode === 'flight') enterTradeStation();
+  if (e.key !== 'e' && e.key !== 'E') return;
+  if (_nearestTradingStation && gameMode === 'flight') { enterTradeStation(); return; }
+  if (gameMode === 'trade_station' && !shopOpen) {
+    if (fpPos.distanceTo(_tradeStationSpawn) < 20) { exitTradeStation(); return; }
+    _shopOpenedFromTradeStation = true;
+    openShop();
+  }
 });
 
 let _mouseFireHeld = false;
@@ -7495,7 +7554,7 @@ function animate(t) {
   _updateHealthRegen();
   // Ship flight-control legend only makes sense while actually piloting the ship.
   elControls.style.display = gameMode === 'flight' ? 'block' : 'none';
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station') {
     updateFP();
     elPos.textContent = window._adminMode
       ? `X:${fpPos.x.toFixed(1)} Y:${fpPos.y.toFixed(1)} Z:${fpPos.z.toFixed(1)} ⚡ADMIN`
@@ -7522,13 +7581,11 @@ function animate(t) {
     updateLandedShip(); // keep ship glued to planet surface, not following player
     updatePlanetWalk();
     updateAtmosphere();
-  } else if (gameMode === 'hangar' || gameMode === 'trade_station') {
-    // Docked at a static interior view (home hangar or a trading station) — nothing to
-    // simulate. Crucially, this must NOT fall into the flight branch below: updateShip()
-    // unconditionally moves the ship on WASD input and lerps the camera toward a chase-cam
-    // position every frame regardless of pointer lock, which was fighting the fixed
-    // interior camera framing and effectively made the trading station undockable/broken
-    // the instant you entered it.
+  } else if (gameMode === 'hangar') {
+    // Docked at the home hangar's static interior view — nothing to simulate. Crucially,
+    // this must NOT fall into the flight branch below: updateShip() unconditionally moves
+    // the ship on WASD input and lerps the camera toward a chase-cam position every frame
+    // regardless of pointer lock, which would fight the fixed interior camera framing.
   } else {
     updateShip();
     updateLasers();
@@ -7543,6 +7600,7 @@ function animate(t) {
   _updateEventCrateVisuals(); // always run — tumble animation regardless of mode
   _updateCrateCollection(); // always run — E-to-collect prompt only actually shows in flight/ejected
   _updateTradingStations(); // always run — no-ops outside flight mode internally
+  _updateTradeStationInterior(); // always run — no-ops outside trade_station mode internally
   if (_hangarShip) {
     _hangarShip.rotation.y = t * 0.0004;
     _hangarShip.position.y = 22 + Math.sin(t * 0.0008) * 3;
