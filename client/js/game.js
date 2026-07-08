@@ -368,6 +368,7 @@ const SLIDE_DURATION = 55;
 const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the slide
 const SLIDE_COOLDOWN = 45; // frames after a slide ends before another can be triggered — stops spam-sliding
 let _slideCooldownTimer = 0;
+let _slideJustTriggered = false;
 let fpBobT = 0;
 const _footstepAudio = new Audio('assets/sounds/footsteps.mp3');
 _footstepAudio.loop = true;
@@ -1953,7 +1954,7 @@ const WEAPON_DEFS = {
   // aim deviation per shot (radians). pellets: number of projectiles fired per trigger pull.
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes. damage: HP per
   // projectile that lands on a player (shotgun pellets each do their own smaller damage).
-  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper_c.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100, price: 400 },
+  sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper_c.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100, price: 400, sound: 'assets/sounds/sniper_shot.mp3', soundVolume: 0.45 },
   pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol_c.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100, sound: 'assets/sounds/pistol_shot.mp3', soundVolume: 0.35 },
   pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol_c.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100, sound: 'assets/sounds/pistol_shot.mp3', soundVolume: 0.35 },
   ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26, price: 350, sound: 'assets/sounds/machine_gun.mp3', soundVolume: 0.3 },
@@ -3350,8 +3351,20 @@ function _startReload() {
   if ((_weaponAmmo[_equippedWeaponId] || 0) >= def.magSize) return; // already full
   _gunReloading = true;
   _reloadDuration = def.reloadTime || 60;
+  // If the reload sound itself runs longer than the reload animation/cooldown, the clip
+  // would get cut off mid-sound (or the gun would be usable again before it's done playing).
+  // Stretch the reload to at least cover the sound, once we know how long it actually is.
+  if (_reloadSoundFrames > _reloadDuration) _reloadDuration = _reloadSoundFrames;
   _reloadTimer = _reloadDuration;
+  _playSfx('assets/sounds/reload.mp3', 0.4);
 }
+// Reload sound duration in frames (assuming ~60fps, matching how reloadTime/cooldown are
+// already tuned elsewhere) — measured once the file's metadata loads, 0 (no stretch) until then.
+let _reloadSoundFrames = 0;
+(() => {
+  const probe = new Audio('assets/sounds/reload.mp3');
+  probe.addEventListener('loadedmetadata', () => { _reloadSoundFrames = Math.ceil(probe.duration * 60); });
+})();
 
 function _fireSniper() {
   if (!_hasSniper || (gameMode !== 'planet_walk' && gameMode !== 'planet_surface' && gameMode !== 'docked' && gameMode !== 'lobby' && gameMode !== 'ejected' && gameMode !== 'range' && gameMode !== 'tdm') || !pointerLocked || _surfLanding) return;
@@ -4290,6 +4303,7 @@ function updateFP() {
     _slideTimer = SLIDE_DURATION;
     _slideCooldownTimer = SLIDE_DURATION + SLIDE_COOLDOWN;
     fpVel.setLength(FP_SPEED * FP_SPRINT_MUL * SLIDE_SPEED_MUL); // launch the slide
+    _slideJustTriggered = true; // sound only plays below once we know whether we're grounded
   }
   if (_slideCooldownTimer > 0) _slideCooldownTimer--;
   _prevCrouchKey = _crouchKeyDown;
@@ -4468,6 +4482,10 @@ function updateFP() {
   else _fpFloor = 2;
   const _fpGrounded = fpPos.y <= _fpFloor + 0.1;
   if (gameMode === 'tdm') _tdmWasGrounded = _fpGrounded;
+  if (_slideJustTriggered) {
+    _slideJustTriggered = false;
+    if (_fpGrounded) _playSfx('assets/sounds/slide.mp3', 0.4);
+  }
   const _fpSprinting2 = (gameMode === 'lobby' || gameMode === 'tdm') && keys['shift'];
   // Bob: faster + bigger in lobby/tdm to feel like real footsteps
   const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm' || gameMode === 'trade_station';
