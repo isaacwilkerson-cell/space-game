@@ -369,6 +369,7 @@ const SLIDE_SPEED_MUL = 1.15; // relative to sprint speed at the start of the sl
 const SLIDE_COOLDOWN = 45; // frames after a slide ends before another can be triggered — stops spam-sliding
 let _slideCooldownTimer = 0;
 let fpBobT = 0;
+let _lastFootstepPhase = 0;
 const _fpFwd = new THREE.Vector3(), _fpRight = new THREE.Vector3();
 const _fpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const _fpQuat  = new THREE.Quaternion();
@@ -1951,12 +1952,19 @@ const WEAPON_DEFS = {
   // magSize: rounds per magazine. reloadTime: frames the reload shake takes. damage: HP per
   // projectile that lands on a player (shotgun pellets each do their own smaller damage).
   sniper:    { name: 'Sniper Rifle', desc: 'Long-range precision weapon<br>RMB to zoom scope', asset: 'assets/sniper_c.glb', viewSize: 40, viewFwd: 14, cooldown: 60, pellets: 1, spread: 0, magSize: 1, reloadTime: 150, icon: '🎯', damage: 100, price: 400 },
-  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol_c.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100 },
-  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol_c.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100 },
-  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26, price: 350 },
-  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28, price: 350 },
-  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun_c.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17, price: 300 },
+  pistol:    { name: 'Pistol',       desc: 'Sidearm — fast to draw',                            asset: 'assets/pistol_c.glb', viewSize: 18, viewFwd: 22, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100, sound: 'assets/sounds/pistol_shot.mp3', soundVolume: 0.35 },
+  pistol9mm: { name: '9mm Pistol',   desc: 'Standard-issue 9mm sidearm',                        asset: 'assets/9mm_pistol_c.glb', viewSize: 18, viewFwd: 22, viewYaw: Math.PI / 2, viewRight: 10, viewUp: -9, cooldown: 18, pellets: 1, spread: 0.008, magSize: 12, reloadTime: 100, icon: '🔫', damage: 30, price: 100, sound: 'assets/sounds/pistol_shot.mp3', soundVolume: 0.35 },
+  ak105:     { name: 'AK-105',       desc: 'Compact automatic rifle',                           asset: 'assets/ak-105_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 18, pellets: 1, spread: 0.025, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '🔥', damage: 26, price: 350, sound: 'assets/sounds/machine_gun.mp3', soundVolume: 0.3 },
+  ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28, price: 350, sound: 'assets/sounds/machine_gun.mp3', soundVolume: 0.3 },
+  shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun_c.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17, price: 300, sound: 'assets/sounds/shotgun_blast.mp3', soundVolume: 0.4 },
 };
+// Cheap SFX helper — spins up a fresh Audio per call so overlapping shots/footsteps don't
+// cut each other off (unlike reusing one Audio and resetting currentTime).
+function _playSfx(url, volume) {
+  const a = new Audio(url);
+  a.volume = volume != null ? volume : 0.4;
+  a.play().catch(() => {});
+}
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
 // Item definitions
@@ -3280,6 +3288,7 @@ function _explodeGrenade(g) {
   }
   _spawnGrenadeBlast(g.mesh.position.clone(), g.scene);
   _spawnScorchMark(g.mesh.position.clone(), g.lastNormal, g.scene);
+  _playSfx('assets/sounds/grenade_explosion.mp3', 0.5);
   _getRemotePlayerHitTargets().forEach(m => {
     const dist = g.mesh.position.distanceTo(m.position);
     if (dist > GRENADE_BLAST_RADIUS) return;
@@ -3354,6 +3363,7 @@ function _fireSniper() {
     _startReload();
   }
   const _wdef = WEAPON_DEFS[_equippedWeaponId] || {};
+  if (_wdef.sound) _playSfx(_wdef.sound, _wdef.soundVolume);
   _sniperCooldown = _wdef.cooldown != null ? _wdef.cooldown : SNIPER_COOLDOWN;
   _sniperRecoil = _wdef.recoil != null ? _wdef.recoil : 12; // frames of recoil
   // Kick the aim reticle up a bit (purely visual) AND the actual camera view up a bit.
@@ -4461,9 +4471,20 @@ function updateFP() {
   const _bobbyMode = gameMode === 'lobby' || gameMode === 'tdm' || gameMode === 'trade_station';
   const bobSpeed = _bobbyMode ? (_fpSprinting2 ? 0.16 : 0.11) : 0.08;
   const bobAmp   = _bobbyMode ? 1.8 : 0.8;
-  if (moving && (!_bobbyMode || _fpGrounded)) fpBobT += bobSpeed;
+  const _bobAdvancing = moving && (!_bobbyMode || _fpGrounded);
+  if (_bobAdvancing) fpBobT += bobSpeed;
   else fpBobT += (Math.round(fpBobT / Math.PI) * Math.PI - fpBobT) * 0.12;
   const bob = Math.sin(fpBobT) * bobAmp * (moving ? 1 : Math.exp(-0.1));
+  // One footstep sound per half-cycle of the walk bob (each "foot" landing)
+  if (_bobAdvancing) {
+    const _stepPhase = Math.floor(fpBobT / Math.PI);
+    if (_stepPhase !== _lastFootstepPhase) {
+      _lastFootstepPhase = _stepPhase;
+      _playSfx('assets/sounds/footsteps.mp3', (_fpSprinting2 ? 0.4 : 0.28) + Math.random() * 0.08);
+    }
+  } else {
+    _lastFootstepPhase = Math.floor(fpBobT / Math.PI);
+  }
   if (window._adminMode) {
     camera.position.copy(fpPos);
   } else if (_bobbyMode) {
