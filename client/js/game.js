@@ -6816,8 +6816,15 @@ function _syncEventCratePlanetMesh() {
     _eventCratePlanetMesh.visible = false;
     return;
   }
-  const { localX, localZ } = _eventCrateState;
   const groundMesh = _surfTerrainMesh || _surfGround;
+  // The server picks localX/localZ in a fixed +-300 range with no idea how big any given
+  // planet's actual terrain mesh is — some terrain GLBs have a real footprint smaller than
+  // that (halfX/halfZ computed from the model's own bbox), so an unclamped spawn can land
+  // past the mesh's edge, miss the ground raycast entirely, and fall back to a floating,
+  // unreachable position. Clamp into the real walkable bounds (with margin) first.
+  const _margin = 40;
+  const localX = Math.max(-_surfTerrainHalfX + _margin, Math.min(_surfTerrainHalfX - _margin, _eventCrateState.localX));
+  const localZ = Math.max(-_surfTerrainHalfZ + _margin, Math.min(_surfTerrainHalfZ - _margin, _eventCrateState.localZ));
   _crateGroundRaycaster.set(new THREE.Vector3(localX, 3000, localZ), new THREE.Vector3(0, -1, 0));
   const hits = _crateGroundRaycaster.intersectObject(groundMesh, true);
   const groundY = hits.length > 0 ? hits[0].point.y : 0;
