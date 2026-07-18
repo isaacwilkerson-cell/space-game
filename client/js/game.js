@@ -1848,6 +1848,10 @@ let _reloadDuration = 1;
 const INVENTORY_SIZE = 2;
 const _inventory = Array(INVENTORY_SIZE).fill(null); // null = empty
 let _activeSlot = 0;
+// Backing storage for the full inventory panel (press I) — the 2-slot hotbar above is what's
+// actually equippable/fireable; this is overflow storage for everything else you own.
+const EXTRA_INVENTORY_SIZE = 20;
+const _extraInventory = Array(EXTRA_INVENTORY_SIZE).fill(null);
 
 const _inventoryBar = document.createElement('div');
 _inventoryBar.id = 'inventory-bar';
@@ -2028,9 +2032,10 @@ function _invSetActive(idx) {
 }
 
 function _invAddItem(itemId) {
-  // Put in first empty slot
+  // Put in first empty hotbar slot; if the 2-slot hotbar is full, overflow into the
+  // 20-slot storage inventory instead of just failing.
   const emptyIdx = _inventory.indexOf(null);
-  if (emptyIdx === -1) return; // full
+  if (emptyIdx === -1) { _extraInvAddItem(itemId); return; }
   _inventory[emptyIdx] = itemId;
   const def = _itemDefs[itemId];
   const wdef = WEAPON_DEFS[itemId];
@@ -2042,6 +2047,13 @@ function _invAddItem(itemId) {
     _invSlotEls[emptyIdx].label.style.display = 'block';
   }
   _invSetActive(emptyIdx); // auto-select the new item
+}
+
+function _extraInvAddItem(itemId) {
+  const emptyIdx = _extraInventory.indexOf(null);
+  if (emptyIdx === -1) return; // hotbar AND storage both full — nowhere left to put it
+  _extraInventory[emptyIdx] = itemId;
+  if (typeof _renderInventoryPanel === 'function' && inventoryOpen) _renderInventoryPanel();
 }
 
 // Selecting the grenade slot hides whatever weapon viewmodel was up (grenades are thrown
@@ -2549,6 +2561,102 @@ function makePanel(title, color, id) {
   return el;
 }
 
+// ── Inventory panel (I to open) ─────────────────────────────────────────────────
+// The bottom hotbar (_inventory, INVENTORY_SIZE=2) stays the only equippable/fireable
+// slots — this panel is just a way to see + rearrange the hotbar plus the 20-slot
+// overflow storage (_extraInventory) it feeds into. Click a slot to pick it up, click
+// another to swap — works between hotbar<->hotbar, hotbar<->storage, storage<->storage.
+let inventoryOpen = false;
+let _invSelected = null; // { type: 'hotbar'|'extra', idx } or null
+const _invPanelEl = makePanel('INVENTORY', '#0ff', 'inv');
+function _invSlotHtml(type, idx, itemId, isActive) {
+  const wdef = itemId ? WEAPON_DEFS[itemId] : null;
+  const selected = _invSelected && _invSelected.type === type && _invSelected.idx === idx;
+  const borderColor = selected ? '#ff0' : (isActive ? '#0ff' : 'rgba(0,255,255,0.25)');
+  const boxShadow = selected
+    ? '0 0 12px rgba(255,255,0,0.6) inset, 0 0 8px rgba(255,255,0,0.5)'
+    : (isActive ? '0 0 12px rgba(0,255,255,0.5) inset, 0 0 8px rgba(0,255,255,0.4)' : '0 0 6px rgba(0,255,255,0.1) inset');
+  return `<div data-inv-slot data-inv-type="${type}" data-inv-idx="${idx}" title="${wdef ? wdef.name : 'Empty'}"
+    style="width:52px;height:52px;background:rgba(0,0,0,0.6);border:2px solid ${borderColor};box-shadow:${boxShadow};
+    border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;">${wdef ? wdef.icon : ''}</div>`;
+}
+function _renderInventoryPanel() {
+  const hotbarHtml = _inventory.map((id, i) => _invSlotHtml('hotbar', i, id, i === _activeSlot)).join('');
+  const extraHtml = _extraInventory.map((id, i) => _invSlotHtml('extra', i, id, false)).join('');
+  _invPanelEl.innerHTML = `
+    <div style="font-size:18px;letter-spacing:4px;margin-bottom:16px;text-shadow:0 0 10px #0ff;">INVENTORY</div>
+    <div style="color:#0ff8;font-size:11px;letter-spacing:2px;margin-bottom:10px;">HOTBAR</div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">${hotbarHtml}</div>
+    <div style="color:#0ff8;font-size:11px;letter-spacing:2px;margin-bottom:10px;">STORAGE (${EXTRA_INVENTORY_SIZE} slots)</div>
+    <div style="display:grid;grid-template-columns:repeat(5,56px);gap:8px;justify-content:center;margin-bottom:20px;max-height:40vh;overflow-y:auto;">${extraHtml}</div>
+    <div style="color:#556;font-size:10px;letter-spacing:1px;margin-bottom:16px;">Click a slot, then click another to move/swap it</div>
+    <div style="border:1px solid #0ff;border-radius:5px;padding:10px 0;font-size:13px;letter-spacing:3px;cursor:pointer;" id="inv-close">[ BACK ]</div>
+  `;
+  _invPanelEl.querySelectorAll('[data-inv-slot]').forEach(el => {
+    el.addEventListener('click', () => _onInvSlotClick(el.getAttribute('data-inv-type'), parseInt(el.getAttribute('data-inv-idx'), 10)));
+  });
+  _invPanelEl.querySelector('#inv-close').addEventListener('click', closeInventory);
+}
+// Re-syncs the always-visible bottom hotbar UI (icons/labels/equip state) after the panel
+// changes what's actually sitting in a hotbar slot — mirrors what _invAddItem already does
+// for a single slot, but for all of them, plus re-running the equip logic in case the
+// active slot's contents changed out from under it.
+function _invRefreshHotbarUI() {
+  _inventory.forEach((id, i) => {
+    const wdef = id ? WEAPON_DEFS[id] : null;
+    _invSlotEls[i].icon.textContent = wdef ? wdef.icon : '';
+    _invSlotEls[i].label.textContent = wdef ? wdef.name : '';
+    _invSlotEls[i].label.style.display = wdef ? 'block' : 'none';
+  });
+  _invSetActive(_activeSlot);
+}
+function _onInvSlotClick(type, idx) {
+  const arr = type === 'hotbar' ? _inventory : _extraInventory;
+  if (!_invSelected) {
+    if (!arr[idx]) return; // nothing to pick up from an empty slot
+    _invSelected = { type, idx };
+    _renderInventoryPanel();
+    return;
+  }
+  if (_invSelected.type === type && _invSelected.idx === idx) {
+    _invSelected = null; // clicked the same slot again — deselect
+    _renderInventoryPanel();
+    return;
+  }
+  const srcArr = _invSelected.type === 'hotbar' ? _inventory : _extraInventory;
+  const dstArr = arr;
+  const tmp = dstArr[idx];
+  dstArr[idx] = srcArr[_invSelected.idx];
+  srcArr[_invSelected.idx] = tmp;
+  _invSelected = null;
+  _invRefreshHotbarUI(); // cheap enough to always run — covers hotbar<->hotbar and hotbar<->storage swaps
+  _renderInventoryPanel();
+}
+function openInventory() {
+  inventoryOpen = true;
+  _invSelected = null;
+  _renderInventoryPanel();
+  _invPanelEl.style.display = 'block';
+  document.exitPointerLock();
+  document.body.style.cursor = 'auto';
+}
+function closeInventory() {
+  inventoryOpen = false;
+  _invPanelEl.style.display = 'none';
+  document.body.style.cursor = 'none';
+  // do NOT re-lock — let the click-to-play overlay handle it, same as closing the hub
+}
+document.addEventListener('keydown', e => {
+  if ((e.key === 'i' || e.key === 'I') && !(window._chatOpen && window._chatOpen())) {
+    const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (typing) return;
+    if (inventoryOpen) { closeInventory(); return; }
+    if (hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
+    openInventory();
+  }
+  if (inventoryOpen && e.key === 'Escape') { closeInventory(); e.stopPropagation(); }
+});
+
 // ── Shop ──────────────────────────────────────────────────────────────────────
 const CREDIT_REWARD_CRATE = 150; // must match server's CREDIT_REWARD.crate
 const shopEl = makePanel('SHOP', '#0af', 'shop');
@@ -2840,9 +2948,8 @@ _viewmodelScene.add(_sniperLight);
 
 // Shop equip buttons — identical behavior for every weapon
 function _equipWeapon(id, btn) {
-  if (_inventory.includes(id)) return;
-  const slotIdx = _inventory.indexOf(null);
-  if (slotIdx === -1) return; // inventory full
+  if (_inventory.includes(id) || _extraInventory.includes(id)) return; // already own it
+  if (_inventory.indexOf(null) === -1 && _extraInventory.indexOf(null) === -1) return; // hotbar AND storage both full
   const def = WEAPON_DEFS[id];
   if (!window._freeWeapons) {
     if (self.credits < def.price) return;
@@ -6241,7 +6348,7 @@ document.addEventListener('click', () => {
       socket.connect();
     }
   }
-  if (hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || gameMode === 'hangar') return;
+  if (hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || inventoryOpen || gameMode === 'hangar') return;
   if (!document.pointerLockElement && !lockRequested) {
     lockRequested = true;
     setTimeout(() => { lockRequested = false; }, 2000);
@@ -6252,7 +6359,7 @@ document.addEventListener('click', () => {
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = !!document.pointerLockElement;
   const mapIsOpen = document.getElementById('galaxy-map').classList.contains('open');
-  const menuOpen = hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || mapIsOpen || (window._chatOpen && window._chatOpen()) || gameMode === 'hangar';
+  const menuOpen = hubOpen || shopOpen || bountiesOpen || roomCustomOpen || shipUpgradeOpen || inventoryOpen || mapIsOpen || (window._chatOpen && window._chatOpen()) || gameMode === 'hangar';
   if (!menuOpen) overlay.classList.toggle('hidden', pointerLocked);
   if (!pointerLocked) { reticleX = 0; reticleY = 0; }
   // body has cursor:none globally so the game can draw its own reticle instead of the OS
