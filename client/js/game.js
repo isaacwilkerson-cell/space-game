@@ -2620,7 +2620,7 @@ function _updateShopAffordability() {
   Object.entries(WEAPON_DEFS).forEach(([id, def]) => {
     const btn = shopEl.querySelector(`#shop-${id}-btn`);
     if (!btn || btn.textContent === 'EQUIPPED') return;
-    const affordable = self.credits >= def.price;
+    const affordable = window._freeWeapons || self.credits >= def.price;
     btn.disabled = !affordable;
     btn.style.opacity = affordable ? '1' : '0.4';
     btn.style.cursor = affordable ? 'pointer' : 'not-allowed';
@@ -2816,10 +2816,12 @@ function _equipWeapon(id, btn) {
   const slotIdx = _inventory.indexOf(null);
   if (slotIdx === -1) return; // inventory full
   const def = WEAPON_DEFS[id];
-  if (self.credits < def.price) return;
-  self.credits -= def.price;
-  _updateCreditsHUD();
-  if (socket) socket.emit('spend_credits', { amount: def.price });
+  if (!window._freeWeapons) {
+    if (self.credits < def.price) return;
+    self.credits -= def.price;
+    _updateCreditsHUD();
+    if (socket) socket.emit('spend_credits', { amount: def.price });
+  }
   _invAddItem(id); // sets the reliable emoji icon + name label — no 3D render needed
   btn.textContent = 'EQUIPPED';
   btn.style.background = '#0f42';
@@ -7460,7 +7462,9 @@ function updateHUD() {
     // shows up as a real chat message.
     if (text === '/money') {
       if (socket) socket.emit('debug_add_credits');
-      addMsg('SYSTEM', '💰 +100,000,000 CR', false);
+      window._freeWeapons = true; // also drop every weapon's price so the shop's fully testable
+      if (typeof _updateShopAffordability === 'function') _updateShopAffordability();
+      addMsg('SYSTEM', '💰 +100,000,000 CR — all weapons unlocked free', false);
       closeChat();
       return;
     }
