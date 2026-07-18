@@ -6293,29 +6293,33 @@ function drawReticle() {
 
 const overlay = document.getElementById('click-overlay');
 
-// ── Background music ──────────────────────────────────────────────────────────
+// ── Background music (radio) ────────────────────────────────────────────────────
 // Autoplay-with-sound is blocked until a real user gesture, so this only actually
 // starts inside the click handler below (which already exists to grab pointer lock).
-const _musicPlaylist = ['assets/sounds/bg_music.mp4', 'assets/sounds/bg_music_2.mp4'];
-// "Flashing Lights" (bg_music_2) is mixed quieter than the first track — boost its playback
-// volume relative to the user's slider so both tracks come out roughly as loud as each other.
-const _musicTrackGain = [1.0, 1.6];
+// No tracks loaded right now — drop files in client/assets/sounds/ and add their paths
+// here (optionally with a matching entry in _musicTrackGain if one plays quieter than the
+// rest) and the ArrowUp/Down/Left/Right controls below pick them up with no other changes.
+const _musicPlaylist = [];
+const _musicTrackGain = []; // per-track volume multiplier, index-aligned with _musicPlaylist
 let _musicIndex = 0;
 let _musicUserVolume = 0.25; // the 0..1 level ArrowUp/ArrowDown actually adjust
-const _bgMusic = new Audio(_musicPlaylist[_musicIndex]);
+const _bgMusic = new Audio();
 _bgMusic.loop = false; // looping/advancing the whole playlist is handled by the 'ended' listener below
-_bgMusic.volume = _musicUserVolume * _musicTrackGain[_musicIndex];
 _bgMusic.addEventListener('ended', () => _musicSkip(1));
 let _bgMusicStarted = false;
 function _startBgMusic() {
-  if (_bgMusicStarted) return;
+  if (_bgMusicStarted || _musicPlaylist.length === 0) return;
   _bgMusicStarted = true;
+  _bgMusic.src = _musicPlaylist[_musicIndex];
+  _applyMusicVolume();
   _bgMusic.play().catch(() => { _bgMusicStarted = false; }); // retry on the next click if it was blocked
 }
 function _applyMusicVolume() {
-  _bgMusic.volume = Math.max(0, Math.min(1, _musicUserVolume * _musicTrackGain[_musicIndex]));
+  const gain = _musicTrackGain[_musicIndex] != null ? _musicTrackGain[_musicIndex] : 1.0;
+  _bgMusic.volume = Math.max(0, Math.min(1, _musicUserVolume * gain));
 }
 function _musicSkip(dir) {
+  if (_musicPlaylist.length === 0) return;
   _musicIndex = (_musicIndex + dir + _musicPlaylist.length) % _musicPlaylist.length;
   _bgMusic.src = _musicPlaylist[_musicIndex];
   _bgMusic.currentTime = 0;
