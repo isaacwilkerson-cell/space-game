@@ -192,7 +192,13 @@
   <script src="js/GLTFLoader.js?v=2"></script>
   <script src="js/socket.io.min.js"></script>
   <script>
-    fetch('assets/ships/spaceship.glb')
+    // Mirrors SHIP_DEFS in game.js — this preload runs before game.js even starts loading
+    // (to get a head start on the biggest asset), so it reads the same saved choice itself
+    // rather than waiting for game.js's own copy of the lookup table to exist yet.
+    const _SHIP_ASSET_BY_ID = { spaceship: 'assets/ships/spaceship.glb', fighter1: 'assets/ships/fighter_1.glb' };
+    const _savedShipId = localStorage.getItem('sn_selected_ship');
+    const _preloadShipAsset = _SHIP_ASSET_BY_ID[_savedShipId] || _SHIP_ASSET_BY_ID.spaceship;
+    fetch(_preloadShipAsset)
       .then(r => r.blob())
       .then(blob => {
         const url = URL.createObjectURL(blob);

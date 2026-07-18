@@ -29,6 +29,19 @@ const ASSETS = {
   station: 'assets/space_station.glb',
 };
 
+// Selectable player ships — picked in the hangar's SHIP tab. All of them go through the
+// exact same loadModel() auto-scale/flight/collision pipeline as the original spaceship,
+// so a new entry here behaves identically to the one already in the game; only the visual
+// model differs. Persisted so the choice survives a reload — index.html's own ship preload
+// script reads the same localStorage key before game.js even starts loading.
+const SHIP_DEFS = {
+  spaceship: { name: 'Falcon',    asset: 'assets/ships/spaceship.glb' },
+  fighter1:  { name: 'Fighter-1', asset: 'assets/ships/fighter_1.glb' },
+};
+const SHIP_STORAGE_KEY = 'sn_selected_ship';
+let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
+function _selectedShipAsset() { return SHIP_DEFS[_selectedShipId].asset; }
+
 
 // ── Global asset load tracking (drives the loading-screen progress bar) ────────
 // pending = number of loadModel() calls currently in flight, right now — not a running
@@ -1521,7 +1534,7 @@ function _enterPlanetSurface(planet) {
   _surfLandT = 0;
   _surfLandGroundY = null;
   if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
-  loadModel('assets/ships/spaceship.glb', 60, m => {
+  loadModel(_selectedShipAsset(), 60, m => {
     if (!m) return;
     _surfLandShip = m;
     _surfLandShip.position.set(0, 800, 0);
@@ -1789,11 +1802,16 @@ _hangarUI.style.cssText = `
 _hangarUI.innerHTML = `
   <div style="padding:18px 20px 10px; font-size:16px; letter-spacing:3px; border-bottom:1px solid #0af3;">SHIP CUSTOMIZATION</div>
   <div id="hangar-tabs" style="display:flex; border-bottom:1px solid #0af3;">
+    <button class="h-tab" data-tab="ship">SHIP</button>
     <button class="h-tab h-tab-active" data-tab="color">COLOR</button>
     <button class="h-tab" data-tab="decals">DECALS</button>
     <button class="h-tab" data-tab="engine">ENGINE</button>
   </div>
   <div id="hangar-panels" style="flex:1; overflow-y:auto; padding:16px;">
+    <div id="htab-ship" style="display:none;">
+      <div style="font-size:11px;color:#0af8;margin-bottom:10px;letter-spacing:1px;">FIGHTER MODEL</div>
+      <div id="hangar-ship-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
     <div id="htab-color">
       <div style="font-size:11px;color:#0af8;margin-bottom:10px;letter-spacing:1px;">HULL COLOR</div>
       <div id="hangar-color-swatches" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
@@ -2120,11 +2138,49 @@ _hangarUI.querySelectorAll('.h-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     _hangarUI.querySelectorAll('.h-tab').forEach(b => b.classList.remove('h-tab-active'));
     btn.classList.add('h-tab-active');
-    ['color','decals','engine'].forEach(t => {
+    ['ship','color','decals','engine'].forEach(t => {
       document.getElementById('htab-' + t).style.display = t === btn.dataset.tab ? 'block' : 'none';
     });
   });
 });
+
+// Ship picker — swaps the actual flyable model (selfMesh) and the hangar display ship,
+// both live, plus persists the choice for next time (index.html's preload reads it too).
+const _shipListEl = document.getElementById('hangar-ship-list');
+function _renderShipList() {
+  _shipListEl.innerHTML = '';
+  Object.entries(SHIP_DEFS).forEach(([id, def]) => {
+    const btn = document.createElement('button');
+    btn.textContent = (id === _selectedShipId ? '● ' : '○ ') + def.name;
+    const active = id === _selectedShipId;
+    btn.style.cssText = `background:${active ? 'rgba(0,255,140,0.12)' : 'transparent'};border:1px solid ${active ? '#0f6' : '#0af4'};color:${active ? '#0f6' : '#0af'};font-family:'Courier New',monospace;font-size:12px;padding:9px 12px;cursor:pointer;letter-spacing:1px;text-align:left;`;
+    btn.addEventListener('click', () => _selectShip(id));
+    _shipListEl.appendChild(btn);
+  });
+}
+function _selectShip(id) {
+  if (id === _selectedShipId || !SHIP_DEFS[id]) return;
+  _selectedShipId = id;
+  localStorage.setItem(SHIP_STORAGE_KEY, id);
+  _renderShipList();
+  _loadHangarDisplayShip();
+  _loadSelfShipModel();
+}
+// Swaps the model attached to the player's actual flyable ship — mirrors the same
+// "strip everything except camera/glow/light, then attach the new model" logic the
+// initial waitForShip() preload swap uses, so switching mid-session behaves identically
+// to picking a ship before ever launching.
+function _loadSelfShipModel() {
+  loadModel(_selectedShipAsset(), 20, model => {
+    if (!model) return;
+    const keepGlow  = selfMesh.userData.glowMesh;
+    const keepLight = selfMesh.userData.engineLight;
+    selfMesh.children.slice().forEach(c => { if (c !== camera && c !== keepGlow && c !== keepLight) selfMesh.remove(c); });
+    selfMesh.add(model);
+    _applyShipColor(document.getElementById('hangar-hex').value); // keep whatever hull color was already chosen
+  });
+}
+_renderShipList();
 
 // Color swatches
 const _shipColors = ['#00ccff','#ff4400','#00ff88','#ffdd00','#ff00aa','#8844ff','#ffffff','#444444'];
@@ -2265,21 +2321,25 @@ function exitHangar() {
 
 // ── Hangar display ship ────────────────────────────────────────────────────────
 let _hangarShip = null;
-loadModel('assets/ships/spaceship.glb', 60, model => {
-  if (!model) return;
-  model.traverse(c => {
-    if (c.isMesh && c.material) {
-      const mats = Array.isArray(c.material) ? c.material : [c.material];
-      mats.forEach(m => {
-        const basic = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.color ? m.color.clone() : 0x00ccff });
-        Object.assign(c, { material: basic });
-      });
-    }
+function _loadHangarDisplayShip() {
+  if (_hangarShip) { hangarScene.remove(_hangarShip); _hangarShip = null; }
+  loadModel(_selectedShipAsset(), 60, model => {
+    if (!model) return;
+    model.traverse(c => {
+      if (c.isMesh && c.material) {
+        const mats = Array.isArray(c.material) ? c.material : [c.material];
+        mats.forEach(m => {
+          const basic = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.color ? m.color.clone() : 0x00ccff });
+          Object.assign(c, { material: basic });
+        });
+      }
+    });
+    model.position.set(0, 22, 78);
+    _hangarShip = model;
+    hangarScene.add(_hangarShip);
   });
-  model.position.set(0, 22, 78);
-  _hangarShip = model;
-  hangarScene.add(_hangarShip);
-});
+}
+_loadHangarDisplayShip();
 
 const _fpRaycaster = new THREE.Raycaster();
 const _fpRayDir = new THREE.Vector3();
