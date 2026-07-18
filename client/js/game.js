@@ -17,8 +17,8 @@ try {
 // ── Asset config — drop files in client/assets/ and set names here ───────────
 const ASSETS = {
   skybox:      'assets/deep_space_skybox.glb',
-  playerShip:  'assets/ships/spaceship.glb',
-  enemyShip:   'assets/ships/spaceship.glb',
+  playerShip:  'assets/ships/cargo_ship.glb',
+  enemyShip:   'assets/ships/cargo_ship.glb',
   planets: [
     'assets/planets/planet_of_phoenix.glb',
     'assets/planets/planet_of_phoenix.glb',
@@ -1521,7 +1521,7 @@ function _enterPlanetSurface(planet) {
   _surfLandT = 0;
   _surfLandGroundY = null;
   if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
-  loadModel('assets/ships/spaceship.glb', 60, m => {
+  loadModel('assets/ships/cargo_ship.glb', 60, m => {
     if (!m) return;
     _surfLandShip = m;
     _surfLandShip.position.set(0, 800, 0);
@@ -2265,7 +2265,7 @@ function exitHangar() {
 
 // ── Hangar display ship ────────────────────────────────────────────────────────
 let _hangarShip = null;
-loadModel('assets/ships/spaceship.glb', 60, model => {
+loadModel('assets/ships/cargo_ship.glb', 60, model => {
   if (!model) return;
   model.traverse(c => {
     if (c.isMesh && c.material) {
