@@ -1973,7 +1973,10 @@ const WEAPON_DEFS = {
 // sample-accurate, zero-setup-latency playback (the browser's autoplay policy still means
 // the context won't actually produce sound until after the first user gesture, same as
 // everything else audio-related here).
-const _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+// latencyHint 'interactive' asks the browser to favor lower output latency over power
+// savings/glitch-safety — the default hint can add tens of ms of buffering that's fine for
+// music but is exactly the kind of "slightly delayed" gap you'd notice on a gunshot.
+const _sfxCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
 const _sfxBuffers = {}; // url -> Promise<AudioBuffer>
 function _preloadSfx(url) {
   if (_sfxBuffers[url]) return _sfxBuffers[url];
@@ -1984,9 +1987,13 @@ function _preloadSfx(url) {
   return _sfxBuffers[url];
 }
 function _playSfx(url, volume) {
-  _preloadSfx(url).then(buffer => {
+  // resume() is async — if a shot fires while the context is still suspended (e.g. right
+  // after page load, before it's had a chance to resume from the startup click), scheduling
+  // the source without waiting for resume() to actually finish let the browser queue it
+  // until resume completed, which is exactly an extra, inconsistent delay on top of decode.
+  const ctxReady = _sfxCtx.state === 'suspended' ? _sfxCtx.resume() : Promise.resolve();
+  Promise.all([_preloadSfx(url), ctxReady]).then(([buffer]) => {
     if (!buffer) return;
-    if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
     const src = _sfxCtx.createBufferSource();
     src.buffer = buffer;
     const gain = _sfxCtx.createGain();
@@ -6333,6 +6340,7 @@ document.addEventListener('keydown', e => {
 let lockRequested = false;
 document.addEventListener('click', () => {
   _startBgMusic();
+  if (_sfxCtx.state === 'suspended') _sfxCtx.resume(); // warm it up now, not on the first gunshot
   // Dismiss the title screen on the very first click once it's actually ready — the same
   // click that follows also requests pointer lock below, so this doesn't need its own
   // separate "Play" button wiring.
