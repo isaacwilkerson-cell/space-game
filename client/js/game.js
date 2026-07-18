@@ -33,14 +33,13 @@ const ASSETS = {
 // exact same loadModel() auto-scale/flight/collision pipeline, so any entry here behaves
 // identically to the others; only the visual model differs. Persisted so the choice
 // survives a reload — index.html's own ship preload script reads the same localStorage
-// key before game.js even starts loading. cargo_ship (747KB) is the default since it's
-// far lighter than the original spaceship (8MB) which is kept as an alternate option.
+// key before game.js even starts loading. Falcon (the original spaceship) is the default.
 const SHIP_DEFS = {
-  cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb' },
   spaceship: { name: 'Falcon',     asset: 'assets/ships/spaceship.glb' },
+  cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb' },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
-let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'cargo';
+let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
 function _selectedShipAsset() { return SHIP_DEFS[_selectedShipId].asset; }
 
 

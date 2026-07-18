@@ -197,7 +197,7 @@
     // rather than waiting for game.js's own copy of the lookup table to exist yet.
     const _SHIP_ASSET_BY_ID = { cargo: 'assets/ships/cargo_ship.glb', spaceship: 'assets/ships/spaceship.glb' };
     const _savedShipId = localStorage.getItem('sn_selected_ship');
-    const _preloadShipAsset = _SHIP_ASSET_BY_ID[_savedShipId] || _SHIP_ASSET_BY_ID.cargo;
+    const _preloadShipAsset = _SHIP_ASSET_BY_ID[_savedShipId] || _SHIP_ASSET_BY_ID.spaceship;
     fetch(_preloadShipAsset)
       .then(r => r.blob())
       .then(blob => {
