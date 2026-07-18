@@ -1961,13 +1961,41 @@ const WEAPON_DEFS = {
   ak47:      { name: 'AK-47',        desc: 'Classic automatic rifle',                           asset: 'assets/ak-47_kalashnikov_c.glb', viewSize: 40, viewFwd: 14, viewYaw: Math.PI, cooldown: 20, pellets: 1, spread: 0.03, auto: true, magSize: 30, reloadTime: 140, recoil: 22, recoilMag: 0.5, icon: '💥', damage: 28, price: 350, sound: 'assets/sounds/machine_gun.mp3', soundVolume: 0.3 },
   shotgun:   { name: 'Shotgun',      desc: 'Close-range heavy hitter',                          asset: 'assets/shotgun_c.glb', viewSize: 34, viewFwd: 16, viewYaw: Math.PI / 2, viewUp: -9, cooldown: 50, pellets: 10, spread: 0.09, magSize: 6, reloadTime: 170, icon: '💢', damage: 17, price: 300, sound: 'assets/sounds/shotgun_blast.mp3', soundVolume: 0.4 },
 };
-// Cheap SFX helper — spins up a fresh Audio per call so overlapping shots/footsteps don't
-// cut each other off (unlike reusing one Audio and resetting currentTime).
-function _playSfx(url, volume) {
-  const a = new Audio(url);
-  a.volume = volume != null ? volume : 0.4;
-  a.play().catch(() => {});
+// SFX helper — Web Audio buffers instead of plain `new Audio(url)`. A fresh HTMLAudioElement
+// has to spin up its whole media pipeline (fetch/parse/decode) before playback actually
+// starts, which is exactly the "click... *pause*... bang" delay on gunfire — noticeable even
+// once cached, since decode still happens per element. Decoding each sound into an
+// AudioBuffer once up front and firing it through a new BufferSourceNode per play gets
+// sample-accurate, zero-setup-latency playback (the browser's autoplay policy still means
+// the context won't actually produce sound until after the first user gesture, same as
+// everything else audio-related here).
+const _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+const _sfxBuffers = {}; // url -> Promise<AudioBuffer>
+function _preloadSfx(url) {
+  if (_sfxBuffers[url]) return _sfxBuffers[url];
+  _sfxBuffers[url] = fetch(url)
+    .then(r => r.arrayBuffer())
+    .then(buf => _sfxCtx.decodeAudioData(buf))
+    .catch(() => null);
+  return _sfxBuffers[url];
 }
+function _playSfx(url, volume) {
+  _preloadSfx(url).then(buffer => {
+    if (!buffer) return;
+    if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
+    const src = _sfxCtx.createBufferSource();
+    src.buffer = buffer;
+    const gain = _sfxCtx.createGain();
+    gain.gain.value = volume != null ? volume : 0.4;
+    src.connect(gain).connect(_sfxCtx.destination);
+    src.start(0);
+  });
+}
+[
+  'assets/sounds/pistol_shot.mp3', 'assets/sounds/machine_gun.mp3', 'assets/sounds/shotgun_blast.mp3',
+  'assets/sounds/sniper_shot.mp3', 'assets/sounds/grenade_explosion.mp3', 'assets/sounds/reload.mp3',
+  'assets/sounds/slide.mp3',
+].forEach(_preloadSfx);
 const WEAPON_IDS = Object.keys(WEAPON_DEFS);
 
 // Item definitions
