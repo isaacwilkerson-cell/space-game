@@ -5423,7 +5423,7 @@ const COCKPIT_CAM_POS = new THREE.Vector3(0, 3.6, 3.5); // lowered slightly from
 // camera's forward still matches actual travel direction.
 const COCKPIT_MODEL_YAW = Math.PI;
 // Tilts the view up a bit so the dashboard/floor of the cockpit interior isn't in frame.
-const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.18);
+const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.32);
 // The cockpit asset's floor/dash doesn't fully cover the bottom of the view even with the
 // pitch-up above — open space shows through at bottom-center. Patch it with a plain
 // metallic panel mounted straight on the camera (not the ship) so it always sits in that
