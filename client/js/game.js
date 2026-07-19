@@ -5415,7 +5415,7 @@ let _cockpitModelLoading = false;
 // account for the canopy glass above pulling that center down, so the camera needs its
 // own higher offset rather than sharing the model's anchor point.
 const COCKPIT_MODEL_POS = new THREE.Vector3(0, 1.5, 2);
-const COCKPIT_CAM_POS = new THREE.Vector3(0, 4.2, 3.5); // raised again after the previous lower pass
+const COCKPIT_CAM_POS = new THREE.Vector3(0, 3.6, 3.5); // lowered slightly from the last raise
 // The cockpit asset's own windshield/seat orientation was authored facing the opposite way
 // from the -Z "forward" convention the camera and ship travel direction both use — without
 // this the camera (correctly facing travel direction) ends up looking at the back of the
