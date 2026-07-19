@@ -206,6 +206,13 @@
         loader.load(url, gltf => {
           URL.revokeObjectURL(url);
           const model = gltf.scene;
+          // cargo_ship.glb has a baked-in starfield/particle decoration (node "Particle_169")
+          // meant for its own standalone viewer scene, not the actual ship — strip it before
+          // it ever gets scaled/centered. Mirrors _stripShipStars() in game.js. No-op for
+          // ships without that node (e.g. the original spaceship).
+          const _starNodes = [];
+          model.traverse(c => { if (c.name === 'Particle_169') _starNodes.push(c); });
+          _starNodes.forEach(c => { if (c.parent) c.parent.remove(c); });
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z);
@@ -215,6 +222,10 @@
             const c = box.getCenter(new THREE.Vector3());
             model.position.set(-c.x * s, -c.y * s, -c.z * s);
           }
+          // Mirrors SHIP_DEFS[id].yawOffset in game.js — cargo_ship.glb's nose-to-tail length
+          // runs along local X instead of the -Z the flight camera rig assumes, so it renders
+          // broadside-on without this 90° correction.
+          if (_savedShipId === 'cargo') model.rotation.y = Math.PI / 2;
           window.PRELOADED_SHIP = model;
         }, undefined, () => { URL.revokeObjectURL(url); window.PRELOADED_SHIP = false; });
       }).catch(e => { _shipDbg('fetch ERROR: ' + e); window.PRELOADED_SHIP = false; });

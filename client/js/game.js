@@ -36,11 +36,28 @@ const ASSETS = {
 // key before game.js even starts loading. Falcon (the original spaceship) is the default.
 const SHIP_DEFS = {
   spaceship: { name: 'Falcon',     asset: 'assets/ships/spaceship.glb' },
-  cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb' },
+  // The flight camera is a fixed rig behind the ship looking down local -Z (see the
+  // "Camera follows behind ship" setup near selfMesh) — every model is expected to have
+  // its nose-to-tail length run along that axis. cargo_ship.glb's actual geometry (checked
+  // via its bounding box with the baked-in star decoration stripped out) is over 2x longer
+  // on X than on Z, i.e. it's built lying on its side relative to that convention — a 90°
+  // yaw corrects it to point down -Z like every other ship.
+  cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb', yawOffset: Math.PI / 2 },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
 function _selectedShipAsset() { return SHIP_DEFS[_selectedShipId].asset; }
+function _selectedShipYawOffset() { return SHIP_DEFS[_selectedShipId].yawOffset || 0; }
+// cargo_ship.glb has a baked-in starfield/particle decoration (node "Particle_169", sized to
+// span the whole model) meant for its own standalone viewer scene — strip it here so it
+// doesn't ride along as part of the actual playable ship model. No-op for ships that don't
+// have that node (e.g. the original spaceship).
+function _stripShipStars(model) {
+  const toRemove = [];
+  model.traverse(c => { if (c.name === 'Particle_169') toRemove.push(c); });
+  toRemove.forEach(c => { if (c.parent) c.parent.remove(c); });
+  return model;
+}
 
 
 // ── Global asset load tracking (drives the loading-screen progress bar) ────────
@@ -1536,6 +1553,8 @@ function _enterPlanetSurface(planet) {
   if (_surfLandShip) { _planetSurfScene.remove(_surfLandShip); _surfLandShip = null; }
   loadModel(_selectedShipAsset(), 60, m => {
     if (!m) return;
+    _stripShipStars(m);
+    m.rotation.y = _selectedShipYawOffset();
     _surfLandShip = m;
     _surfLandShip.position.set(0, 800, 0);
     _planetSurfScene.add(_surfLandShip);
@@ -2173,6 +2192,8 @@ function _selectShip(id) {
 function _loadSelfShipModel() {
   loadModel(_selectedShipAsset(), 20, model => {
     if (!model) return;
+    _stripShipStars(model);
+    model.rotation.y = _selectedShipYawOffset();
     const keepGlow  = selfMesh.userData.glowMesh;
     const keepLight = selfMesh.userData.engineLight;
     selfMesh.children.slice().forEach(c => { if (c !== camera && c !== keepGlow && c !== keepLight) selfMesh.remove(c); });
@@ -2325,6 +2346,7 @@ function _loadHangarDisplayShip() {
   if (_hangarShip) { hangarScene.remove(_hangarShip); _hangarShip = null; }
   loadModel(_selectedShipAsset(), 60, model => {
     if (!model) return;
+    _stripShipStars(model);
     model.traverse(c => {
       if (c.isMesh && c.material) {
         const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -5741,6 +5763,8 @@ function addRemotePlayer(data) {
   mesh.add(shipTag);
   loadModel(ASSETS.enemyShip, 20, model => {
     if (!model || !remotePlayers[data.id]) return;
+    _stripShipStars(model);
+    if (ASSETS.enemyShip.includes('cargo_ship')) model.rotation.y = Math.PI / 2; // see SHIP_DEFS.cargo.yawOffset
     while (mesh.children.length) mesh.remove(mesh.children[0]);
     mesh.add(model);
     mesh.add(shipTag);
