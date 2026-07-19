@@ -5423,7 +5423,7 @@ const COCKPIT_CAM_POS = new THREE.Vector3(0, 3.6, 3.5); // lowered slightly from
 // camera's forward still matches actual travel direction.
 const COCKPIT_MODEL_YAW = Math.PI;
 // Tilts the view up a bit so the dashboard/floor of the cockpit interior isn't in frame.
-const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.32);
+const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.35);
 // The cockpit asset's floor/dash doesn't fully cover the bottom of the view even with the
 // pitch-up above — open space shows through at bottom-center. Patch it with a plain
 // metallic panel mounted straight on the camera (not the ship) so it always sits in that
@@ -5441,6 +5441,20 @@ function _ensureCockpitDashPatch() {
   _cockpitDashPatch.position.set(0, -1.9, -1.2);
   return _cockpitDashPatch;
 }
+// A big faint blue-tinted, semi-transparent pane right in front of the camera — gives the
+// windshield an actual pane-of-glass look (subtle tint + a soft highlight) rather than a
+// perfectly clear, glass-less view straight through to space.
+let _cockpitGlass = null;
+function _ensureCockpitGlass() {
+  if (_cockpitGlass) return _cockpitGlass;
+  const geo = new THREE.PlaneGeometry(14, 9);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x6fa8ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false,
+  });
+  _cockpitGlass = new THREE.Mesh(geo, mat);
+  _cockpitGlass.position.set(0, 0.4, -1);
+  return _cockpitGlass;
+}
 function _exteriorShipModel() {
   const keepGlow  = selfMesh.userData.glowMesh;
   const keepLight = selfMesh.userData.engineLight;
@@ -5454,6 +5468,8 @@ function _toggleCockpitView() {
     if (ext) ext.visible = false;
     camera.add(_ensureCockpitDashPatch());
     _cockpitDashPatch.visible = true;
+    camera.add(_ensureCockpitGlass());
+    _cockpitGlass.visible = true;
     if (!_cockpitModel && !_cockpitModelLoading) {
       _cockpitModelLoading = true;
       loadModel('assets/ships/falcon_cockpit.glb', 6, model => {
@@ -5472,6 +5488,7 @@ function _toggleCockpitView() {
     if (ext) ext.visible = true;
     if (_cockpitModel) _cockpitModel.visible = false;
     if (_cockpitDashPatch) _cockpitDashPatch.visible = false;
+    if (_cockpitGlass) _cockpitGlass.visible = false;
   }
 }
 document.addEventListener('keydown', e => {
@@ -7677,7 +7694,7 @@ function updateShip() {
   // Camera shake scales with boost throttle — cut way down in cockpit view, where the
   // camera sits rigidly inside a fixed interior mesh and any shake reads as much more
   // jarring/disorienting than the same jitter does on the normal exterior chase cam.
-  camShakeAmt = boostThrottle * 3.5 * (_cockpitView ? 0.1 : 1);
+  camShakeAmt = boostThrottle * 3.5 * (_cockpitView ? 0.015 : 1);
   if (camShakeAmt > 0.01) {
     _camPos.x += (Math.random() - 0.5) * camShakeAmt;
     _camPos.y += (Math.random() - 0.5) * camShakeAmt;
