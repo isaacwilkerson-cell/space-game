@@ -5416,6 +5416,12 @@ let _cockpitModelLoading = false;
 // own higher offset rather than sharing the model's anchor point.
 const COCKPIT_MODEL_POS = new THREE.Vector3(0, 1.5, 2);
 const COCKPIT_CAM_POS = new THREE.Vector3(0, 4, 2);
+// The cockpit asset's own windshield/seat orientation was authored facing the opposite way
+// from the -Z "forward" convention the camera and ship travel direction both use — without
+// this the camera (correctly facing travel direction) ends up looking at the back of the
+// seat instead of out the windshield. Rotate the model itself, not the camera, so the
+// camera's forward still matches actual travel direction.
+const COCKPIT_MODEL_YAW = Math.PI;
 function _exteriorShipModel() {
   const keepGlow  = selfMesh.userData.glowMesh;
   const keepLight = selfMesh.userData.engineLight;
@@ -5433,6 +5439,7 @@ function _toggleCockpitView() {
         _cockpitModelLoading = false;
         if (!model || _selectedShipId !== 'spaceship') return;
         model.position.copy(COCKPIT_MODEL_POS);
+        model.rotation.y = COCKPIT_MODEL_YAW;
         _cockpitModel = model;
         selfMesh.add(_cockpitModel);
         _cockpitModel.visible = _cockpitView;
@@ -7657,6 +7664,9 @@ function updateShip() {
   // inside the cockpit mesh would make the interior visibly swim relative to the camera.
   if (_cockpitView) {
     camera.position.copy(_camPos);
+    // Facing (not position) matches the ship's actual travel direction here, same
+    // convention as the normal chase cam below — if the view feels backward, it's the
+    // cockpit model's own authored orientation that's flipped, not this.
     camera.quaternion.copy(selfMesh.quaternion);
     return;
   }
