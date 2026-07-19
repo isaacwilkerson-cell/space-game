@@ -5424,6 +5424,21 @@ const COCKPIT_CAM_POS = new THREE.Vector3(0, 3.6, 3.5); // lowered slightly from
 const COCKPIT_MODEL_YAW = Math.PI;
 // Tilts the view up a bit so the dashboard/floor of the cockpit interior isn't in frame.
 const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.18);
+// The cockpit asset's floor/dash doesn't fully cover the bottom of the view even with the
+// pitch-up above — open space shows through at bottom-center. Patch it with a plain
+// metallic panel mounted straight on the camera (not the ship) so it always sits in that
+// same bottom-center screen spot no matter how the ship maneuvers, like the edge of a
+// dashboard/console right below the windshield.
+let _cockpitDashPatch = null;
+function _ensureCockpitDashPatch() {
+  if (_cockpitDashPatch) return _cockpitDashPatch;
+  const geo = new THREE.BoxGeometry(4, 1.2, 1.6);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a4f56, metalness: 0.75, roughness: 0.4, emissive: 0x0a0c10, emissiveIntensity: 0.6 });
+  _cockpitDashPatch = new THREE.Mesh(geo, mat);
+  _cockpitDashPatch.position.set(0, -1.1, -1.6);
+  _cockpitDashPatch.rotation.x = -0.25;
+  return _cockpitDashPatch;
+}
 function _exteriorShipModel() {
   const keepGlow  = selfMesh.userData.glowMesh;
   const keepLight = selfMesh.userData.engineLight;
@@ -5435,6 +5450,8 @@ function _toggleCockpitView() {
   const ext = _exteriorShipModel();
   if (_cockpitView) {
     if (ext) ext.visible = false;
+    camera.add(_ensureCockpitDashPatch());
+    _cockpitDashPatch.visible = true;
     if (!_cockpitModel && !_cockpitModelLoading) {
       _cockpitModelLoading = true;
       loadModel('assets/ships/falcon_cockpit.glb', 6, model => {
@@ -5452,6 +5469,7 @@ function _toggleCockpitView() {
   } else {
     if (ext) ext.visible = true;
     if (_cockpitModel) _cockpitModel.visible = false;
+    if (_cockpitDashPatch) _cockpitDashPatch.visible = false;
   }
 }
 document.addEventListener('keydown', e => {
