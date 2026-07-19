@@ -5393,10 +5393,59 @@ window.selfMesh = selfMesh;
   }
 })();
 
-// Camera follows behind ship
+// Camera follows behind ship — this initial parenting gets undone further down (see
+// "Camera smoothing" near updateShip(), which detaches the camera and drives it with a
+// per-frame world-space lerp/slerp instead); kept here only so the camera has a sane
+// position/orientation for the brief window before that code runs.
 camera.position.set(0, 8, 35);
 camera.lookAt(0, 0, -10);
 selfMesh.add(camera);
+
+// ── Cockpit view (C, Falcon only) ────────────────────────────────────────────
+// Falcon-specific interior view. The real flight camera is driven every frame by
+// updateShip()'s own world-space lerp/slerp (see "Smooth follow camera" there) — toggling
+// this just flips which local offset/rotation-source that per-frame code chases toward,
+// and swaps which ship model (exterior hull vs cockpit interior) is visible.
+let _cockpitView = false;
+let _cockpitModel = null;
+let _cockpitModelLoading = false;
+const COCKPIT_LOCAL_POS = new THREE.Vector3(0, 1.5, 2); // eye position inside the cockpit asset, ship-local
+function _exteriorShipModel() {
+  const keepGlow  = selfMesh.userData.glowMesh;
+  const keepLight = selfMesh.userData.engineLight;
+  return selfMesh.children.find(c => c !== camera && c !== keepGlow && c !== keepLight && c !== _cockpitModel);
+}
+function _toggleCockpitView() {
+  if (_selectedShipId !== 'spaceship') return; // Falcon only
+  _cockpitView = !_cockpitView;
+  const ext = _exteriorShipModel();
+  if (_cockpitView) {
+    if (ext) ext.visible = false;
+    if (!_cockpitModel && !_cockpitModelLoading) {
+      _cockpitModelLoading = true;
+      loadModel('assets/ships/falcon_cockpit.glb', 6, model => {
+        _cockpitModelLoading = false;
+        if (!model || _selectedShipId !== 'spaceship') return;
+        model.position.copy(COCKPIT_LOCAL_POS);
+        _cockpitModel = model;
+        selfMesh.add(_cockpitModel);
+        _cockpitModel.visible = _cockpitView;
+      });
+    } else if (_cockpitModel) {
+      _cockpitModel.visible = true;
+    }
+  } else {
+    if (ext) ext.visible = true;
+    if (_cockpitModel) _cockpitModel.visible = false;
+  }
+}
+document.addEventListener('keydown', e => {
+  if ((e.key === 'c' || e.key === 'C') && gameMode === 'flight') {
+    const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (typing) return;
+    _toggleCockpitView();
+  }
+});
 
 // ── Remote players ────────────────────────────────────────────────────────────
 const remotePlayers = {};
@@ -7584,7 +7633,11 @@ function updateShip() {
 
   // ── Smooth follow camera ─────────────────────────────────────────────────
   const camDist = 38;
-  _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+  if (_cockpitView) {
+    _camPos.copy(COCKPIT_LOCAL_POS).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+  } else {
+    _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+  }
 
   // Camera shake scales with boost throttle
   camShakeAmt = boostThrottle * 3.5;
@@ -7594,6 +7647,13 @@ function updateShip() {
     _camPos.z += (Math.random() - 0.5) * camShakeAmt * 0.6;
   }
 
+  // Cockpit view is rigidly mounted (no lag) — chasing a lerp/slerp target while sitting
+  // inside the cockpit mesh would make the interior visibly swim relative to the camera.
+  if (_cockpitView) {
+    camera.position.copy(_camPos);
+    camera.quaternion.copy(selfMesh.quaternion);
+    return;
+  }
   camera.position.lerp(_camPos, 0.1);
 
   // Slerp camera rotation toward ship — avoids lookAt flipping upside down
