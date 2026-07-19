@@ -5432,11 +5432,13 @@ const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.V
 let _cockpitDashPatch = null;
 function _ensureCockpitDashPatch() {
   if (_cockpitDashPatch) return _cockpitDashPatch;
-  const geo = new THREE.BoxGeometry(4, 1.2, 1.6);
+  // Small and tucked low/close so it only fills the sliver of open space at the very
+  // bottom edge of the view, without extending up into (or overlapping) the actual
+  // cockpit model geometry above it.
+  const geo = new THREE.BoxGeometry(3, 0.35, 1);
   const mat = new THREE.MeshStandardMaterial({ color: 0x4a4f56, metalness: 0.75, roughness: 0.4, emissive: 0x0a0c10, emissiveIntensity: 0.6 });
   _cockpitDashPatch = new THREE.Mesh(geo, mat);
-  _cockpitDashPatch.position.set(0, -1.1, -1.6);
-  _cockpitDashPatch.rotation.x = -0.25;
+  _cockpitDashPatch.position.set(0, -1.9, -1.2);
   return _cockpitDashPatch;
 }
 function _exteriorShipModel() {
