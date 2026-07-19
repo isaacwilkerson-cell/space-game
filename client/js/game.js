@@ -5422,6 +5422,8 @@ const COCKPIT_CAM_POS = new THREE.Vector3(0, 3.6, 3.5); // lowered slightly from
 // seat instead of out the windshield. Rotate the model itself, not the camera, so the
 // camera's forward still matches actual travel direction.
 const COCKPIT_MODEL_YAW = Math.PI;
+// Tilts the view up a bit so the dashboard/floor of the cockpit interior isn't in frame.
+const COCKPIT_CAM_PITCH_UP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.18);
 function _exteriorShipModel() {
   const keepGlow  = selfMesh.userData.glowMesh;
   const keepLight = selfMesh.userData.engineLight;
@@ -7668,8 +7670,9 @@ function updateShip() {
     camera.position.copy(_camPos);
     // Facing (not position) matches the ship's actual travel direction here, same
     // convention as the normal chase cam below — if the view feels backward, it's the
-    // cockpit model's own authored orientation that's flipped, not this.
-    camera.quaternion.copy(selfMesh.quaternion);
+    // cockpit model's own authored orientation that's flipped, not this. The extra pitch
+    // multiply tilts the view up so the cockpit's own dashboard/floor stays out of frame.
+    camera.quaternion.copy(selfMesh.quaternion).multiply(COCKPIT_CAM_PITCH_UP);
     return;
   }
   camera.position.lerp(_camPos, 0.1);
