@@ -5415,7 +5415,7 @@ let _cockpitModelLoading = false;
 // account for the canopy glass above pulling that center down, so the camera needs its
 // own higher offset rather than sharing the model's anchor point.
 const COCKPIT_MODEL_POS = new THREE.Vector3(0, 1.5, 2);
-const COCKPIT_CAM_POS = new THREE.Vector3(0, 4, 2);
+const COCKPIT_CAM_POS = new THREE.Vector3(0, 3, 3.5); // backed up (+Z, away from the windshield) and lowered (-Y) from the first pass
 // The cockpit asset's own windshield/seat orientation was authored facing the opposite way
 // from the -Z "forward" convention the camera and ship travel direction both use — without
 // this the camera (correctly facing travel direction) ends up looking at the back of the
@@ -7652,8 +7652,10 @@ function updateShip() {
     _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   }
 
-  // Camera shake scales with boost throttle
-  camShakeAmt = boostThrottle * 3.5;
+  // Camera shake scales with boost throttle — cut way down in cockpit view, where the
+  // camera sits rigidly inside a fixed interior mesh and any shake reads as much more
+  // jarring/disorienting than the same jitter does on the normal exterior chase cam.
+  camShakeAmt = boostThrottle * 3.5 * (_cockpitView ? 0.1 : 1);
   if (camShakeAmt > 0.01) {
     _camPos.x += (Math.random() - 0.5) * camShakeAmt;
     _camPos.y += (Math.random() - 0.5) * camShakeAmt;
