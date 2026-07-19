@@ -5409,7 +5409,13 @@ selfMesh.add(camera);
 let _cockpitView = false;
 let _cockpitModel = null;
 let _cockpitModelLoading = false;
-const COCKPIT_LOCAL_POS = new THREE.Vector3(0, 1.5, 2); // eye position inside the cockpit asset, ship-local
+// Where the cockpit model itself sits (ship-local) vs. where the camera's eye actually
+// goes — kept separate because the model's own bounding-box center (where loadModel()
+// centers it before we place it here) sits well below actual eye/seat height once you
+// account for the canopy glass above pulling that center down, so the camera needs its
+// own higher offset rather than sharing the model's anchor point.
+const COCKPIT_MODEL_POS = new THREE.Vector3(0, 1.5, 2);
+const COCKPIT_CAM_POS = new THREE.Vector3(0, 4, 2);
 function _exteriorShipModel() {
   const keepGlow  = selfMesh.userData.glowMesh;
   const keepLight = selfMesh.userData.engineLight;
@@ -5426,7 +5432,7 @@ function _toggleCockpitView() {
       loadModel('assets/ships/falcon_cockpit.glb', 6, model => {
         _cockpitModelLoading = false;
         if (!model || _selectedShipId !== 'spaceship') return;
-        model.position.copy(COCKPIT_LOCAL_POS);
+        model.position.copy(COCKPIT_MODEL_POS);
         _cockpitModel = model;
         selfMesh.add(_cockpitModel);
         _cockpitModel.visible = _cockpitView;
@@ -7634,7 +7640,7 @@ function updateShip() {
   // ── Smooth follow camera ─────────────────────────────────────────────────
   const camDist = 38;
   if (_cockpitView) {
-    _camPos.copy(COCKPIT_LOCAL_POS).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+    _camPos.copy(COCKPIT_CAM_POS).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   } else {
     _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   }
