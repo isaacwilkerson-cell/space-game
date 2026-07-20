@@ -6299,6 +6299,18 @@ function drawReticle() {
   const moveAmt  = baseMove + speedT * speedT * 0.026;
   const maxR     = Math.sqrt(cx*cx + cy*cy) * 1.05;
   rCtx.lineWidth = 1.2;
+  // In cockpit view this is a full-screen radial overlay drawn independent of the 3D scene,
+  // so streaks were rendering right over the solid cockpit frame/dash instead of stopping
+  // at the "glass" — clip to roughly the windshield's screen area (upper-center, well short
+  // of the dash patch at the bottom and the frame at the sides) so they only ever appear to
+  // pass by outside the glass, not through the cockpit itself.
+  const _cockpitClip = _cockpitView;
+  if (_cockpitClip) {
+    rCtx.save();
+    rCtx.beginPath();
+    rCtx.rect(cx - reticleCanvas.width * 0.32, cy - reticleCanvas.height * 0.4, reticleCanvas.width * 0.64, reticleCanvas.height * 0.55);
+    rCtx.clip();
+  }
   for (const s of _streaks) {
     s.r += moveAmt * s.spd;
     if (s.r > 1) { s.r = 0.0; s.ang = Math.random() * Math.PI * 2; }
@@ -6319,6 +6331,7 @@ function drawReticle() {
     rCtx.lineTo(cx + cos*r1, cy + sin*r1);
     rCtx.stroke();
   }
+  if (_cockpitClip) rCtx.restore();
 
   // Planet-walk HUD markers (drawn before early-return so they always appear)
   if (gameMode === 'planet_walk') {
@@ -7694,7 +7707,7 @@ function updateShip() {
   // Camera shake scales with boost throttle — cut way down in cockpit view, where the
   // camera sits rigidly inside a fixed interior mesh and any shake reads as much more
   // jarring/disorienting than the same jitter does on the normal exterior chase cam.
-  camShakeAmt = boostThrottle * 3.5 * (_cockpitView ? 0.015 : 1);
+  camShakeAmt = boostThrottle * 3.5 * (_cockpitView ? 0.002 : 1);
   if (camShakeAmt > 0.01) {
     _camPos.x += (Math.random() - 0.5) * camShakeAmt;
     _camPos.y += (Math.random() - 0.5) * camShakeAmt;
