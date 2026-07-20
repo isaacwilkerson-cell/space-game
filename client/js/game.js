@@ -45,6 +45,10 @@ const SHIP_DEFS = {
   // the sign (-90° rather than +90°) points the nose away from the camera instead of at it.
   // sizeMul scales it up relative to the other ships' normal target size.
   cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
+  // Same "lying on its side" signature as cargo_ship above (X ~14.9 vs Z ~9.45 in its raw
+  // bounding box) — same 90° correction, sign not yet visually confirmed so may need
+  // flipping to +Math.PI/2 if the nose ends up facing the camera instead of away from it.
+  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: -Math.PI / 2 },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -1861,8 +1865,12 @@ _hangarUI.innerHTML = `
   </div>
   <div id="hangar-panels" style="flex:1; overflow-y:auto; padding:16px;">
     <div id="htab-ship" style="display:none;">
-      <div style="font-size:11px;color:#0af8;margin-bottom:10px;letter-spacing:1px;">FIGHTER MODEL</div>
-      <div id="hangar-ship-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div style="font-size:11px;color:#0af8;margin-bottom:14px;letter-spacing:1px;">FIGHTER MODEL</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px;">
+        <button id="hangar-ship-prev" style="background:rgba(0,170,255,0.12);border:1px solid #0af8;color:#0af;font-size:20px;width:38px;height:38px;border-radius:4px;cursor:pointer;line-height:1;">◀</button>
+        <div id="hangar-ship-name" style="min-width:120px;text-align:center;font-size:14px;letter-spacing:1px;color:#fff;"></div>
+        <button id="hangar-ship-next" style="background:rgba(0,170,255,0.12);border:1px solid #0af8;color:#0af;font-size:20px;width:38px;height:38px;border-radius:4px;cursor:pointer;line-height:1;">▶</button>
+      </div>
     </div>
     <div id="htab-color">
       <div style="font-size:11px;color:#0af8;margin-bottom:10px;letter-spacing:1px;">HULL COLOR</div>
@@ -2196,19 +2204,13 @@ _hangarUI.querySelectorAll('.h-tab').forEach(btn => {
   });
 });
 
-// Ship picker — swaps the actual flyable model (selfMesh) and the hangar display ship,
-// both live, plus persists the choice for next time (index.html's preload reads it too).
-const _shipListEl = document.getElementById('hangar-ship-list');
+// Ship picker — left/right arrows cycle through SHIP_DEFS, swapping the actual flyable
+// model (selfMesh) and the hangar display ship live, and persisting the choice for next
+// time (index.html's preload reads it too).
+const _shipNameEl = document.getElementById('hangar-ship-name');
+const SHIP_IDS = Object.keys(SHIP_DEFS);
 function _renderShipList() {
-  _shipListEl.innerHTML = '';
-  Object.entries(SHIP_DEFS).forEach(([id, def]) => {
-    const btn = document.createElement('button');
-    btn.textContent = (id === _selectedShipId ? '● ' : '○ ') + def.name;
-    const active = id === _selectedShipId;
-    btn.style.cssText = `background:${active ? 'rgba(0,255,140,0.12)' : 'transparent'};border:1px solid ${active ? '#0f6' : '#0af4'};color:${active ? '#0f6' : '#0af'};font-family:'Courier New',monospace;font-size:12px;padding:9px 12px;cursor:pointer;letter-spacing:1px;text-align:left;`;
-    btn.addEventListener('click', () => _selectShip(id));
-    _shipListEl.appendChild(btn);
-  });
+  _shipNameEl.textContent = SHIP_DEFS[_selectedShipId].name;
 }
 function _selectShip(id) {
   if (id === _selectedShipId || !SHIP_DEFS[id]) return;
@@ -2218,6 +2220,13 @@ function _selectShip(id) {
   _loadHangarDisplayShip();
   _loadSelfShipModel();
 }
+function _cycleShip(dir) {
+  const idx = SHIP_IDS.indexOf(_selectedShipId);
+  const nextIdx = (idx + dir + SHIP_IDS.length) % SHIP_IDS.length;
+  _selectShip(SHIP_IDS[nextIdx]);
+}
+document.getElementById('hangar-ship-prev').addEventListener('click', () => _cycleShip(-1));
+document.getElementById('hangar-ship-next').addEventListener('click', () => _cycleShip(1));
 // Swaps the model attached to the player's actual flyable ship — mirrors the same
 // "strip everything except camera/glow/light, then attach the new model" logic the
 // initial waitForShip() preload swap uses, so switching mid-session behaves identically
