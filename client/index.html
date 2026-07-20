@@ -194,11 +194,19 @@
   <script>
     // Mirrors SHIP_DEFS in game.js — this preload runs before game.js even starts loading
     // (to get a head start on the biggest asset), so it reads the same saved choice itself
-    // rather than waiting for game.js's own copy of the lookup table to exist yet.
-    const _SHIP_ASSET_BY_ID = { cargo: 'assets/ships/cargo_ship.glb', spaceship: 'assets/ships/spaceship.glb' };
+    // rather than waiting for game.js's own copy of the lookup table to exist yet. Keep this
+    // in sync with SHIP_DEFS whenever a ship is added there — this duplication has already
+    // caused two real bugs (a ship silently missing here falls back to the Falcon, and a
+    // stale copy of the old rotate-after-centering bug), so if this drifts again, consider
+    // just doing a synchronous <script> include of the SHIP_DEFS block instead.
+    const _SHIP_DEFS_PRELOAD = {
+      spaceship: { asset: 'assets/ships/spaceship.glb' },
+      cargo:     { asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
+      starwing:  { asset: 'assets/ships/star_wing.glb',  yawOffset: -Math.PI / 2 },
+    };
     const _savedShipId = localStorage.getItem('sn_selected_ship');
-    const _preloadShipAsset = _SHIP_ASSET_BY_ID[_savedShipId] || _SHIP_ASSET_BY_ID.spaceship;
-    fetch(_preloadShipAsset)
+    const _preloadShipDef = _SHIP_DEFS_PRELOAD[_savedShipId] || _SHIP_DEFS_PRELOAD.spaceship;
+    fetch(_preloadShipDef.asset)
       .then(r => r.blob())
       .then(blob => {
         const url = URL.createObjectURL(blob);
@@ -209,12 +217,17 @@
           // cargo_ship.glb has a baked-in starfield/particle decoration (node "Particle_169")
           // meant for its own standalone viewer scene, not the actual ship — strip it before
           // it ever gets scaled/centered. Mirrors _stripShipStars() in game.js. No-op for
-          // ships without that node (e.g. the original spaceship).
+          // ships without that node.
           const _starNodes = [];
           model.traverse(c => { if (c.name === 'Particle_169') _starNodes.push(c); });
           _starNodes.forEach(c => { if (c.parent) c.parent.remove(c); });
-          // Mirrors SHIP_DEFS[id].sizeMul in game.js — cargo_ship.glb is shown 2x bigger.
-          const _targetSize = 20 * (_savedShipId === 'cargo' ? 2 : 1);
+          // Rotate BEFORE measuring/centering — mirrors _normalizeShipModel() in game.js.
+          // Position centers the model's local origin (its pivot, not necessarily the
+          // geometry's centroid) around wherever the bounding box happens to be; rotating
+          // afterward would swing the geometry's actual centroid away from world origin as
+          // the pivot spins around it (this was the ship-appears-off-center bug).
+          const _targetSize = 20 * (_preloadShipDef.sizeMul || 1);
+          model.rotation.set(0, _preloadShipDef.yawOffset || 0, 0);
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z);
@@ -224,10 +237,6 @@
             const c = box.getCenter(new THREE.Vector3());
             model.position.set(-c.x * s, -c.y * s, -c.z * s);
           }
-          // Mirrors SHIP_DEFS[id].yawOffset in game.js — cargo_ship.glb's nose-to-tail length
-          // runs along local X instead of the -Z the flight camera rig assumes (a 90° yaw
-          // fixes the axis), and the sign points the nose away from the camera instead of at it.
-          if (_savedShipId === 'cargo') model.rotation.y = -Math.PI / 2;
           window.PRELOADED_SHIP = model;
         }, undefined, () => { URL.revokeObjectURL(url); window.PRELOADED_SHIP = false; });
       }).catch(e => { _shipDbg('fetch ERROR: ' + e); window.PRELOADED_SHIP = false; });

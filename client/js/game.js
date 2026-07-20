@@ -2231,6 +2231,7 @@ document.getElementById('hangar-ship-next').addEventListener('click', () => _cyc
 // "strip everything except camera/glow/light, then attach the new model" logic the
 // initial waitForShip() preload swap uses, so switching mid-session behaves identically
 // to picking a ship before ever launching.
+let _userPickedShipColor = false; // only re-tint on ship switch if the player actually chose a color
 function _loadSelfShipModel() {
   loadModel(_selectedShipAsset(), 20, model => {
     if (!model) return;
@@ -2239,7 +2240,11 @@ function _loadSelfShipModel() {
     const keepLight = selfMesh.userData.engineLight;
     selfMesh.children.slice().forEach(c => { if (c !== camera && c !== keepGlow && c !== keepLight) selfMesh.remove(c); });
     selfMesh.add(model);
-    _applyShipColor(document.getElementById('hangar-hex').value); // keep whatever hull color was already chosen
+    // A ship's own materials carry its real, often multi-color paint scheme (checked: the
+    // Star Wing alone has grey/black/red/yellow-green/white/blue parts) — auto-applying
+    // the hull-color tint on every switch flattened all of that into one solid color even
+    // when the player never touched the color picker. Only reapply it if they actually did.
+    if (_userPickedShipColor) _applyShipColor(document.getElementById('hangar-hex').value);
   });
 }
 _renderShipList();
@@ -2251,12 +2256,13 @@ _shipColors.forEach(hex => {
   const s = document.createElement('div');
   s.style.cssText = `width:36px;height:36px;border-radius:4px;background:${hex};cursor:pointer;border:2px solid transparent;transition:border-color 0.15s;`;
   s.title = hex;
-  s.addEventListener('click', () => { _applyShipColor(hex); document.getElementById('hangar-hex').value = hex; });
+  s.addEventListener('click', () => { _userPickedShipColor = true; _applyShipColor(hex); document.getElementById('hangar-hex').value = hex; });
   s.addEventListener('mouseenter', () => { s.style.borderColor = '#fff'; });
   s.addEventListener('mouseleave', () => { s.style.borderColor = 'transparent'; });
   _swatchEl.appendChild(s);
 });
 document.getElementById('hangar-hex-apply').addEventListener('click', () => {
+  _userPickedShipColor = true;
   _applyShipColor(document.getElementById('hangar-hex').value);
 });
 
@@ -2297,17 +2303,22 @@ document.getElementById('hangar-launch-btn').addEventListener('click', () => {
 
 function _applyShipColor(hex) {
   const col = new THREE.Color(hex);
+  // material.color multiplies straight into any texture map it has (that's how Three.js
+  // combines a base color with a diffuse texture) — force-tinting textured materials here
+  // was washing out real ship textures with whatever hull color happened to be selected
+  // (including the default, on every single ship switch, not just an explicit color pick).
+  // Only tint flat/untextured materials; leave anything with its own texture alone.
   if (_hangarShip) _hangarShip.traverse(c => {
     if (c.isMesh && c.material) {
       const mats = Array.isArray(c.material) ? c.material : [c.material];
-      mats.forEach(m => { if (m.color) m.color.set(col); });
+      mats.forEach(m => { if (m.color && !m.map) m.color.set(col); });
     }
   });
   // Also tint the player's actual ship
   selfMesh.traverse(c => {
     if (c.isMesh && c.material) {
       const mats = Array.isArray(c.material) ? c.material : [c.material];
-      mats.forEach(m => { if (m.color) m.color.set(col); });
+      mats.forEach(m => { if (m.color && !m.map) m.color.set(col); });
     }
   });
 }
