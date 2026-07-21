@@ -52,16 +52,21 @@ const SHIP_DEFS = {
   // to the others.
   // interiorNode: unlike the Falcon (a separate falcon_cockpit.glb asset), the Star Wing
   // model already has its own cockpit interior baked in as a "Cockpit" node group among its
-  // top-level parts (alongside MainHull, wings, landing gear, etc.) — cockpit view here just
-  // hides those other top-level siblings instead of swapping in another model entirely.
-  // interiorCamPos was picked from that node's own measured bounding-box center (in the
-  // ship's final post-normalize local space), nudged up a bit for eye height — may need
-  // further tuning once actually seen in place.
-  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7, interiorNode: 'Cockpit', interiorCamPos: new THREE.Vector3(0, -0.3, -2.6) },
+  // top-level parts (alongside MainHull, wings, landing gear, etc.) — walkableInterior
+  // walks around inside just that node's own geometry (small — it's a one-seat cockpit
+  // bubble, so "walking around" is necessarily cramped) instead of swapping in another
+  // model or hiding siblings for a static view. interiorSpawn was picked from that node's
+  // own measured bounding-box center (in the ship's final post-normalize local space),
+  // nudged up a bit for eye height — may need further tuning once actually seen in place.
+  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7, walkableInterior: true, interiorNode: 'Cockpit', interiorSpawn: new THREE.Vector3(0, -0.3, -2.6) },
   // Z is already the longest raw-bbox dimension (unlike cargo_ship/star_wing), matching the
   // -Z forward convention by default — no yaw correction applied yet. Report back if it
   // turns out sideways or backwards once actually flown, same as the other two needed.
-  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb' },
+  // No interiorNode — unlike Star Wing's separate cockpit bubble, this model doesn't split
+  // exterior/interior into different top-level parts, so the whole thing serves as the
+  // walkable room (matches the real Lethal Company ship it's from, which is a single
+  // walk-in interior).
+  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0, 0, 0) },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5493,17 +5498,8 @@ function _exteriorShipModel() {
   const keepLight = selfMesh.userData.engineLight;
   return selfMesh.children.find(c => c !== camera && c !== keepGlow && c !== keepLight && c !== _cockpitModel);
 }
-// Nodes hidden by the Star Wing's same-model interior toggle (its own top-level siblings
-// of the "Cockpit" group), tracked so exactly those get restored on the way back out.
-let _interiorHiddenNodes = [];
-function _currentCockpitCamPos() {
-  const def = SHIP_DEFS[_selectedShipId];
-  return (def && def.interiorCamPos) || COCKPIT_CAM_POS;
-}
 function _toggleCockpitView() {
-  const def = SHIP_DEFS[_selectedShipId];
-  const usesOwnInterior = def && def.interiorNode; // Star Wing: hide siblings of its own Cockpit node
-  if (_selectedShipId !== 'spaceship' && !usesOwnInterior) return; // no cockpit view for this ship
+  if (_selectedShipId !== 'spaceship') return; // Falcon's rigid cockpit view only
   _cockpitView = !_cockpitView;
   const ext = _exteriorShipModel();
   if (_cockpitView) {
@@ -5511,22 +5507,6 @@ function _toggleCockpitView() {
     _cockpitDashPatch.visible = true;
     camera.add(_ensureCockpitGlass());
     _cockpitGlass.visible = true;
-    if (usesOwnInterior) {
-      _interiorHiddenNodes = [];
-      // The interior node is nested well below ext's own top-level child (a single
-      // "Sketchfab_model" wrapper, not a flat list of ship parts) — find it directly and
-      // hide its real siblings (under its own parent), not ext's immediate children.
-      const interiorNode = ext ? ext.getObjectByName(def.interiorNode) : null;
-      if (interiorNode && interiorNode.parent) {
-        interiorNode.parent.children.forEach(c => {
-          if (c !== interiorNode && c.visible) {
-            _interiorHiddenNodes.push(c);
-            c.visible = false;
-          }
-        });
-      }
-      return;
-    }
     if (ext) ext.visible = false;
     if (!_cockpitModel && !_cockpitModelLoading) {
       _cockpitModelLoading = true;
@@ -5543,21 +5523,96 @@ function _toggleCockpitView() {
       _cockpitModel.visible = true;
     }
   } else {
-    if (_interiorHiddenNodes.length) {
-      _interiorHiddenNodes.forEach(c => { c.visible = true; });
-      _interiorHiddenNodes = [];
-    }
     if (ext) ext.visible = true;
     if (_cockpitModel) _cockpitModel.visible = false;
     if (_cockpitDashPatch) _cockpitDashPatch.visible = false;
     if (_cockpitGlass) _cockpitGlass.visible = false;
   }
 }
+
+// ── Walkable ship interior (C, Star Wing / Shuttle) ─────────────────────────────
+// Unlike the Falcon's rigid cockpit view above, these two actually let you get up and
+// walk around inside the ship's own modeled geometry — the ship stops drifting (velocity
+// zeroed) while you're in there, the camera gets reparented onto selfMesh (it normally
+// lives directly in `scene`, detached every frame by updateShip()'s own chase-cam lerp —
+// see "Camera smoothing" there) so it rides along with the ship for free, and movement is
+// a simple WASD-plus-mouselook-plus-floor-raycast walker in the ship's local space.
+let _shipInteriorView = false;
+let _shipIntYaw = 0, _shipIntPitch = 0;
+let _shipIntCollidables = [];
+let _shipIntBBox = null;
+const _shipIntEyeHeight = 1.5;
+const _shipIntSpeed = 0.5; // slow — these interiors (esp. the cockpit) are small/cramped
+function _enterShipInteriorWalk() {
+  const def = SHIP_DEFS[_selectedShipId];
+  const ext = _exteriorShipModel();
+  if (!def || !def.walkableInterior || !ext) return;
+  const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
+  if (!root) return;
+  _shipIntCollidables = [];
+  root.traverse(c => { if (c.isMesh) _shipIntCollidables.push(c); });
+  if (!_shipIntCollidables.length) return;
+  _shipIntBBox = new THREE.Box3().setFromObject(root);
+  _shipInteriorView = true;
+  gameMode = 'ship_interior';
+  self.velocity.set(0, 0, 0); // ship stops drifting while you're walking around inside it
+  scene.remove(camera);
+  selfMesh.add(camera);
+  camera.position.copy(def.interiorSpawn || new THREE.Vector3(0, 0, 0));
+  _shipIntYaw = 0; _shipIntPitch = 0;
+  camera.quaternion.identity();
+  document.body.style.cursor = 'none';
+  renderer.domElement.requestPointerLock();
+}
+function _exitShipInteriorWalk() {
+  _shipInteriorView = false;
+  gameMode = 'flight';
+  selfMesh.remove(camera);
+  scene.add(camera);
+  camera.position.copy(selfMesh.position).add(new THREE.Vector3(0, 8, 35).applyQuaternion(selfMesh.quaternion));
+  camera.quaternion.copy(selfMesh.quaternion);
+}
+// Floor raycast + WASD + mouselook, all in ship-local space (camera is a child of selfMesh
+// here, so its .position/.quaternion are already local — no world-space math needed).
+function _updateShipInteriorWalk() {
+  _shipIntYaw   -= _fpMouseDX * 0.0028;
+  _shipIntPitch -= _fpMouseDY * 0.0028;
+  _shipIntPitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, _shipIntPitch));
+  _fpMouseDX = 0; _fpMouseDY = 0;
+
+  const cosY = Math.cos(_shipIntYaw), sinY = Math.sin(_shipIntYaw);
+  const fwd   = new THREE.Vector3(-sinY, 0, -cosY);
+  const right = new THREE.Vector3(cosY, 0, -sinY);
+  const move = new THREE.Vector3();
+  if (keys['w']) move.add(fwd);
+  if (keys['s']) move.sub(fwd);
+  if (keys['a']) move.sub(right);
+  if (keys['d']) move.add(right);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(_shipIntSpeed);
+  // Clamp to the interior's own bounding box (with a small margin) — there's no real wall
+  // collision here, just a hard box, but these interiors are small enough (especially the
+  // Star Wing's one-seat cockpit bubble) that without SOME bound you'd walk straight out
+  // through the hull/canopy into space within a couple of steps.
+  const margin = 0.3;
+  camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
+  camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
+
+  // Floor: raycast straight down from above the player's current XZ, clamp to it.
+  const rc = new THREE.Raycaster(new THREE.Vector3(camera.position.x, _shipIntBBox.max.y + 5, camera.position.z), new THREE.Vector3(0, -1, 0));
+  const hits = rc.intersectObjects(_shipIntCollidables, false);
+  const floorY = hits.length > 0 ? hits[0].point.y : _shipIntBBox.min.y;
+  camera.position.y = floorY + _shipIntEyeHeight;
+
+  camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
+}
 document.addEventListener('keydown', e => {
-  if ((e.key === 'c' || e.key === 'C') && gameMode === 'flight') {
+  if ((e.key === 'c' || e.key === 'C') && (gameMode === 'flight' || gameMode === 'ship_interior')) {
     const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (typing) return;
-    _toggleCockpitView();
+    if (gameMode === 'ship_interior') { _exitShipInteriorWalk(); return; }
+    const def = SHIP_DEFS[_selectedShipId];
+    if (def && def.walkableInterior) _enterShipInteriorWalk();
+    else _toggleCockpitView();
   }
 });
 
@@ -6680,7 +6735,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', e => {
   if (!pointerLocked) return;
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station' || gameMode === 'ship_interior') {
     const cap = 40;
     _fpMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
@@ -7761,7 +7816,7 @@ function updateShip() {
   // ── Smooth follow camera ─────────────────────────────────────────────────
   const camDist = 38;
   if (_cockpitView) {
-    _camPos.copy(_currentCockpitCamPos()).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+    _camPos.copy(COCKPIT_CAM_POS).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   } else {
     _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   }
@@ -8171,6 +8226,10 @@ function animate(t) {
     // this must NOT fall into the flight branch below: updateShip() unconditionally moves
     // the ship on WASD input and lerps the camera toward a chase-cam position every frame
     // regardless of pointer lock, which would fight the fixed interior camera framing.
+  } else if (gameMode === 'ship_interior') {
+    // Same reasoning as hangar above — updateShip() would fight the walk-around camera
+    // (which is parented straight onto selfMesh rather than driven by its chase-cam lerp).
+    _updateShipInteriorWalk();
   } else {
     updateShip();
     updateLasers();
