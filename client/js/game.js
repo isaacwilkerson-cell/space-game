@@ -46,10 +46,11 @@ const SHIP_DEFS = {
   // sizeMul scales it up relative to the other ships' normal target size.
   cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
   // X being the longest raw-bbox dimension turned out to be a wide wingspan, not a
-  // sideways-built model like cargo_ship — -90° pointed it left, +90° pointed it right,
-  // so the correct answer was actually no yaw correction at all. sizeMul bumped up — it
-  // read noticeably small next to the others.
-  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', sizeMul: 1.7 },
+  // sideways-built model like cargo_ship — -90°/+90° pointed it left/right, and 0° (its
+  // native orientation) had it facing straight at the camera instead of away from it, so a
+  // plain 180° flip was the actual fix. sizeMul bumped up — it read noticeably small next
+  // to the others.
+  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7 },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
