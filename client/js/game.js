@@ -58,6 +58,10 @@ const SHIP_DEFS = {
   // ship's final post-normalize local space), nudged up a bit for eye height — may need
   // further tuning once actually seen in place.
   starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7, interiorNode: 'Cockpit', interiorCamPos: new THREE.Vector3(0, -0.3, -2.6) },
+  // Z is already the longest raw-bbox dimension (unlike cargo_ship/star_wing), matching the
+  // -Z forward convention by default — no yaw correction applied yet. Report back if it
+  // turns out sideways or backwards once actually flown, same as the other two needed.
+  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb' },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
