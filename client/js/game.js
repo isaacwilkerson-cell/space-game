@@ -6555,7 +6555,7 @@ const overlay = document.getElementById('click-overlay');
 // Drop files in client/assets/sounds/ and add their paths here (optionally with a matching
 // entry in _musicTrackGain if one plays quieter than the rest) and the ArrowUp/Down/Left/
 // Right controls below pick them up with no other changes.
-const _musicPlaylist = ['assets/sounds/bg_music_3.mp4'];
+const _musicPlaylist = [];
 const _musicTrackGain = []; // per-track volume multiplier, index-aligned with _musicPlaylist
 let _musicIndex = 0;
 let _musicUserVolume = 0.25; // the 0..1 level ArrowUp/ArrowDown actually adjust
