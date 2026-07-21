@@ -50,7 +50,14 @@ const SHIP_DEFS = {
   // native orientation) had it facing straight at the camera instead of away from it, so a
   // plain 180° flip was the actual fix. sizeMul bumped up — it read noticeably small next
   // to the others.
-  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7 },
+  // interiorNode: unlike the Falcon (a separate falcon_cockpit.glb asset), the Star Wing
+  // model already has its own cockpit interior baked in as a "Cockpit" node group among its
+  // top-level parts (alongside MainHull, wings, landing gear, etc.) — cockpit view here just
+  // hides those other top-level siblings instead of swapping in another model entirely.
+  // interiorCamPos was picked from that node's own measured bounding-box center (in the
+  // ship's final post-normalize local space), nudged up a bit for eye height — may need
+  // further tuning once actually seen in place.
+  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7, interiorNode: 'Cockpit', interiorCamPos: new THREE.Vector3(0, -0.3, -2.6) },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5482,16 +5489,41 @@ function _exteriorShipModel() {
   const keepLight = selfMesh.userData.engineLight;
   return selfMesh.children.find(c => c !== camera && c !== keepGlow && c !== keepLight && c !== _cockpitModel);
 }
+// Nodes hidden by the Star Wing's same-model interior toggle (its own top-level siblings
+// of the "Cockpit" group), tracked so exactly those get restored on the way back out.
+let _interiorHiddenNodes = [];
+function _currentCockpitCamPos() {
+  const def = SHIP_DEFS[_selectedShipId];
+  return (def && def.interiorCamPos) || COCKPIT_CAM_POS;
+}
 function _toggleCockpitView() {
-  if (_selectedShipId !== 'spaceship') return; // Falcon only
+  const def = SHIP_DEFS[_selectedShipId];
+  const usesOwnInterior = def && def.interiorNode; // Star Wing: hide siblings of its own Cockpit node
+  if (_selectedShipId !== 'spaceship' && !usesOwnInterior) return; // no cockpit view for this ship
   _cockpitView = !_cockpitView;
   const ext = _exteriorShipModel();
   if (_cockpitView) {
-    if (ext) ext.visible = false;
     camera.add(_ensureCockpitDashPatch());
     _cockpitDashPatch.visible = true;
     camera.add(_ensureCockpitGlass());
     _cockpitGlass.visible = true;
+    if (usesOwnInterior) {
+      _interiorHiddenNodes = [];
+      // The interior node is nested well below ext's own top-level child (a single
+      // "Sketchfab_model" wrapper, not a flat list of ship parts) — find it directly and
+      // hide its real siblings (under its own parent), not ext's immediate children.
+      const interiorNode = ext ? ext.getObjectByName(def.interiorNode) : null;
+      if (interiorNode && interiorNode.parent) {
+        interiorNode.parent.children.forEach(c => {
+          if (c !== interiorNode && c.visible) {
+            _interiorHiddenNodes.push(c);
+            c.visible = false;
+          }
+        });
+      }
+      return;
+    }
+    if (ext) ext.visible = false;
     if (!_cockpitModel && !_cockpitModelLoading) {
       _cockpitModelLoading = true;
       loadModel('assets/ships/falcon_cockpit.glb', 6, model => {
@@ -5507,6 +5539,10 @@ function _toggleCockpitView() {
       _cockpitModel.visible = true;
     }
   } else {
+    if (_interiorHiddenNodes.length) {
+      _interiorHiddenNodes.forEach(c => { c.visible = true; });
+      _interiorHiddenNodes = [];
+    }
     if (ext) ext.visible = true;
     if (_cockpitModel) _cockpitModel.visible = false;
     if (_cockpitDashPatch) _cockpitDashPatch.visible = false;
@@ -7721,7 +7757,7 @@ function updateShip() {
   // ── Smooth follow camera ─────────────────────────────────────────────────
   const camDist = 38;
   if (_cockpitView) {
-    _camPos.copy(COCKPIT_CAM_POS).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
+    _camPos.copy(_currentCockpitCamPos()).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   } else {
     _camPos.set(0, 10, camDist).applyQuaternion(selfMesh.quaternion).add(selfMesh.position);
   }
