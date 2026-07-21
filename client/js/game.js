@@ -46,9 +46,9 @@ const SHIP_DEFS = {
   // sizeMul scales it up relative to the other ships' normal target size.
   cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
   // Same "lying on its side" signature as cargo_ship above (X ~14.9 vs Z ~9.45 in its raw
-  // bounding box) — same 90° correction, sign not yet visually confirmed so may need
-  // flipping to +Math.PI/2 if the nose ends up facing the camera instead of away from it.
-  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: -Math.PI / 2 },
+  // bounding box) — same 90° correction; -90° pointed it left instead of straight ahead,
+  // so flipped to +90°. sizeMul bumped up — it read noticeably small next to the others.
+  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI / 2, sizeMul: 1.7 },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';

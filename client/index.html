@@ -202,7 +202,7 @@
     const _SHIP_DEFS_PRELOAD = {
       spaceship: { asset: 'assets/ships/spaceship.glb' },
       cargo:     { asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
-      starwing:  { asset: 'assets/ships/star_wing.glb',  yawOffset: -Math.PI / 2 },
+      starwing:  { asset: 'assets/ships/star_wing.glb',  yawOffset: Math.PI / 2, sizeMul: 1.7 },
     };
     const _savedShipId = localStorage.getItem('sn_selected_ship');
     const _preloadShipDef = _SHIP_DEFS_PRELOAD[_savedShipId] || _SHIP_DEFS_PRELOAD.spaceship;
