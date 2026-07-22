@@ -5591,17 +5591,36 @@ function _enterShipInteriorWalk() {
     }
   });
   if (!_shipIntCollidables.length) return;
-  // Precompute each railing's own local-space box once, up front — used for a column-
-  // overlap check every frame (does the candidate XZ position, extended across the
-  // player's whole standing height, overlap the rail's box at all) instead of a raycast,
-  // which is fragile against thin (~0.3 unit) geometry once the player's Y drifts at all.
+  // Keep each segment's own accurate (thin) box — merging touching segments into one AABB
+  // was tried and broke worse: a rail that loops around a corner or runs the length of the
+  // catwalk perimeter produced one giant rectangular box whose "footprint" swallowed most
+  // of the open floor along with the actual rail. Instead, cluster segments by spatial
+  // adjacency (touching/overlapping within a small gap tolerance, to bridge seams between
+  // tiles of the same real rail run) just to know which segments belong to the same
+  // physical rail — the per-segment shape below stays accurate, but the "already standing
+  // here" exemption in the movement check treats the whole cluster as one unit, so crossing
+  // a tile seam mid-rail doesn't re-trigger a block.
   selfMesh.updateMatrixWorld(true);
-  _shipIntRailingBoxesLocal = _railingMeshes.map(m => {
+  const _rawRailBoxes = _railingMeshes.map(m => {
     const wb = new THREE.Box3().setFromObject(m);
     const lMin = selfMesh.worldToLocal(wb.min.clone());
     const lMax = selfMesh.worldToLocal(wb.max.clone());
     return new THREE.Box3().setFromPoints([lMin, lMax]);
   });
+  const _adjGap = 0.4;
+  const _touches = (a, b) =>
+    a.min.x - _adjGap <= b.max.x && a.max.x + _adjGap >= b.min.x &&
+    a.min.y - _adjGap <= b.max.y && a.max.y + _adjGap >= b.min.y &&
+    a.min.z - _adjGap <= b.max.z && a.max.z + _adjGap >= b.min.z;
+  const _parent = _rawRailBoxes.map((_, i) => i);
+  const _find = i => { while (_parent[i] !== i) { _parent[i] = _parent[_parent[i]]; i = _parent[i]; } return i; };
+  const _union = (i, j) => { const ri = _find(i), rj = _find(j); if (ri !== rj) _parent[ri] = rj; };
+  for (let i = 0; i < _rawRailBoxes.length; i++) {
+    for (let j = i + 1; j < _rawRailBoxes.length; j++) {
+      if (_touches(_rawRailBoxes[i], _rawRailBoxes[j])) _union(i, j);
+    }
+  }
+  _shipIntRailingBoxesLocal = _rawRailBoxes.map((box, i) => ({ box, cluster: _find(i) }));
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
   // position against a world-space box was the actual bug behind "you just see space": with
@@ -5672,15 +5691,22 @@ function _updateShipInteriorWalk() {
   // check: does the candidate XZ position, extended across the player's whole standing
   // height, overlap the rail's precomputed local box at all.
   if (move.lengthSq() > 0 && _shipIntJumpOffset < SHIP_INT_RAIL_CLEAR_HEIGHT && _shipIntRailingBoxesLocal.length) {
-    const nx = camera.position.x + move.x, nz = camera.position.z + move.z;
-    const padding = 0.15;
+    const ox = camera.position.x, oz = camera.position.z;
+    const nx = ox + move.x, nz = oz + move.z;
+    const padding = 0;
     const standLowY  = camera.position.y - eyeHeight - 0.2;
     const standHighY = camera.position.y - eyeHeight + eyeHeight + 0.3;
-    const blocked = _shipIntRailingBoxesLocal.some(b =>
-      nx >= b.min.x - padding && nx <= b.max.x + padding &&
-      nz >= b.min.z - padding && nz <= b.max.z + padding &&
-      standHighY >= b.min.y && standLowY <= b.max.y
-    );
+    const overlaps = (x, z, b) =>
+      x >= b.min.x - padding && x <= b.max.x + padding &&
+      z >= b.min.z - padding && z <= b.max.z + padding &&
+      standHighY >= b.min.y && standLowY <= b.max.y;
+    // A rail cluster you're already standing at/alongside (old position overlaps ANY
+    // segment in that cluster) doesn't block further movement — that's "already here", not
+    // "walking through it". Checked per-cluster, not per-segment, so crossing a tile seam
+    // mid-rail doesn't re-trigger a block.
+    const oldClusters = new Set();
+    for (const { box, cluster } of _shipIntRailingBoxesLocal) if (overlaps(ox, oz, box)) oldClusters.add(cluster);
+    const blocked = _shipIntRailingBoxesLocal.some(({ box, cluster }) => overlaps(nx, nz, box) && !oldClusters.has(cluster));
     if (blocked) move.set(0, 0, 0);
   }
 
