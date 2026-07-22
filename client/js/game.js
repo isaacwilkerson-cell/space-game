@@ -65,7 +65,11 @@ const SHIP_DEFS = {
   // ship), not a single continuous shell. A grid raycast across it found two real stacked
   // floor levels; interiorSpawn below is a point directly verified (via raycast, not
   // guessed) to land on the main lower floor rather than in a gap between tiles.
-  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(-5.07, -1.7, -9) },
+  // interiorSpawn sits right against the back wall (z close to the room's -10 edge) — yaw 0
+  // (the default facing) points further into that wall, so without interiorYaw here you'd
+  // take one step forward and be stuck, even though the rest of the ~20-unit room is open.
+  // Facing it 180 degrees points you into the room instead.
+  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(-5.07, -1.7, -9), interiorYaw: Math.PI },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5581,8 +5585,8 @@ function _enterShipInteriorWalk() {
   selfMesh.add(camera);
   const spawn = def.interiorSpawn || new THREE.Vector3(0, 0, 0);
   camera.position.copy(spawn);
-  _shipIntYaw = 0; _shipIntPitch = 0;
-  camera.quaternion.identity();
+  _shipIntYaw = def.interiorYaw || 0; _shipIntPitch = 0;
+  camera.quaternion.setFromEuler(new THREE.Euler(0, _shipIntYaw, 0, 'YXZ'));
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
 }
