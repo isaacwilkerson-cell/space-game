@@ -5543,13 +5543,12 @@ let _shipIntCollidables = [];
 let _shipIntBBox = null;
 const _shipIntEyeHeightStand  = 1.5;
 const _shipIntEyeHeightCrouch = 0.85;
-const _shipIntSpeedStand  = 0.05; // a lot slower than the original 0.5
-const _shipIntSpeedCrouch = 0.03;
+const _shipIntSpeedStand  = 0.07;
+const _shipIntSpeedCrouch = 0.04;
 let _shipIntFeetY = 0;      // where the player is actually standing, tracked separately from the raycast target
 let _shipIntVertVel = 0;    // gravity/jump velocity applied to _shipIntFeetY
 const SHIP_INT_GRAVITY = 0.014;
 const SHIP_INT_JUMP_V = 0.17; // half the height of the 0.34 this had before (height scales with v²)
-const SHIP_INT_MAX_STEP_UP = 0.35; // small bumps/stairs still auto-step; anything taller needs an actual jump
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5637,25 +5636,18 @@ function _updateShipInteriorWalk() {
   const hits = rc.intersectObjects(_shipIntCollidables, false);
   const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
 
-  // No auto-climb: only small bumps/stairs (within MAX_STEP_UP) snap straight up onto —
-  // anything taller is a real ledge you have to jump to reach, not something walking into
-  // it quietly carries you up onto. Drops fall via gravity rather than teleporting down.
+  // Auto-climb is back: walking onto any raised floor snaps straight up onto it. Jumping
+  // still works normally (real arc via gravity) when airborne.
   const grounded = _shipIntVertVel === 0 && Math.abs(_shipIntFeetY - targetFloorY) < 0.05;
   if (keys[' '] && grounded) _shipIntVertVel = SHIP_INT_JUMP_V;
 
-  const rise = targetFloorY - _shipIntFeetY;
-  if (_shipIntVertVel === 0 && rise >= -0.02 && rise <= SHIP_INT_MAX_STEP_UP) {
-    // Standing still relative to the floor, or a small step up/down — snap straight to it.
+  if (_shipIntVertVel === 0) {
     _shipIntFeetY = targetFloorY;
-  } else if (_shipIntVertVel !== 0 || rise < -0.02) {
-    // Genuinely airborne (jumping, or the target is a real drop below current feet) — fall
-    // under gravity and only stop once actually reaching that lower target.
+  } else {
     _shipIntVertVel -= SHIP_INT_GRAVITY;
     _shipIntFeetY += _shipIntVertVel;
     if (_shipIntFeetY <= targetFloorY) { _shipIntFeetY = targetFloorY; _shipIntVertVel = 0; }
   }
-  // else: target is a ledge taller than a step and we're grounded with no jump velocity —
-  // blocked. Hold the current height rather than either climbing or falling into it.
   camera.position.y = _shipIntFeetY + eyeHeight;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
