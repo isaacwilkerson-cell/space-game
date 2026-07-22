@@ -5540,17 +5540,9 @@ function _toggleCockpitView() {
 let _shipInteriorView = false;
 let _shipIntYaw = 0, _shipIntPitch = 0;
 let _shipIntCollidables = [];
-let _shipIntRailingCollidables = []; // subset of _shipIntCollidables tagged as railings — blocks horizontal movement unless jumped over
-let _shipIntRailingBoxesLocal = []; // local-space Box3 per railing mesh, precomputed once on entry
 let _shipIntBBox = null;
 const _shipIntEyeHeight = 1.5;
-const _shipIntSpeed = 0.18; // was way too fast at 0.5
-let _shipIntJumpVel = 0;
-let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
-let _shipIntFloorY = null; // smoothed floor height — see the comment where it's used
-const SHIP_INT_GRAVITY = 0.018;
-const SHIP_INT_JUMP_V = 0.34;
-const SHIP_INT_RAIL_CLEAR_HEIGHT = 0.7; // jump offset needed before railings stop blocking movement
+const _shipIntSpeed = 0.5;
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5558,7 +5550,6 @@ function _enterShipInteriorWalk() {
   const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
   if (!root) return;
   _shipIntCollidables = [];
-  _shipIntRailingCollidables = [];
   root.traverse(c => {
     if (c.isMesh) {
       _shipIntCollidables.push(c);
@@ -5566,32 +5557,9 @@ function _enterShipInteriorWalk() {
       // — force both sides to render so walls/floor/ceiling don't vanish from the inside.
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
-      // Tag anything under a "railing*"-named node (there are 6 separate railing groups in
-      // this model, guarding the drops between the two stacked floor levels) — these block
-      // horizontal movement unless the player has jumped high enough to clear them.
-      let p = c, underRailing = false;
-      while (p && p !== root.parent) {
-        if (p.name && p.name.toLowerCase().startsWith('railing')) { underRailing = true; break; }
-        p = p.parent;
-      }
-      if (underRailing) _shipIntRailingCollidables.push(c);
     }
   });
   if (!_shipIntCollidables.length) return;
-  // Precompute each railing mesh's own local-space box once, up front — used for a
-  // column-overlap check every frame instead of a single-height raycast. The rail bars are
-  // thin (~0.3 units) and this room has two floor levels several units apart, so a raycast
-  // that has to land at exactly the rail's height was missing it the instant the player's Y
-  // drifted at all between frames (see the floor-smoothing comment below for why that
-  // drift happens); a box overlap across the player's whole standing height doesn't care
-  // about that.
-  selfMesh.updateMatrixWorld(true);
-  _shipIntRailingBoxesLocal = _shipIntRailingCollidables.map(m => {
-    const wb = new THREE.Box3().setFromObject(m);
-    const lMin = selfMesh.worldToLocal(wb.min.clone());
-    const lMax = selfMesh.worldToLocal(wb.max.clone());
-    return new THREE.Box3().setFromPoints([lMin, lMax]);
-  });
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
   // position against a world-space box was the actual bug behind "you just see space": with
@@ -5611,7 +5579,6 @@ function _enterShipInteriorWalk() {
   selfMesh.add(camera);
   camera.position.copy(def.interiorSpawn || new THREE.Vector3(0, 0, 0));
   _shipIntYaw = 0; _shipIntPitch = 0;
-  _shipIntJumpVel = 0; _shipIntJumpOffset = 0; _shipIntFloorY = null;
   camera.quaternion.identity();
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
@@ -5639,55 +5606,21 @@ function _updateShipInteriorWalk() {
   if (keys['a']) move.sub(right);
   if (keys['d']) move.add(right);
   if (move.lengthSq() > 0) move.normalize().multiplyScalar(_shipIntSpeed);
-
-  // Jump — gravity pulls back down to the raycast floor below; grounded only once that
-  // offset has actually settled back near 0, not just "not currently pressing space".
-  if (keys[' '] && _shipIntJumpOffset <= 0.02 && _shipIntJumpVel <= 0) _shipIntJumpVel = SHIP_INT_JUMP_V;
-  _shipIntJumpVel -= SHIP_INT_GRAVITY;
-  _shipIntJumpOffset += _shipIntJumpVel;
-  if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
-
-  // Railings guard the drop between the two stacked floor levels — block horizontal
-  // movement through them unless jumped high enough to clear over the top, same as a real
-  // low guard rail you can vault but not just walk through. Column-overlap check (not a
-  // raycast) against each rail's precomputed local box: does the candidate XZ position,
-  // extended vertically across the player's whole standing height, overlap that box at all.
-  if (move.lengthSq() > 0 && _shipIntJumpOffset < SHIP_INT_RAIL_CLEAR_HEIGHT && _shipIntRailingBoxesLocal.length) {
-    const nx = camera.position.x + move.x, nz = camera.position.z + move.z;
-    const padding = 0.15;
-    const standLowY  = (_shipIntFloorY !== null ? _shipIntFloorY : camera.position.y - _shipIntEyeHeight) - 0.2;
-    const standHighY = (_shipIntFloorY !== null ? _shipIntFloorY : camera.position.y - _shipIntEyeHeight) + _shipIntEyeHeight + 0.3;
-    const blocked = _shipIntRailingBoxesLocal.some(b =>
-      nx >= b.min.x - padding && nx <= b.max.x + padding &&
-      nz >= b.min.z - padding && nz <= b.max.z + padding &&
-      standHighY >= b.min.y && standLowY <= b.max.y
-    );
-    if (blocked) move.set(0, 0, 0);
-  }
-
   const margin = 0.3;
   camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
   camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
 
-  // Floor: raycast straight down from above the player's current XZ. With two real stacked
-  // levels here, this picks up whichever one is actually underfoot each frame. The
-  // collidable meshes only have real (world-space) matrices, so the ray itself has to be
-  // cast in world space — convert the local ray origin out, and any hit point back in.
+  // Floor: raycast straight down from above the player's current XZ, clamp to it. With two
+  // real stacked levels here, this picks up whichever one is actually underfoot each frame.
+  // The collidable meshes only have real (world-space) matrices, so the ray itself has to
+  // be cast in world space — convert the local ray origin out, and any hit point back in.
+  selfMesh.updateMatrixWorld(true);
   const _rayOriginWorld = selfMesh.localToWorld(new THREE.Vector3(camera.position.x, _shipIntBBox.max.y + 5, camera.position.z));
   const _rayDownWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
   const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
   const hits = rc.intersectObjects(_shipIntCollidables, false);
-  const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
-  // Ease toward the target floor instead of snapping straight to it. Right at the edge next
-  // to a railing, the raycast can find the much-lower main floor instead of the catwalk the
-  // player is actually standing on — snapping instantly there put the camera's Y (and so
-  // the railing raycast's height) out of line with the rail after a single frame, letting
-  // movement slip through right past a rail that had genuinely just blocked it. A smoothed
-  // follow keeps the player near the rail's real height for long enough that it keeps
-  // blocking consistently instead of only on the first frame.
-  if (_shipIntFloorY === null) _shipIntFloorY = targetFloorY;
-  else _shipIntFloorY += (targetFloorY - _shipIntFloorY) * 0.15;
-  camera.position.y = _shipIntFloorY + _shipIntEyeHeight + _shipIntJumpOffset;
+  const floorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+  camera.position.y = floorY + _shipIntEyeHeight;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 }
