@@ -5544,11 +5544,27 @@ function _toggleCockpitView() {
 let _shipInteriorView = false;
 let _shipIntYaw = 0, _shipIntPitch = 0;
 let _shipIntCollidables = [];
+let _shipIntRailingBoxesLocal = []; // precomputed local-space Box3 per railing mesh — blocks horizontal movement unless jumped over
 let _shipIntBBox = null;
 const _shipIntEyeHeightStand  = 1.5;
 const _shipIntEyeHeightCrouch = 0.85;
 const _shipIntSpeedStand  = 0.07;
 const _shipIntSpeedCrouch = 0.04;
+let _shipIntJumpVel = 0;
+let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
+const SHIP_INT_GRAVITY = 0.018;
+const SHIP_INT_JUMP_V = 0.3;
+const SHIP_INT_RAIL_CLEAR_HEIGHT = 0.6; // jump offset needed before railings stop blocking movement
+function _ensureShipIntCoordHud() {
+  let el = document.getElementById('ship-int-coords');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ship-int-coords';
+    el.style.cssText = 'position:fixed;top:10px;left:10px;z-index:9999;font-family:monospace;font-size:13px;color:#9f9;background:rgba(0,0,0,0.5);padding:4px 8px;border-radius:4px;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  return el;
+}
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5556,6 +5572,7 @@ function _enterShipInteriorWalk() {
   const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
   if (!root) return;
   _shipIntCollidables = [];
+  const _railingMeshes = [];
   root.traverse(c => {
     if (c.isMesh) {
       _shipIntCollidables.push(c);
@@ -5563,9 +5580,28 @@ function _enterShipInteriorWalk() {
       // — force both sides to render so walls/floor/ceiling don't vanish from the inside.
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
+      // Anything under a "railing*"-named node guards a drop between the two stacked floor
+      // levels — tag it so horizontal movement gets blocked through it below.
+      let p = c, underRailing = false;
+      while (p && p !== root.parent) {
+        if (p.name && p.name.toLowerCase().startsWith('railing')) { underRailing = true; break; }
+        p = p.parent;
+      }
+      if (underRailing) _railingMeshes.push(c);
     }
   });
   if (!_shipIntCollidables.length) return;
+  // Precompute each railing's own local-space box once, up front — used for a column-
+  // overlap check every frame (does the candidate XZ position, extended across the
+  // player's whole standing height, overlap the rail's box at all) instead of a raycast,
+  // which is fragile against thin (~0.3 unit) geometry once the player's Y drifts at all.
+  selfMesh.updateMatrixWorld(true);
+  _shipIntRailingBoxesLocal = _railingMeshes.map(m => {
+    const wb = new THREE.Box3().setFromObject(m);
+    const lMin = selfMesh.worldToLocal(wb.min.clone());
+    const lMax = selfMesh.worldToLocal(wb.max.clone());
+    return new THREE.Box3().setFromPoints([lMin, lMax]);
+  });
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
   // position against a world-space box was the actual bug behind "you just see space": with
@@ -5586,9 +5622,11 @@ function _enterShipInteriorWalk() {
   const spawn = def.interiorSpawn || new THREE.Vector3(0, 0, 0);
   camera.position.copy(spawn);
   _shipIntYaw = def.interiorYaw || 0; _shipIntPitch = 0;
+  _shipIntJumpVel = 0; _shipIntJumpOffset = 0;
   camera.quaternion.setFromEuler(new THREE.Euler(0, _shipIntYaw, 0, 'YXZ'));
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
+  _ensureShipIntCoordHud().style.display = 'block';
 }
 function _exitShipInteriorWalk() {
   _shipInteriorView = false;
@@ -5597,6 +5635,8 @@ function _exitShipInteriorWalk() {
   scene.add(camera);
   camera.position.copy(selfMesh.position).add(new THREE.Vector3(0, 8, 35).applyQuaternion(selfMesh.quaternion));
   camera.quaternion.copy(selfMesh.quaternion);
+  const hud = document.getElementById('ship-int-coords');
+  if (hud) hud.style.display = 'none';
 }
 function _updateShipInteriorWalk() {
   _shipIntYaw   -= _fpMouseDX * 0.0028;
@@ -5619,6 +5659,31 @@ function _updateShipInteriorWalk() {
   if (keys['a']) move.sub(right);
   if (keys['d']) move.add(right);
   if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+
+  // Jump — gravity pulls back down; only re-triggerable once the offset has actually
+  // settled back near 0, not just "not currently pressing space".
+  if (keys[' '] && _shipIntJumpOffset <= 0.02 && _shipIntJumpVel <= 0) _shipIntJumpVel = SHIP_INT_JUMP_V;
+  _shipIntJumpVel -= SHIP_INT_GRAVITY;
+  _shipIntJumpOffset += _shipIntJumpVel;
+  if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
+
+  // Railings guard the drop between the two stacked floor levels — block horizontal
+  // movement through them unless jumped high enough to clear over the top. Column-overlap
+  // check: does the candidate XZ position, extended across the player's whole standing
+  // height, overlap the rail's precomputed local box at all.
+  if (move.lengthSq() > 0 && _shipIntJumpOffset < SHIP_INT_RAIL_CLEAR_HEIGHT && _shipIntRailingBoxesLocal.length) {
+    const nx = camera.position.x + move.x, nz = camera.position.z + move.z;
+    const padding = 0.15;
+    const standLowY  = camera.position.y - eyeHeight - 0.2;
+    const standHighY = camera.position.y - eyeHeight + eyeHeight + 0.3;
+    const blocked = _shipIntRailingBoxesLocal.some(b =>
+      nx >= b.min.x - padding && nx <= b.max.x + padding &&
+      nz >= b.min.z - padding && nz <= b.max.z + padding &&
+      standHighY >= b.min.y && standLowY <= b.max.y
+    );
+    if (blocked) move.set(0, 0, 0);
+  }
+
   const margin = 0.3;
   camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
   camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
@@ -5633,9 +5698,12 @@ function _updateShipInteriorWalk() {
   const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
   const hits = rc.intersectObjects(_shipIntCollidables, false);
   const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
-  camera.position.y = targetFloorY + eyeHeight;
+  camera.position.y = targetFloorY + eyeHeight + _shipIntJumpOffset;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
+
+  const hud = document.getElementById('ship-int-coords');
+  if (hud) hud.textContent = `Ship coords  x: ${camera.position.x.toFixed(2)}  y: ${camera.position.y.toFixed(2)}  z: ${camera.position.z.toFixed(2)}`;
 }
 document.addEventListener('keydown', e => {
   if ((e.key === 'c' || e.key === 'C') && (gameMode === 'flight' || gameMode === 'ship_interior')) {
