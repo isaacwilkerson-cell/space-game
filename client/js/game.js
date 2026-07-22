@@ -5545,10 +5545,6 @@ const _shipIntEyeHeightStand  = 1.5;
 const _shipIntEyeHeightCrouch = 0.85;
 const _shipIntSpeedStand  = 0.07;
 const _shipIntSpeedCrouch = 0.04;
-let _shipIntFeetY = 0;      // where the player is actually standing, tracked separately from the raycast target
-let _shipIntVertVel = 0;    // gravity/jump velocity applied to _shipIntFeetY
-const SHIP_INT_GRAVITY = 0.014;
-const SHIP_INT_JUMP_V = 0.17; // half the height of the 0.34 this had before (height scales with v²)
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5585,8 +5581,6 @@ function _enterShipInteriorWalk() {
   selfMesh.add(camera);
   const spawn = def.interiorSpawn || new THREE.Vector3(0, 0, 0);
   camera.position.copy(spawn);
-  _shipIntFeetY = spawn.y - _shipIntEyeHeightStand; // interiorSpawn is an eye position, standing
-  _shipIntVertVel = 0;
   _shipIntYaw = 0; _shipIntPitch = 0;
   camera.quaternion.identity();
   document.body.style.cursor = 'none';
@@ -5635,20 +5629,7 @@ function _updateShipInteriorWalk() {
   const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
   const hits = rc.intersectObjects(_shipIntCollidables, false);
   const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
-
-  // Auto-climb is back: walking onto any raised floor snaps straight up onto it. Jumping
-  // still works normally (real arc via gravity) when airborne.
-  const grounded = _shipIntVertVel === 0 && Math.abs(_shipIntFeetY - targetFloorY) < 0.05;
-  if (keys[' '] && grounded) _shipIntVertVel = SHIP_INT_JUMP_V;
-
-  if (_shipIntVertVel === 0) {
-    _shipIntFeetY = targetFloorY;
-  } else {
-    _shipIntVertVel -= SHIP_INT_GRAVITY;
-    _shipIntFeetY += _shipIntVertVel;
-    if (_shipIntFeetY <= targetFloorY) { _shipIntFeetY = targetFloorY; _shipIntVertVel = 0; }
-  }
-  camera.position.y = _shipIntFeetY + eyeHeight;
+  camera.position.y = targetFloorY + eyeHeight;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 }
