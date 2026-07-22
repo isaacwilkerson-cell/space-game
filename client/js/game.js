@@ -5550,7 +5550,17 @@ function _enterShipInteriorWalk() {
   const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
   if (!root) return;
   _shipIntCollidables = [];
-  root.traverse(c => { if (c.isMesh) _shipIntCollidables.push(c); });
+  root.traverse(c => {
+    if (c.isMesh) {
+      _shipIntCollidables.push(c);
+      // These meshes are only ever modeled/authored to be seen from outside the hull —
+      // from inside, their backfaces are culled by default and you see straight through
+      // to the skybox ("I just see space"). Force both sides to render so the interior
+      // walls actually show up once the camera is on the inside of them.
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
+    }
+  });
   if (!_shipIntCollidables.length) return;
   _shipIntBBox = new THREE.Box3().setFromObject(root);
   _shipInteriorView = true;
