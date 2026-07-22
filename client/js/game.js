@@ -58,11 +58,14 @@ const SHIP_DEFS = {
   // Z is already the longest raw-bbox dimension (unlike cargo_ship/star_wing), matching the
   // -Z forward convention by default — no yaw correction applied yet. Report back if it
   // turns out sideways or backwards once actually flown, same as the other two needed.
-  // No walkable interior — checked directly: every mesh in this asset is small loose
-  // furniture (shelves, ladders, railings, a door, engine parts; largest piece is ~2.7
-  // units), there's no hull/wall/floor/ceiling shell anywhere in the file. It's interior
-  // *props* meant to be dropped into a separate hull mesh, not an enclosed room on its own.
-  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb' },
+  // No single mesh here is hull-sized (largest is ~2.7 units), but re-checked more
+  // carefully: the ~280 small tile/fixture pieces (shelves, ladders, railings, floor/
+  // ceiling panels, a door) collectively span a real room-sized volume (~11×14×20 units at
+  // this scale) — it's a modular tile-built interior (matches the actual Lethal Company
+  // ship), not a single continuous shell. A grid raycast across it found two real stacked
+  // floor levels; interiorSpawn below is a point directly verified (via raycast, not
+  // guessed) to land on the main lower floor rather than in a gap between tiles.
+  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(-5.07, -1.7, -9) },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5526,11 +5529,109 @@ function _toggleCockpitView() {
   }
 }
 
+// ── Walkable ship interior (C, Shuttle) ──────────────────────────────────────────
+// The ship stops drifting (velocity zeroed) while you're in there, the camera gets
+// reparented onto selfMesh (it normally lives directly in `scene`, detached every frame
+// by updateShip()'s own chase-cam lerp — see "Camera smoothing" there) so it rides along
+// for free, and movement is a WASD-plus-mouselook-plus-floor-raycast walker in the ship's
+// local space. Floor raycast re-runs every frame (not just on entry), which matters here
+// specifically — this interior has two real stacked levels (main floor + a catwalk), so
+// walking between them needs to pick up whichever surface is actually underfoot.
+let _shipInteriorView = false;
+let _shipIntYaw = 0, _shipIntPitch = 0;
+let _shipIntCollidables = [];
+let _shipIntBBox = null;
+const _shipIntEyeHeight = 1.5;
+const _shipIntSpeed = 0.5;
+function _enterShipInteriorWalk() {
+  const def = SHIP_DEFS[_selectedShipId];
+  const ext = _exteriorShipModel();
+  if (!def || !def.walkableInterior || !ext) return;
+  const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
+  if (!root) return;
+  _shipIntCollidables = [];
+  root.traverse(c => {
+    if (c.isMesh) {
+      _shipIntCollidables.push(c);
+      // Tile/panel pieces like these are typically only modeled to be seen from one side
+      // — force both sides to render so walls/floor/ceiling don't vanish from the inside.
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
+    }
+  });
+  if (!_shipIntCollidables.length) return;
+  // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
+  // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
+  // position against a world-space box was the actual bug behind "you just see space": with
+  // selfMesh sitting far from the origin, the clamp was silently snapping the camera off to
+  // wherever that world-space box happened to be instead of the real local spawn point.
+  // Transform the box's corners into selfMesh-local space so everything downstream is
+  // consistently local.
+  selfMesh.updateMatrixWorld(true);
+  const _worldBox = new THREE.Box3().setFromObject(root);
+  const _localMin = selfMesh.worldToLocal(_worldBox.min.clone());
+  const _localMax = selfMesh.worldToLocal(_worldBox.max.clone());
+  _shipIntBBox = new THREE.Box3().setFromPoints([_localMin, _localMax]);
+  _shipInteriorView = true;
+  gameMode = 'ship_interior';
+  self.velocity.set(0, 0, 0); // ship stops drifting while you're walking around inside it
+  scene.remove(camera);
+  selfMesh.add(camera);
+  camera.position.copy(def.interiorSpawn || new THREE.Vector3(0, 0, 0));
+  _shipIntYaw = 0; _shipIntPitch = 0;
+  camera.quaternion.identity();
+  document.body.style.cursor = 'none';
+  renderer.domElement.requestPointerLock();
+}
+function _exitShipInteriorWalk() {
+  _shipInteriorView = false;
+  gameMode = 'flight';
+  selfMesh.remove(camera);
+  scene.add(camera);
+  camera.position.copy(selfMesh.position).add(new THREE.Vector3(0, 8, 35).applyQuaternion(selfMesh.quaternion));
+  camera.quaternion.copy(selfMesh.quaternion);
+}
+function _updateShipInteriorWalk() {
+  _shipIntYaw   -= _fpMouseDX * 0.0028;
+  _shipIntPitch -= _fpMouseDY * 0.0028;
+  _shipIntPitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, _shipIntPitch));
+  _fpMouseDX = 0; _fpMouseDY = 0;
+
+  const cosY = Math.cos(_shipIntYaw), sinY = Math.sin(_shipIntYaw);
+  const fwd   = new THREE.Vector3(-sinY, 0, -cosY);
+  const right = new THREE.Vector3(cosY, 0, -sinY);
+  const move = new THREE.Vector3();
+  if (keys['w']) move.add(fwd);
+  if (keys['s']) move.sub(fwd);
+  if (keys['a']) move.sub(right);
+  if (keys['d']) move.add(right);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(_shipIntSpeed);
+  const margin = 0.3;
+  camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
+  camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
+
+  // Floor: raycast straight down from above the player's current XZ, clamp to it. With two
+  // real stacked levels here, this picks up whichever one is actually underfoot each frame.
+  // The collidable meshes only have real (world-space) matrices, so the ray itself has to
+  // be cast in world space — convert the local ray origin out, and any hit point back in.
+  selfMesh.updateMatrixWorld(true);
+  const _rayOriginWorld = selfMesh.localToWorld(new THREE.Vector3(camera.position.x, _shipIntBBox.max.y + 5, camera.position.z));
+  const _rayDownWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
+  const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
+  const hits = rc.intersectObjects(_shipIntCollidables, false);
+  const floorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+  camera.position.y = floorY + _shipIntEyeHeight;
+
+  camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
+}
 document.addEventListener('keydown', e => {
-  if ((e.key === 'c' || e.key === 'C') && gameMode === 'flight') {
+  if ((e.key === 'c' || e.key === 'C') && (gameMode === 'flight' || gameMode === 'ship_interior')) {
     const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (typing) return;
-    _toggleCockpitView();
+    if (gameMode === 'ship_interior') { _exitShipInteriorWalk(); return; }
+    const def = SHIP_DEFS[_selectedShipId];
+    if (def && def.walkableInterior) _enterShipInteriorWalk();
+    else _toggleCockpitView();
   }
 });
 
@@ -6653,7 +6754,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', e => {
   if (!pointerLocked) return;
-  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station') {
+  if (gameMode === 'docked' || gameMode === 'lobby' || gameMode === 'range' || gameMode === 'tdm' || gameMode === 'trade_station' || gameMode === 'ship_interior') {
     const cap = 40;
     _fpMouseDX += Math.max(-cap, Math.min(cap, e.movementX));
     _fpMouseDY += Math.max(-cap, Math.min(cap, e.movementY));
@@ -8144,6 +8245,10 @@ function animate(t) {
     // this must NOT fall into the flight branch below: updateShip() unconditionally moves
     // the ship on WASD input and lerps the camera toward a chase-cam position every frame
     // regardless of pointer lock, which would fight the fixed interior camera framing.
+  } else if (gameMode === 'ship_interior') {
+    // Same reasoning as hangar above — updateShip() would fight the walk-around camera
+    // (which is parented straight onto selfMesh rather than driven by its chase-cam lerp).
+    _updateShipInteriorWalk();
   } else {
     updateShip();
     updateLasers();
