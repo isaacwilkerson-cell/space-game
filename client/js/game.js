@@ -5541,8 +5541,15 @@ let _shipInteriorView = false;
 let _shipIntYaw = 0, _shipIntPitch = 0;
 let _shipIntCollidables = [];
 let _shipIntBBox = null;
-const _shipIntEyeHeight = 1.5;
-const _shipIntSpeed = 0.5;
+const _shipIntEyeHeightStand  = 1.5;
+const _shipIntEyeHeightCrouch = 0.85;
+const _shipIntSpeedStand  = 0.05; // a lot slower than the original 0.5
+const _shipIntSpeedCrouch = 0.03;
+let _shipIntFeetY = 0;      // where the player is actually standing, tracked separately from the raycast target
+let _shipIntVertVel = 0;    // gravity/jump velocity applied to _shipIntFeetY
+const SHIP_INT_GRAVITY = 0.014;
+const SHIP_INT_JUMP_V = 0.17; // half the height of the 0.34 this had before (height scales with v²)
+const SHIP_INT_MAX_STEP_UP = 0.35; // small bumps/stairs still auto-step; anything taller needs an actual jump
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5577,7 +5584,10 @@ function _enterShipInteriorWalk() {
   self.velocity.set(0, 0, 0); // ship stops drifting while you're walking around inside it
   scene.remove(camera);
   selfMesh.add(camera);
-  camera.position.copy(def.interiorSpawn || new THREE.Vector3(0, 0, 0));
+  const spawn = def.interiorSpawn || new THREE.Vector3(0, 0, 0);
+  camera.position.copy(spawn);
+  _shipIntFeetY = spawn.y - _shipIntEyeHeightStand; // interiorSpawn is an eye position, standing
+  _shipIntVertVel = 0;
   _shipIntYaw = 0; _shipIntPitch = 0;
   camera.quaternion.identity();
   document.body.style.cursor = 'none';
@@ -5597,6 +5607,12 @@ function _updateShipInteriorWalk() {
   _shipIntPitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, _shipIntPitch));
   _fpMouseDX = 0; _fpMouseDY = 0;
 
+  // Crouch — 'c'/'C' is taken (enter/exit), so ctrl or alt crouches instead, same dual-key
+  // convention the on-foot FP movement elsewhere in the game already uses for it.
+  const crouching = !!(keys['control'] || keys['alt']);
+  const eyeHeight = crouching ? _shipIntEyeHeightCrouch : _shipIntEyeHeightStand;
+  const speed = crouching ? _shipIntSpeedCrouch : _shipIntSpeedStand;
+
   const cosY = Math.cos(_shipIntYaw), sinY = Math.sin(_shipIntYaw);
   const fwd   = new THREE.Vector3(-sinY, 0, -cosY);
   const right = new THREE.Vector3(cosY, 0, -sinY);
@@ -5605,22 +5621,42 @@ function _updateShipInteriorWalk() {
   if (keys['s']) move.sub(fwd);
   if (keys['a']) move.sub(right);
   if (keys['d']) move.add(right);
-  if (move.lengthSq() > 0) move.normalize().multiplyScalar(_shipIntSpeed);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
   const margin = 0.3;
   camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
   camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
 
-  // Floor: raycast straight down from above the player's current XZ, clamp to it. With two
-  // real stacked levels here, this picks up whichever one is actually underfoot each frame.
-  // The collidable meshes only have real (world-space) matrices, so the ray itself has to
-  // be cast in world space — convert the local ray origin out, and any hit point back in.
+  // Floor: raycast straight down from above the player's current XZ. With two real stacked
+  // levels here, this picks up whichever one is actually underfoot each frame. The
+  // collidable meshes only have real (world-space) matrices, so the ray itself has to be
+  // cast in world space — convert the local ray origin out, and any hit point back in.
   selfMesh.updateMatrixWorld(true);
   const _rayOriginWorld = selfMesh.localToWorld(new THREE.Vector3(camera.position.x, _shipIntBBox.max.y + 5, camera.position.z));
   const _rayDownWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
   const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
   const hits = rc.intersectObjects(_shipIntCollidables, false);
-  const floorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
-  camera.position.y = floorY + _shipIntEyeHeight;
+  const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+
+  // No auto-climb: only small bumps/stairs (within MAX_STEP_UP) snap straight up onto —
+  // anything taller is a real ledge you have to jump to reach, not something walking into
+  // it quietly carries you up onto. Drops fall via gravity rather than teleporting down.
+  const grounded = _shipIntVertVel === 0 && Math.abs(_shipIntFeetY - targetFloorY) < 0.05;
+  if (keys[' '] && grounded) _shipIntVertVel = SHIP_INT_JUMP_V;
+
+  const rise = targetFloorY - _shipIntFeetY;
+  if (_shipIntVertVel === 0 && rise >= -0.02 && rise <= SHIP_INT_MAX_STEP_UP) {
+    // Standing still relative to the floor, or a small step up/down — snap straight to it.
+    _shipIntFeetY = targetFloorY;
+  } else if (_shipIntVertVel !== 0 || rise < -0.02) {
+    // Genuinely airborne (jumping, or the target is a real drop below current feet) — fall
+    // under gravity and only stop once actually reaching that lower target.
+    _shipIntVertVel -= SHIP_INT_GRAVITY;
+    _shipIntFeetY += _shipIntVertVel;
+    if (_shipIntFeetY <= targetFloorY) { _shipIntFeetY = targetFloorY; _shipIntVertVel = 0; }
+  }
+  // else: target is a ledge taller than a step and we're grounded with no jump velocity —
+  // blocked. Hold the current height rather than either climbing or falling into it.
+  camera.position.y = _shipIntFeetY + eyeHeight;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 }
