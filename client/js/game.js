@@ -5555,15 +5555,22 @@ let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) �
                         // big rise can be detected and blocked instead of auto-climbed
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
-// Auto-climb (instant snap onto any rise, no matter how tall) is OFF everywhere except this
-// one real built-in staircase (verified via the in-game local ship-coords HUD: x 3.1-3.17,
-// z -3.36 to -2.45) — elsewhere a rise past SHIP_INT_MAX_STEP blocks the move, same as a
-// real wall/ledge you'd need to jump instead of just walking up onto.
+// Auto-climb (instant snap onto any rise, no matter how tall) is OFF everywhere except
+// inside these zones — a rise past SHIP_INT_MAX_STEP elsewhere blocks the move, same as a
+// real wall/ledge you'd need to jump instead of just walking up onto. The catwalk zone is
+// generous on purpose: its grating/railing/pipe geometry is made of many small modular
+// pieces at slightly different heights, and the raycast sometimes catches a rail or pipe
+// above the real walkway instead of the grating itself, reading as a tall "step" — that's
+// what was making catwalk movement get stuck in some spots and not others. Auto-climbing
+// unconditionally anywhere on the catwalk sidesteps that false-positive entirely. Bounds
+// found by sampling the real floor heights across the whole ship (anything above the main
+// floor's ~-3.2 level): x -4.4 to 3, z -8.6 to 8.4; padded slightly for margin.
 const SHIP_INT_MAX_STEP = 0.4;
-const SHIP_INT_STAIR_ZONE = { xMin: 3.1, xMax: 3.17, zMin: -3.36, zMax: -2.45 };
-function _shipIntInStairZone(x, z) {
-  return x >= SHIP_INT_STAIR_ZONE.xMin && x <= SHIP_INT_STAIR_ZONE.xMax &&
-         z >= SHIP_INT_STAIR_ZONE.zMin && z <= SHIP_INT_STAIR_ZONE.zMax;
+const SHIP_INT_AUTOCLIMB_ZONES = [
+  { xMin: -4.6, xMax: 3.2, zMin: -8.8, zMax: 8.6 }, // catwalk
+];
+function _shipIntAutoClimbAllowed(x, z) {
+  return SHIP_INT_AUTOCLIMB_ZONES.some(zn => x >= zn.xMin && x <= zn.xMax && z >= zn.zMin && z <= zn.zMax);
 }
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
@@ -5694,7 +5701,7 @@ function _updateShipInteriorWalk() {
     const floorY = floorYAt(x, z);
     if (floorY === null) continue;
     const rise = floorY - _shipIntFeetY;
-    if (rise > SHIP_INT_MAX_STEP && !_shipIntInStairZone(x, z)) continue;
+    if (rise > SHIP_INT_MAX_STEP && !_shipIntAutoClimbAllowed(x, z)) continue;
     camera.position.x = x;
     camera.position.z = z;
     _shipIntFeetY = floorY;
