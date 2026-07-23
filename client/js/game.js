@@ -5551,8 +5551,11 @@ const _shipIntSpeedStand  = 0.07;
 const _shipIntSpeedCrouch = 0.04;
 let _shipIntJumpVel = 0;
 let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
+let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) — tracked so a
+                        // big rise can be detected and blocked instead of auto-climbed
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
+const SHIP_INT_MAX_AUTO_CLIMB = 10; // rises taller than this block movement instead of snapping up
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
   if (!el) {
@@ -5601,6 +5604,7 @@ function _enterShipInteriorWalk() {
   camera.position.copy(spawn);
   _shipIntYaw = def.interiorYaw || 0; _shipIntPitch = 0;
   _shipIntJumpVel = 0; _shipIntJumpOffset = 0;
+  _shipIntFeetY = spawn.y - _shipIntEyeHeightStand;
   camera.quaternion.setFromEuler(new THREE.Euler(0, _shipIntYaw, 0, 'YXZ'));
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
@@ -5646,19 +5650,35 @@ function _updateShipInteriorWalk() {
   if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
 
   const margin = 0.3;
-  camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
-  camera.position.z = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
+  const candidateX = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
+  const candidateZ = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
 
-  // Floor: raycast straight down from above the player's current XZ. With two real stacked
-  // levels here, this picks up whichever one is actually underfoot each frame. The
-  // collidable meshes only have real (world-space) matrices, so the ray itself has to be
-  // cast in world space — convert the local ray origin out, and any hit point back in.
+  // Floor: raycast straight down from above the given XZ. With two real stacked levels
+  // here, this picks up whichever one is actually underfoot. The collidable meshes only
+  // have real (world-space) matrices, so the ray itself has to be cast in world space —
+  // convert the local ray origin out, and any hit point back in.
   selfMesh.updateMatrixWorld(true);
-  const _rayOriginWorld = selfMesh.localToWorld(new THREE.Vector3(camera.position.x, _shipIntBBox.max.y + 5, camera.position.z));
-  const _rayDownWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
-  const rc = new THREE.Raycaster(_rayOriginWorld, _rayDownWorld);
-  const hits = rc.intersectObjects(_shipIntCollidables, false);
-  const targetFloorY = hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+  const floorYAt = (x, z) => {
+    const originWorld = selfMesh.localToWorld(new THREE.Vector3(x, _shipIntBBox.max.y + 5, z));
+    const downWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
+    const rc = new THREE.Raycaster(originWorld, downWorld);
+    const hits = rc.intersectObjects(_shipIntCollidables, false);
+    return hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+  };
+
+  // No auto-climb onto anything taller than SHIP_INT_MAX_AUTO_CLIMB — a rise past that,
+  // relative to the floor you're actually standing on, blocks the move instead of snapping
+  // you up onto it. Smaller rises/drops still snap instantly, same as before.
+  const candidateFloorY = floorYAt(candidateX, candidateZ);
+  let targetFloorY;
+  if (candidateFloorY - _shipIntFeetY > SHIP_INT_MAX_AUTO_CLIMB) {
+    targetFloorY = _shipIntFeetY;
+  } else {
+    camera.position.x = candidateX;
+    camera.position.z = candidateZ;
+    targetFloorY = candidateFloorY;
+  }
+  _shipIntFeetY = targetFloorY;
   camera.position.y = targetFloorY + eyeHeight + _shipIntJumpOffset;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
