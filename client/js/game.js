@@ -5544,7 +5544,6 @@ function _toggleCockpitView() {
 let _shipInteriorView = false;
 let _shipIntYaw = 0, _shipIntPitch = 0;
 let _shipIntCollidables = [];
-let _shipIntRailingBoxesLocal = []; // precomputed local-space Box3 per railing mesh — blocks horizontal movement unless jumped over
 let _shipIntBBox = null;
 const _shipIntEyeHeightStand  = 1.5;
 const _shipIntEyeHeightCrouch = 0.85;
@@ -5554,7 +5553,6 @@ let _shipIntJumpVel = 0;
 let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
-const SHIP_INT_RAIL_CLEAR_HEIGHT = 0.6; // jump offset needed before railings stop blocking movement
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
   if (!el) {
@@ -5572,7 +5570,6 @@ function _enterShipInteriorWalk() {
   const root = def.interiorNode ? ext.getObjectByName(def.interiorNode) : ext;
   if (!root) return;
   _shipIntCollidables = [];
-  const _railingMeshes = [];
   root.traverse(c => {
     if (c.isMesh) {
       _shipIntCollidables.push(c);
@@ -5580,47 +5577,9 @@ function _enterShipInteriorWalk() {
       // — force both sides to render so walls/floor/ceiling don't vanish from the inside.
       const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
-      // Anything under a "railing*"-named node guards a drop between the two stacked floor
-      // levels — tag it so horizontal movement gets blocked through it below.
-      let p = c, underRailing = false;
-      while (p && p !== root.parent) {
-        if (p.name && p.name.toLowerCase().startsWith('railing')) { underRailing = true; break; }
-        p = p.parent;
-      }
-      if (underRailing) _railingMeshes.push(c);
     }
   });
   if (!_shipIntCollidables.length) return;
-  // Keep each segment's own accurate (thin) box — merging touching segments into one AABB
-  // was tried and broke worse: a rail that loops around a corner or runs the length of the
-  // catwalk perimeter produced one giant rectangular box whose "footprint" swallowed most
-  // of the open floor along with the actual rail. Instead, cluster segments by spatial
-  // adjacency (touching/overlapping within a small gap tolerance, to bridge seams between
-  // tiles of the same real rail run) just to know which segments belong to the same
-  // physical rail — the per-segment shape below stays accurate, but the "already standing
-  // here" exemption in the movement check treats the whole cluster as one unit, so crossing
-  // a tile seam mid-rail doesn't re-trigger a block.
-  selfMesh.updateMatrixWorld(true);
-  const _rawRailBoxes = _railingMeshes.map(m => {
-    const wb = new THREE.Box3().setFromObject(m);
-    const lMin = selfMesh.worldToLocal(wb.min.clone());
-    const lMax = selfMesh.worldToLocal(wb.max.clone());
-    return new THREE.Box3().setFromPoints([lMin, lMax]);
-  });
-  const _adjGap = 0.4;
-  const _touches = (a, b) =>
-    a.min.x - _adjGap <= b.max.x && a.max.x + _adjGap >= b.min.x &&
-    a.min.y - _adjGap <= b.max.y && a.max.y + _adjGap >= b.min.y &&
-    a.min.z - _adjGap <= b.max.z && a.max.z + _adjGap >= b.min.z;
-  const _parent = _rawRailBoxes.map((_, i) => i);
-  const _find = i => { while (_parent[i] !== i) { _parent[i] = _parent[_parent[i]]; i = _parent[i]; } return i; };
-  const _union = (i, j) => { const ri = _find(i), rj = _find(j); if (ri !== rj) _parent[ri] = rj; };
-  for (let i = 0; i < _rawRailBoxes.length; i++) {
-    for (let j = i + 1; j < _rawRailBoxes.length; j++) {
-      if (_touches(_rawRailBoxes[i], _rawRailBoxes[j])) _union(i, j);
-    }
-  }
-  _shipIntRailingBoxesLocal = _rawRailBoxes.map((box, i) => ({ box, cluster: _find(i) }));
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
   // position against a world-space box was the actual bug behind "you just see space": with
@@ -5685,30 +5644,6 @@ function _updateShipInteriorWalk() {
   _shipIntJumpVel -= SHIP_INT_GRAVITY;
   _shipIntJumpOffset += _shipIntJumpVel;
   if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
-
-  // Railings guard the drop between the two stacked floor levels — block horizontal
-  // movement through them unless jumped high enough to clear over the top. Column-overlap
-  // check: does the candidate XZ position, extended across the player's whole standing
-  // height, overlap the rail's precomputed local box at all.
-  if (move.lengthSq() > 0 && _shipIntJumpOffset < SHIP_INT_RAIL_CLEAR_HEIGHT && _shipIntRailingBoxesLocal.length) {
-    const ox = camera.position.x, oz = camera.position.z;
-    const nx = ox + move.x, nz = oz + move.z;
-    const padding = 0;
-    const standLowY  = camera.position.y - eyeHeight - 0.2;
-    const standHighY = camera.position.y - eyeHeight + eyeHeight + 0.3;
-    const overlaps = (x, z, b) =>
-      x >= b.min.x - padding && x <= b.max.x + padding &&
-      z >= b.min.z - padding && z <= b.max.z + padding &&
-      standHighY >= b.min.y && standLowY <= b.max.y;
-    // A rail cluster you're already standing at/alongside (old position overlaps ANY
-    // segment in that cluster) doesn't block further movement — that's "already here", not
-    // "walking through it". Checked per-cluster, not per-segment, so crossing a tile seam
-    // mid-rail doesn't re-trigger a block.
-    const oldClusters = new Set();
-    for (const { box, cluster } of _shipIntRailingBoxesLocal) if (overlaps(ox, oz, box)) oldClusters.add(cluster);
-    const blocked = _shipIntRailingBoxesLocal.some(({ box, cluster }) => overlaps(nx, nz, box) && !oldClusters.has(cluster));
-    if (blocked) move.set(0, 0, 0);
-  }
 
   const margin = 0.3;
   camera.position.x = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
