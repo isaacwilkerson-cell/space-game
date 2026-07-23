@@ -5555,7 +5555,6 @@ let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) �
                         // big rise can be detected and blocked instead of auto-climbed
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
-const SHIP_INT_MAX_AUTO_CLIMB = 10; // rises taller than this block movement instead of snapping up
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
   if (!el) {
@@ -5656,30 +5655,30 @@ function _updateShipInteriorWalk() {
   // Floor: raycast straight down from above the given XZ. With two real stacked levels
   // here, this picks up whichever one is actually underfoot. The collidable meshes only
   // have real (world-space) matrices, so the ray itself has to be cast in world space —
-  // convert the local ray origin out, and any hit point back in.
+  // convert the local ray origin out, and any hit point back in. Returns null (not a
+  // fallback height) when there's no real floor there — this model's actual footprint is
+  // an irregular shape well inside its rectangular bounding box, so plenty of XZ positions
+  // inside that rectangle are genuinely open space outside the ship.
   selfMesh.updateMatrixWorld(true);
   const floorYAt = (x, z) => {
     const originWorld = selfMesh.localToWorld(new THREE.Vector3(x, _shipIntBBox.max.y + 5, z));
     const downWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
     const rc = new THREE.Raycaster(originWorld, downWorld);
     const hits = rc.intersectObjects(_shipIntCollidables, false);
-    return hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : _shipIntBBox.min.y;
+    return hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : null;
   };
 
-  // No auto-climb onto anything taller than SHIP_INT_MAX_AUTO_CLIMB — a rise past that,
-  // relative to the floor you're actually standing on, blocks the move instead of snapping
-  // you up onto it. Smaller rises/drops still snap instantly, same as before.
+  // Simple instant floor-snap, no auto-climb restriction — same as the original movement
+  // feel. The only thing that blocks a move is there being no real floor at all at the
+  // candidate spot (i.e. it's off the ship into open space); anywhere with real floor
+  // beneath it, no matter the step height, is walkable.
   const candidateFloorY = floorYAt(candidateX, candidateZ);
-  let targetFloorY;
-  if (candidateFloorY - _shipIntFeetY > SHIP_INT_MAX_AUTO_CLIMB) {
-    targetFloorY = _shipIntFeetY;
-  } else {
+  if (candidateFloorY !== null) {
     camera.position.x = candidateX;
     camera.position.z = candidateZ;
-    targetFloorY = candidateFloorY;
+    _shipIntFeetY = candidateFloorY;
   }
-  _shipIntFeetY = targetFloorY;
-  camera.position.y = targetFloorY + eyeHeight + _shipIntJumpOffset;
+  camera.position.y = _shipIntFeetY + eyeHeight + _shipIntJumpOffset;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 
