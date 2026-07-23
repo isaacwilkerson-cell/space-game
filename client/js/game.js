@@ -5555,6 +5555,16 @@ let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) �
                         // big rise can be detected and blocked instead of auto-climbed
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
+// Auto-climb (instant snap onto any rise, no matter how tall) is OFF everywhere except this
+// one real built-in staircase (verified via the in-game local ship-coords HUD: x 3.1-3.17,
+// z -3.36 to -2.45) — elsewhere a rise past SHIP_INT_MAX_STEP blocks the move, same as a
+// real wall/ledge you'd need to jump instead of just walking up onto.
+const SHIP_INT_MAX_STEP = 0.4;
+const SHIP_INT_STAIR_ZONE = { xMin: 3.1, xMax: 3.17, zMin: -3.36, zMax: -2.45 };
+function _shipIntInStairZone(x, z) {
+  return x >= SHIP_INT_STAIR_ZONE.xMin && x <= SHIP_INT_STAIR_ZONE.xMax &&
+         z >= SHIP_INT_STAIR_ZONE.zMin && z <= SHIP_INT_STAIR_ZONE.zMax;
+}
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
   if (!el) {
@@ -5670,13 +5680,11 @@ function _updateShipInteriorWalk() {
     return hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : null;
   };
 
-  // A move is blocked only if there's no real floor at all at the candidate spot (off the
-  // ship into open space, or a real wall) — any height difference auto-climbs instantly,
-  // no rise restriction. (Tried restricting big rises to one staircase zone, but this
-  // model's modular tiles have plenty of >0.4-unit seams even across otherwise-flat rooms,
-  // so that made movement inconsistently stuck depending on where you were.) Try the full
-  // diagonal move first, then each axis alone — walking straight into a wall at a slight
-  // angle should slide along it instead of stopping dead, same as a normal FPS.
+  // A move is blocked if there's no real floor at all at the candidate spot (off the ship
+  // into open space, or a real wall), OR the floor there is a rise bigger than a small step
+  // and it's not inside the one staircase zone that's allowed to auto-climb any height. Try
+  // the full diagonal move first, then each axis alone — walking straight into a wall at a
+  // slight angle should slide along it instead of stopping dead, same as a normal FPS.
   const attempts = [
     [clampX(camera.position.x + move.x), clampZ(camera.position.z + move.z)],
     [clampX(camera.position.x + move.x), camera.position.z],
@@ -5685,6 +5693,8 @@ function _updateShipInteriorWalk() {
   for (const [x, z] of attempts) {
     const floorY = floorYAt(x, z);
     if (floorY === null) continue;
+    const rise = floorY - _shipIntFeetY;
+    if (rise > SHIP_INT_MAX_STEP && !_shipIntInStairZone(x, z)) continue;
     camera.position.x = x;
     camera.position.z = z;
     _shipIntFeetY = floorY;
