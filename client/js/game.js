@@ -5570,7 +5570,15 @@ const SHIP_INT_AUTOCLIMB_ZONES = [
   { xMin: -4.6, xMax: 3.2, zMin: -8.8, zMax: 8.6 }, // catwalk
   { xMin: 3.2, xMax: 4.6, zMin: -2.8, zMax: 0.2 }, // small connecting ledge on the catwalk's east side
 ];
+// The catwalk/ledge zones only describe an XZ footprint, but that footprint sits directly
+// above the main floor (they're stacked levels) — so an XZ-only check would also exempt
+// standing on the MAIN FLOOR under the catwalk, letting you walk straight up onto it with no
+// jump at all. Requiring the CURRENT foot height already be above the main floor keeps that
+// climb blocked (real ledge, needs a jump) while still freely auto-climbing once you're
+// already up on the catwalk itself, where this exists to smooth over its grating/rail seams.
+const SHIP_INT_MAIN_FLOOR_Y = -3.22;
 function _shipIntAutoClimbAllowed(x, z) {
+  if (_shipIntFeetY < SHIP_INT_MAIN_FLOOR_Y + 0.5) return false;
   return SHIP_INT_AUTOCLIMB_ZONES.some(zn => x >= zn.xMin && x <= zn.xMax && z >= zn.zMin && z <= zn.zMax);
 }
 function _ensureShipIntCoordHud() {
