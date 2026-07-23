@@ -5705,7 +5705,23 @@ function _updateShipInteriorWalk() {
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 
   const hud = document.getElementById('ship-int-coords');
-  if (hud) hud.textContent = `Ship coords  x: ${camera.position.x.toFixed(2)}  y: ${camera.position.y.toFixed(2)}  z: ${camera.position.z.toFixed(2)}`;
+  if (hud) {
+    // Crosshair readout: raycast straight out from the camera's own look direction (not
+    // just straight down like the floor check) and report where it lands in ship-local
+    // coords — lets you aim precisely at a spot (a step edge, a zone boundary) and read its
+    // exact coords, instead of only ever seeing your own feet position.
+    let lookLine = 'Looking at: (nothing hit)';
+    const lookOriginWorld = selfMesh.localToWorld(camera.position.clone());
+    const lookDirLocal = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const lookDirWorld = lookDirLocal.applyQuaternion(selfMesh.quaternion).normalize();
+    const lookRc = new THREE.Raycaster(lookOriginWorld, lookDirWorld);
+    const lookHits = lookRc.intersectObjects(_shipIntCollidables, false);
+    if (lookHits.length > 0) {
+      const p = selfMesh.worldToLocal(lookHits[0].point.clone());
+      lookLine = `Looking at: x: ${p.x.toFixed(2)}  y: ${p.y.toFixed(2)}  z: ${p.z.toFixed(2)}  (${lookHits[0].distance.toFixed(1)}u away)`;
+    }
+    hud.innerHTML = `Ship coords  x: ${camera.position.x.toFixed(2)}  y: ${camera.position.y.toFixed(2)}  z: ${camera.position.z.toFixed(2)}<br>${lookLine}`;
+  }
 }
 document.addEventListener('keydown', e => {
   if ((e.key === 'c' || e.key === 'C') && (gameMode === 'flight' || gameMode === 'ship_interior')) {
