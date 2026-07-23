@@ -5651,8 +5651,8 @@ function _updateShipInteriorWalk() {
   // No inward margin here — real floor existence (below) is what actually bounds movement
   // now, and this room's real footprint reaches all the way to the bounding box edge in
   // some places, so clamping in from the box edge was cutting off real, walkable floor.
-  const candidateX = Math.max(_shipIntBBox.min.x, Math.min(_shipIntBBox.max.x, camera.position.x + move.x));
-  const candidateZ = Math.max(_shipIntBBox.min.z, Math.min(_shipIntBBox.max.z, camera.position.z + move.z));
+  const clampX = x => Math.max(_shipIntBBox.min.x, Math.min(_shipIntBBox.max.x, x));
+  const clampZ = z => Math.max(_shipIntBBox.min.z, Math.min(_shipIntBBox.max.z, z));
 
   // Floor: raycast straight down from above the given XZ. With two real stacked levels
   // here, this picks up whichever one is actually underfoot. The collidable meshes only
@@ -5672,13 +5672,23 @@ function _updateShipInteriorWalk() {
 
   // Simple instant floor-snap, no auto-climb restriction — same as the original movement
   // feel. The only thing that blocks a move is there being no real floor at all at the
-  // candidate spot (i.e. it's off the ship into open space); anywhere with real floor
-  // beneath it, no matter the step height, is walkable.
-  const candidateFloorY = floorYAt(candidateX, candidateZ);
-  if (candidateFloorY !== null) {
-    camera.position.x = candidateX;
-    camera.position.z = candidateZ;
-    _shipIntFeetY = candidateFloorY;
+  // candidate spot (i.e. it's off the ship into open space, or into a real wall); anywhere
+  // with real floor beneath it, no matter the step height, is walkable. Try the full
+  // diagonal move first, then each axis alone — walking straight into a wall at a slight
+  // angle should slide along it instead of stopping dead, same as a normal FPS.
+  const attempts = [
+    [clampX(camera.position.x + move.x), clampZ(camera.position.z + move.z)],
+    [clampX(camera.position.x + move.x), camera.position.z],
+    [camera.position.x, clampZ(camera.position.z + move.z)],
+  ];
+  for (const [x, z] of attempts) {
+    const floorY = floorYAt(x, z);
+    if (floorY !== null) {
+      camera.position.x = x;
+      camera.position.z = z;
+      _shipIntFeetY = floorY;
+      break;
+    }
   }
   camera.position.y = _shipIntFeetY + eyeHeight + _shipIntJumpOffset;
 
