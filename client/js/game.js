@@ -5568,6 +5568,7 @@ const SHIP_INT_JUMP_V = 0.3;
 const SHIP_INT_MAX_STEP = 0.4;
 const SHIP_INT_AUTOCLIMB_ZONES = [
   { xMin: -4.6, xMax: 3.2, zMin: -8.8, zMax: 8.6 }, // catwalk
+  { xMin: 3.2, xMax: 4.6, zMin: -2.8, zMax: 0.2 }, // small connecting ledge on the catwalk's east side
 ];
 function _shipIntAutoClimbAllowed(x, z) {
   return SHIP_INT_AUTOCLIMB_ZONES.some(zn => x >= zn.xMin && x <= zn.xMax && z >= zn.zMin && z <= zn.zMax);
