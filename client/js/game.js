@@ -5648,9 +5648,11 @@ function _updateShipInteriorWalk() {
   _shipIntJumpOffset += _shipIntJumpVel;
   if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
 
-  const margin = 0.3;
-  const candidateX = Math.max(_shipIntBBox.min.x + margin, Math.min(_shipIntBBox.max.x - margin, camera.position.x + move.x));
-  const candidateZ = Math.max(_shipIntBBox.min.z + margin, Math.min(_shipIntBBox.max.z - margin, camera.position.z + move.z));
+  // No inward margin here — real floor existence (below) is what actually bounds movement
+  // now, and this room's real footprint reaches all the way to the bounding box edge in
+  // some places, so clamping in from the box edge was cutting off real, walkable floor.
+  const candidateX = Math.max(_shipIntBBox.min.x, Math.min(_shipIntBBox.max.x, camera.position.x + move.x));
+  const candidateZ = Math.max(_shipIntBBox.min.z, Math.min(_shipIntBBox.max.z, camera.position.z + move.z));
 
   // Floor: raycast straight down from above the given XZ. With two real stacked levels
   // here, this picks up whichever one is actually underfoot. The collidable meshes only
