@@ -5698,9 +5698,14 @@ function _updateShipInteriorWalk() {
 
   // A move is blocked if there's no real floor at all at the candidate spot (off the ship
   // into open space, or a real wall), OR the floor there is a rise bigger than a small step
-  // and it's not inside the one staircase zone that's allowed to auto-climb any height. Try
-  // the full diagonal move first, then each axis alone — walking straight into a wall at a
-  // slight angle should slide along it instead of stopping dead, same as a normal FPS.
+  // and it's not inside an auto-climb zone AND not reachable by your current jump arc. That
+  // last part matters a lot: without it, jump was purely cosmetic — a real ledge taller than
+  // a small step was blocked from ground level no matter what, since the block check never
+  // looked at whether you were airborne. Landing at the top of a jump (feetY + jumpOffset)
+  // that clears the candidate floor now counts as a legitimate way up a real ledge, same as
+  // in any platformer. Try the full diagonal move first, then each axis alone — walking
+  // straight into a wall at a slight angle should slide along it instead of stopping dead.
+  const jumpTop = _shipIntFeetY + _shipIntJumpOffset;
   const attempts = [
     [clampX(camera.position.x + move.x), clampZ(camera.position.z + move.z)],
     [clampX(camera.position.x + move.x), camera.position.z],
@@ -5710,9 +5715,16 @@ function _updateShipInteriorWalk() {
     const floorY = floorYAt(x, z);
     if (floorY === null) continue;
     const rise = floorY - _shipIntFeetY;
-    if (rise > SHIP_INT_MAX_STEP && !_shipIntAutoClimbAllowed(x, z)) continue;
+    const reachableByJump = jumpTop >= floorY - 0.05;
+    if (rise > SHIP_INT_MAX_STEP && !_shipIntAutoClimbAllowed(x, z) && !reachableByJump) continue;
     camera.position.x = x;
     camera.position.z = z;
+    // Landing on a floor that's higher than where you started: keep the jump arc's
+    // remaining height relative to the NEW floor, so you settle onto it instead of
+    // snapping straight down through it.
+    if (reachableByJump && rise > SHIP_INT_MAX_STEP) {
+      _shipIntJumpOffset = Math.max(0, jumpTop - floorY);
+    }
     _shipIntFeetY = floorY;
     break;
   }
