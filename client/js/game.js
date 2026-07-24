@@ -69,7 +69,7 @@ const SHIP_DEFS = {
   // (the default facing) points further into that wall, so without interiorYaw here you'd
   // take one step forward and be stuck, even though the rest of the ~20-unit room is open.
   // Facing it 180 degrees points you into the room instead.
-  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(-5.07, -1.7, -9), interiorYaw: Math.PI },
+  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0.53, -1.72, 0.62), interiorYaw: Math.PI },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5687,13 +5687,20 @@ function _updateShipInteriorWalk() {
   // fallback height) when there's no real floor there — this model's actual footprint is
   // an irregular shape well inside its rectangular bounding box, so plenty of XZ positions
   // inside that rectangle are genuinely open space outside the ship.
+  // This ship has genuinely stacked levels at the same XZ (e.g. a room directly under part
+  // of the catwalk) — a straight-down ray hits EVERY surface in that column, not just the
+  // one you're standing on. Always taking the topmost hit meant a player under the catwalk
+  // would have every candidate move read as the catwalk floor several units overhead instead
+  // of their own real floor, making it look like a giant blocked rise in every direction.
+  // Fix: return every hit (sorted top to bottom) and let the caller pick the highest one it
+  // can actually reach, rather than blindly the topmost.
   selfMesh.updateMatrixWorld(true);
-  const floorYAt = (x, z) => {
+  const floorHitsAt = (x, z) => {
     const originWorld = selfMesh.localToWorld(new THREE.Vector3(x, _shipIntBBox.max.y + 5, z));
     const downWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(selfMesh.quaternion);
     const rc = new THREE.Raycaster(originWorld, downWorld);
     const hits = rc.intersectObjects(_shipIntCollidables, false);
-    return hits.length > 0 ? selfMesh.worldToLocal(hits[0].point.clone()).y : null;
+    return hits.map(h => selfMesh.worldToLocal(h.point.clone()).y);
   };
 
   // A move is blocked if there's no real floor at all at the candidate spot (off the ship
@@ -5712,11 +5719,30 @@ function _updateShipInteriorWalk() {
     [camera.position.x, clampZ(camera.position.z + move.z)],
   ];
   for (const [x, z] of attempts) {
-    const floorY = floorYAt(x, z);
-    if (floorY === null) continue;
+    const hitYs = floorHitsAt(x, z);
+    if (hitYs.length === 0) continue;
+    // If the floor you're already standing on is still present in this column, stay on it —
+    // this ship has low overhangs/scaffolding (like a beam directly over a spawn room, just
+    // ~0.4 units above the real floor beneath it) that would otherwise get misread as a tiny
+    // "new" floor to hop onto, which stacks up into a false blocked rise since a hair over
+    // SHIP_INT_MAX_STEP. Only when that level genuinely isn't here anymore (i.e. you've
+    // reached a real edge/climb point) fall through to picking the highest surface you can
+    // actually reach — a small step, your current jump arc, or (once already elevated) an
+    // unconditional auto-climb zone. Skip this same-level preference entirely while actively
+    // jumping (jumpOffset > 0): otherwise every little modular-tile height variant near your
+    // takeoff level keeps "matching" and permanently vetoes ever reaching the real ledge
+    // you're trying to jump onto, even mid-arc.
+    const zoneExempt = _shipIntAutoClimbAllowed(x, z);
+    const reachTop = zoneExempt ? Infinity : Math.max(_shipIntFeetY + SHIP_INT_MAX_STEP, jumpTop);
+    let floorY = null;
+    if (_shipIntJumpOffset <= 0.02) {
+      for (const y of hitYs) { if (Math.abs(y - _shipIntFeetY) <= 0.15) { floorY = y; break; } }
+    }
+    if (floorY === null) { for (const y of hitYs) { if (y <= reachTop + 0.05) { floorY = y; break; } } }
+    if (floorY === null) floorY = hitYs[hitYs.length - 1];
     const rise = floorY - _shipIntFeetY;
     const reachableByJump = jumpTop >= floorY - 0.05;
-    if (rise > SHIP_INT_MAX_STEP && !_shipIntAutoClimbAllowed(x, z) && !reachableByJump) continue;
+    if (rise > SHIP_INT_MAX_STEP && !zoneExempt && !reachableByJump) continue;
     camera.position.x = x;
     camera.position.z = z;
     // Landing on a floor that's higher than where you started: keep the jump arc's
