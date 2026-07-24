@@ -5779,34 +5779,21 @@ function _updateShipInteriorWalk() {
   // that clears the candidate floor now counts as a legitimate way up a real ledge, same as
   // in any platformer. Try the full diagonal move first, then each axis alone — walking
   // straight into a wall at a slight angle should slide along it instead of stopping dead.
-  // Real wall collision: a short horizontal ray from chest height in the exact direction of
-  // this attempt. Floor existence alone never stopped you from walking straight through a
-  // wall as long as there was floor on both sides of it — this catches that solid geometry
-  // directly instead of relying on floor gaps to imply a wall is there. Only applied on the
-  // main floor (the "cabin") — the catwalk's grating is surrounded by rails/pipes at chest
-  // height that would otherwise get caught by this same check and block free movement there,
-  // the exact clutter the auto-climb zone above already has to work around.
+  // General raycast-based wall collision was tried here and reverted: a BFS reachability
+  // check across the whole cabin floor found it blocked 884 of 1571 real floor cells (56%)
+  // that are otherwise fully connected — this model is covered in the same kind of chest-
+  // height decorative clutter (pipes, shelves, brackets) the catwalk's auto-climb zone
+  // already has to work around, and there's no reliable way to tell that apart from a real
+  // wall via raycast alone. The door below still gets its own dedicated, deliberate block
+  // via its AABB (not a clutter-prone raycast), so that stays.
   const wallClear = (dx, dz) => {
     const len = Math.hypot(dx, dz);
     if (len < 1e-6) return true;
-    if (_shipIntFeetY >= SHIP_INT_MAIN_FLOOR_Y + 0.5) return true;
     const dirLocal = new THREE.Vector3(dx / len, 0, dz / len);
     const originLocal = new THREE.Vector3(camera.position.x, _shipIntFeetY + eyeHeight * 0.5, camera.position.z);
     const originWorld = selfMesh.localToWorld(originLocal);
     const dirWorld = dirLocal.applyQuaternion(selfMesh.quaternion);
-    const rc = new THREE.Raycaster(originWorld, dirWorld, 0, len + 0.2);
-    const rawHits = rc.intersectObjects(_shipIntCollidables, false);
-    // The real wall panel this door is cut into is still solid geometry in the model — once
-    // the door's fully open, treat a hit that lands within its footprint as passing through
-    // the opening rather than the (still physically present) wall behind it.
-    const doorOpenEnough = _shipIntDoorAnim >= 0.97;
-    const blockingHits = doorOpenEnough ? rawHits.filter(h => {
-      const local = selfMesh.worldToLocal(h.point.clone());
-      const withinDoorway = Math.abs(local.x - SHIP_INT_DOOR_POS.x) <= SHIP_INT_DOOR_SIZE.d * 2
-        && Math.abs(local.z - SHIP_INT_DOOR_POS.z) <= SHIP_INT_DOOR_SIZE.w / 2;
-      return !withinDoorway;
-    }) : rawHits;
-    return blockingHits.length === 0 && _shipIntDoorClear(dirWorld, originWorld, len + 0.2);
+    return _shipIntDoorClear(dirWorld, originWorld, len + 0.2);
   };
 
   const jumpTop = _shipIntFeetY + _shipIntJumpOffset;
