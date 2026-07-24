@@ -5581,6 +5581,72 @@ function _shipIntAutoClimbAllowed(x, z) {
   if (_shipIntFeetY < SHIP_INT_MAIN_FLOOR_Y + 0.5) return false;
   return SHIP_INT_AUTOCLIMB_ZONES.some(zn => x >= zn.xMin && x <= zn.xMax && z >= zn.zMin && z <= zn.zMax);
 }
+// Sliding door between the main-floor cabin and the catwalk stairway, at the real transition
+// point (x -3.5, the same spot the jump-bridge climb happens at). Slides up into a ceiling
+// pocket when opened — top edge stays fixed, the visible/collidable part shrinks upward from
+// the bottom. Built as a plain box since none of the shuttle's 277 modular pieces are a real
+// animated door; this is a synthetic addition, not part of the original asset.
+const SHIP_INT_DOOR_POS = new THREE.Vector3(-3.5, -2.0, -8);
+const SHIP_INT_DOOR_SIZE = { w: 1.8, h: 2.4, d: 0.3 };
+const SHIP_INT_DOOR_INTERACT_DIST = 2.5;
+let _shipIntDoorMesh = null;
+let _shipIntDoorOpen = false;
+let _shipIntDoorAnim = 0; // 0 closed .. 1 fully open
+function _ensureShipIntDoor() {
+  if (_shipIntDoorMesh) return _shipIntDoorMesh;
+  const geo = new THREE.BoxGeometry(SHIP_INT_DOOR_SIZE.d, SHIP_INT_DOOR_SIZE.h, SHIP_INT_DOOR_SIZE.w);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x7d8fa3, metalness: 0.7, roughness: 0.35, emissive: 0x111820 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(SHIP_INT_DOOR_POS);
+  selfMesh.add(mesh);
+  _shipIntDoorMesh = mesh;
+  return mesh;
+}
+function _shipIntDoorAABB() {
+  if (_shipIntDoorAnim >= 0.97) return null; // fully open — no collision at all
+  const halfW = SHIP_INT_DOOR_SIZE.w / 2, halfD = SHIP_INT_DOOR_SIZE.d / 2;
+  const topY = SHIP_INT_DOOR_POS.y + SHIP_INT_DOOR_SIZE.h / 2;
+  const bottomY = topY - SHIP_INT_DOOR_SIZE.h * (1 - _shipIntDoorAnim);
+  return {
+    xMin: SHIP_INT_DOOR_POS.x - halfD, xMax: SHIP_INT_DOOR_POS.x + halfD,
+    zMin: SHIP_INT_DOOR_POS.z - halfW, zMax: SHIP_INT_DOOR_POS.z + halfW,
+    yMin: bottomY, yMax: topY,
+  };
+}
+// Approximates a ray-vs-box test by sampling points along the short movement segment (it's
+// always < ~0.5 units for a single frame's step) rather than a full slab intersection — plenty
+// precise at this scale and much simpler.
+function _shipIntDoorClear(dirWorld, originWorld, maxDist) {
+  const aabb = _shipIntDoorAABB();
+  if (!aabb) return true;
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const pt = originWorld.clone().addScaledVector(dirWorld, (maxDist * i) / steps);
+    const local = selfMesh.worldToLocal(pt);
+    if (local.x >= aabb.xMin && local.x <= aabb.xMax && local.z >= aabb.zMin && local.z <= aabb.zMax &&
+        local.y >= aabb.yMin && local.y <= aabb.yMax) {
+      return false;
+    }
+  }
+  return true;
+}
+function _updateShipIntDoor() {
+  if (!_shipIntDoorMesh) return;
+  const target = _shipIntDoorOpen ? 1 : 0;
+  _shipIntDoorAnim += Math.max(-0.06, Math.min(0.06, target - _shipIntDoorAnim));
+  _shipIntDoorAnim = Math.max(0, Math.min(1, _shipIntDoorAnim));
+  const shrunkH = Math.max(0.03, SHIP_INT_DOOR_SIZE.h * (1 - _shipIntDoorAnim));
+  _shipIntDoorMesh.scale.y = shrunkH / SHIP_INT_DOOR_SIZE.h;
+  _shipIntDoorMesh.position.y = SHIP_INT_DOOR_POS.y + (SHIP_INT_DOOR_SIZE.h - shrunkH) / 2;
+}
+document.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E') && gameMode === 'ship_interior') {
+    const typing = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (typing) return;
+    const dist = Math.hypot(camera.position.x - SHIP_INT_DOOR_POS.x, camera.position.z - SHIP_INT_DOOR_POS.z);
+    if (dist <= SHIP_INT_DOOR_INTERACT_DIST) _shipIntDoorOpen = !_shipIntDoorOpen;
+  }
+});
 function _ensureShipIntCoordHud() {
   let el = document.getElementById('ship-int-coords');
   if (!el) {
@@ -5634,6 +5700,7 @@ function _enterShipInteriorWalk() {
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
   _ensureShipIntCoordHud().style.display = 'block';
+  _ensureShipIntDoor();
 }
 function _exitShipInteriorWalk() {
   _shipInteriorView = false;
@@ -5712,13 +5779,44 @@ function _updateShipInteriorWalk() {
   // that clears the candidate floor now counts as a legitimate way up a real ledge, same as
   // in any platformer. Try the full diagonal move first, then each axis alone — walking
   // straight into a wall at a slight angle should slide along it instead of stopping dead.
+  // Real wall collision: a short horizontal ray from chest height in the exact direction of
+  // this attempt. Floor existence alone never stopped you from walking straight through a
+  // wall as long as there was floor on both sides of it — this catches that solid geometry
+  // directly instead of relying on floor gaps to imply a wall is there. Only applied on the
+  // main floor (the "cabin") — the catwalk's grating is surrounded by rails/pipes at chest
+  // height that would otherwise get caught by this same check and block free movement there,
+  // the exact clutter the auto-climb zone above already has to work around.
+  const wallClear = (dx, dz) => {
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) return true;
+    if (_shipIntFeetY >= SHIP_INT_MAIN_FLOOR_Y + 0.5) return true;
+    const dirLocal = new THREE.Vector3(dx / len, 0, dz / len);
+    const originLocal = new THREE.Vector3(camera.position.x, _shipIntFeetY + eyeHeight * 0.5, camera.position.z);
+    const originWorld = selfMesh.localToWorld(originLocal);
+    const dirWorld = dirLocal.applyQuaternion(selfMesh.quaternion);
+    const rc = new THREE.Raycaster(originWorld, dirWorld, 0, len + 0.2);
+    const rawHits = rc.intersectObjects(_shipIntCollidables, false);
+    // The real wall panel this door is cut into is still solid geometry in the model — once
+    // the door's fully open, treat a hit that lands within its footprint as passing through
+    // the opening rather than the (still physically present) wall behind it.
+    const doorOpenEnough = _shipIntDoorAnim >= 0.97;
+    const blockingHits = doorOpenEnough ? rawHits.filter(h => {
+      const local = selfMesh.worldToLocal(h.point.clone());
+      const withinDoorway = Math.abs(local.x - SHIP_INT_DOOR_POS.x) <= SHIP_INT_DOOR_SIZE.d * 2
+        && Math.abs(local.z - SHIP_INT_DOOR_POS.z) <= SHIP_INT_DOOR_SIZE.w / 2;
+      return !withinDoorway;
+    }) : rawHits;
+    return blockingHits.length === 0 && _shipIntDoorClear(dirWorld, originWorld, len + 0.2);
+  };
+
   const jumpTop = _shipIntFeetY + _shipIntJumpOffset;
   const attempts = [
-    [clampX(camera.position.x + move.x), clampZ(camera.position.z + move.z)],
-    [clampX(camera.position.x + move.x), camera.position.z],
-    [camera.position.x, clampZ(camera.position.z + move.z)],
+    [clampX(camera.position.x + move.x), clampZ(camera.position.z + move.z), move.x, move.z],
+    [clampX(camera.position.x + move.x), camera.position.z, move.x, 0],
+    [camera.position.x, clampZ(camera.position.z + move.z), 0, move.z],
   ];
-  for (const [x, z] of attempts) {
+  for (const [x, z, dx, dz] of attempts) {
+    if (!wallClear(dx, dz)) continue;
     const hitYs = floorHitsAt(x, z);
     if (hitYs.length === 0) continue;
     // If the floor you're already standing on is still present in this column, stay on it —
@@ -5758,6 +5856,8 @@ function _updateShipInteriorWalk() {
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 
+  _updateShipIntDoor();
+
   const hud = document.getElementById('ship-int-coords');
   if (hud) {
     // Crosshair readout: raycast straight out from the camera's own look direction (not
@@ -5774,7 +5874,10 @@ function _updateShipInteriorWalk() {
       const p = selfMesh.worldToLocal(lookHits[0].point.clone());
       lookLine = `Looking at: x: ${p.x.toFixed(2)}  y: ${p.y.toFixed(2)}  z: ${p.z.toFixed(2)}  (${lookHits[0].distance.toFixed(1)}u away)`;
     }
-    hud.innerHTML = `Ship coords  x: ${camera.position.x.toFixed(2)}  y: ${camera.position.y.toFixed(2)}  z: ${camera.position.z.toFixed(2)}<br>${lookLine}`;
+    const doorDist = Math.hypot(camera.position.x - SHIP_INT_DOOR_POS.x, camera.position.z - SHIP_INT_DOOR_POS.z);
+    const doorLine = doorDist <= SHIP_INT_DOOR_INTERACT_DIST
+      ? `<br>[E] ${_shipIntDoorOpen ? 'Close' : 'Open'} door` : '';
+    hud.innerHTML = `Ship coords  x: ${camera.position.x.toFixed(2)}  y: ${camera.position.y.toFixed(2)}  z: ${camera.position.z.toFixed(2)}<br>${lookLine}${doorLine}`;
   }
 }
 document.addEventListener('keydown', e => {
