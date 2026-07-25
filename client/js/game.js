@@ -1193,6 +1193,104 @@ shootingRangeScene.add(_rangeLight);
 let _rangeCollidables = [];
 let _rangeBBox = null;
 
+// ── Security bot NPCs (shooting range) ───────────────────────────────────────────
+// Range mode uses a fixed floor height (_fpFloor = 0 for gameMode === 'range', see the
+// _fpFloor assignment further down), not a raycast — bots are placed at y=0 feet to match
+// that same convention rather than trying to raycast a floor that isn't there in this mode.
+let _rangeBotTemplate = null;
+let _rangeBots = [];
+const RANGE_BOT_MAX_HEALTH = 100;
+const RANGE_BOT_RESPAWN_FRAMES = 240; // ~4s at 60fps
+const RANGE_BOT_SPAWN_POINTS = [
+  { x: 45, z: -165 },
+  { x: 63, z: -178 },
+  { x: 85, z: -165 },
+];
+loadModel('assets/p.u.c._security_bot_7.glb', 16, m => {
+  if (!m) { console.warn('Security bot GLB failed'); return; }
+  _fixFeetToOrigin(m);
+  _rangeBotTemplate = m;
+  _spawnRangeBots();
+});
+function _spawnRangeBots() {
+  if (!_rangeBotTemplate || _rangeBots.length) return;
+  RANGE_BOT_SPAWN_POINTS.forEach((p, i) => {
+    const mesh = _rangeBotTemplate.clone(true);
+    mesh.position.set(p.x, 0, p.z);
+    const bot = {
+      mesh, health: RANGE_BOT_MAX_HEALTH, alive: true,
+      baseX: p.x, baseZ: p.z, patrolPhase: i * 2.1, flashTimer: 0, deadTimer: 0,
+    };
+    mesh.traverse(c => {
+      if (!c.isMesh) return;
+      // This asset has a real body (several small ~1-2 unit cube pieces) plus one long thin
+      // outlier (a ~43-unit-long cylinder, almost certainly a sensor-beam/scanner effect
+      // sticking out of it, not the robot itself) — checked directly via bounding-sphere
+      // radius per mesh. Excluding anything that oversized from hit-detection so shots on
+      // the actual visible robot body register instead of the beam eating them (or the
+      // beam's huge radius silently dominating collision checks).
+      c.geometry.computeBoundingSphere();
+      if (c.geometry.boundingSphere && c.geometry.boundingSphere.radius > 5) return;
+      // Independent materials per instance — clone(true) shares materials by reference,
+      // which would make a hit-flash tint on one bot bleed onto every other clone.
+      c.material = Array.isArray(c.material) ? c.material.map(mt => mt.clone()) : c.material.clone();
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(mt => { mt.transparent = true; if (!mt.emissive) mt.emissive = new THREE.Color(0); });
+      c.userData.isRangeBot = true;
+      c.userData.botRef = bot;
+      _rangeCollidables.push(c);
+    });
+    shootingRangeScene.add(mesh);
+    _rangeBots.push(bot);
+  });
+}
+function _setRangeBotMat(bot, fn) {
+  bot.mesh.traverse(c => {
+    if (!c.isMesh) return;
+    (Array.isArray(c.material) ? c.material : [c.material]).forEach(fn);
+  });
+}
+function _killRangeBot(bot) {
+  bot.alive = false;
+  bot.deadTimer = RANGE_BOT_RESPAWN_FRAMES;
+}
+function _reviveRangeBot(bot) {
+  bot.alive = true;
+  bot.health = RANGE_BOT_MAX_HEALTH;
+  bot.mesh.visible = true;
+  _setRangeBotMat(bot, mt => { mt.opacity = 1; mt.emissive.setRGB(0, 0, 0); });
+}
+function _updateRangeBots() {
+  if (gameMode !== 'range') return;
+  const t = performance.now() / 1000;
+  for (const bot of _rangeBots) {
+    if (bot.alive) {
+      // Simple side-to-side patrol + idle bob — matches the sine-driven procedural motion
+      // style already used for avatar limb animation elsewhere in this file, rather than
+      // introducing a first-ever AnimationMixer for baked clips this asset may not have.
+      const swing = Math.sin(t * 0.6 + bot.patrolPhase) * 6;
+      const prevX = bot.mesh.position.x;
+      bot.mesh.position.x = bot.baseX + swing;
+      const dx = bot.mesh.position.x - prevX;
+      if (Math.abs(dx) > 0.0001) bot.mesh.rotation.y = dx > 0 ? Math.PI / 2 : -Math.PI / 2;
+      bot.mesh.position.y = Math.sin(t * 2.5 + bot.patrolPhase) * 0.15;
+      if (bot.flashTimer > 0) {
+        bot.flashTimer--;
+        const on = bot.flashTimer > 0;
+        _setRangeBotMat(bot, mt => mt.emissive.setRGB(on ? 1 : 0, 0, 0));
+      }
+    } else {
+      bot.deadTimer--;
+      // Fade out over the last ~30 frames before fully gone, stay invisible, then respawn.
+      const fadeStart = 30;
+      const fadeT = Math.max(0, Math.min(1, bot.deadTimer <= fadeStart ? bot.deadTimer / fadeStart : 1));
+      _setRangeBotMat(bot, mt => { mt.opacity = fadeT; });
+      bot.mesh.visible = fadeT > 0;
+      if (bot.deadTimer <= 0) _reviveRangeBot(bot);
+    }
+  }
+}
+
 // Offscreen canvas for sampling target texture colors
 const _rangeTexCanvas = document.createElement('canvas');
 const _rangeTexCtx = _rangeTexCanvas.getContext('2d');
@@ -3355,10 +3453,14 @@ function _firePellet(dir, activeScene) {
   }
 
   if (bestHit) {
+    // Security bots are local-only (practice range, no server sync needed) — they hang off
+    // userData directly on the hit mesh, same tagging approach _rangeCollidables already
+    // uses for isTarget, checked here before the plain range-target branch below.
+    const isRangeBotHit = !bestIsPlayer && bestHit.object.userData && bestHit.object.userData.isRangeBot;
     const normal = bestIsPlayer ? bestHit.normal
       : bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld).normalize()
       : dir.clone().negate();
-    const hitColor = bestIsPlayer ? 'red' : _sampleHitColor(bestHit);
+    const hitColor = (bestIsPlayer || isRangeBotHit) ? 'red' : _sampleHitColor(bestHit);
     _spawnImpact(bestHit.point, normal, activeScene, hitColor);
     if (bestIsPlayer) {
       _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
@@ -3367,6 +3469,15 @@ function _firePellet(dir, activeScene) {
         let dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
         if (gameMode === 'tdm') dmg *= TDM_DAMAGE_MUL; // fights should last longer in a 3-minute match
         socket.emit('player_hit', { targetId: bestHit.targetId, damage: dmg });
+      }
+    } else if (isRangeBotHit) {
+      _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
+      const bot = bestHit.object.userData.botRef;
+      if (bot && bot.alive) {
+        const dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
+        bot.health -= dmg;
+        bot.flashTimer = 6;
+        if (bot.health <= 0) _killRangeBot(bot);
       }
     } else if (gameMode === 'range') {
       // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
@@ -8501,6 +8612,7 @@ function animate(t) {
     dockPrompt.style.display = (gameMode === 'flight' && dockDist < 400) ? 'block' : 'none';
   }
   _updateSniperShots(); // always run — handles hand model + shots in all modes
+  _updateRangeBots();
   _updateGrenades(); // always run — thrown grenades keep arcing/ticking regardless of mode changes mid-flight
   _updateSmokeVision(); // always run — smoke cloud obstruction shouldn't stop just because gameMode changed
   _updateEventCrateVisuals(); // always run — tumble animation regardless of mode
