@@ -36,40 +36,6 @@ const ASSETS = {
 // key before game.js even starts loading. Falcon (the original spaceship) is the default.
 const SHIP_DEFS = {
   spaceship: { name: 'Falcon',     asset: 'assets/ships/spaceship.glb' },
-  // The flight camera is a fixed rig behind the ship looking down local -Z (see the
-  // "Camera follows behind ship" setup near selfMesh) — every model is expected to have
-  // its nose-to-tail length run along that axis, nose pointing -Z (away from the camera,
-  // into the screen). cargo_ship.glb's actual geometry (checked via its bounding box with
-  // the baked-in star decoration stripped out) is over 2x longer on X than on Z, i.e. it's
-  // built lying on its side relative to that convention — a 90° yaw corrects the axis, and
-  // the sign (-90° rather than +90°) points the nose away from the camera instead of at it.
-  // sizeMul scales it up relative to the other ships' normal target size.
-  cargo:     { name: 'Cargo Ship', asset: 'assets/ships/cargo_ship.glb', yawOffset: -Math.PI / 2, sizeMul: 2 },
-  // X being the longest raw-bbox dimension turned out to be a wide wingspan, not a
-  // sideways-built model like cargo_ship — -90°/+90° pointed it left/right, and 0° (its
-  // native orientation) had it facing straight at the camera instead of away from it, so a
-  // plain 180° flip was the actual fix. sizeMul bumped up — it read noticeably small next
-  // to the others.
-  // No walkable interior — checked directly: Cockpit_0 (the only real shell-like piece) is
-  // a tiny ~1.7×1.1×2.7 unit sliver, almost certainly just the glass canopy dome without a
-  // solid floor/seat/backing closing it off, so standing "inside" it still showed space
-  // through the open sides. Not fixable without inventing geometry that isn't in the asset.
-  starwing:  { name: 'Star Wing',  asset: 'assets/ships/star_wing.glb', yawOffset: Math.PI, sizeMul: 1.7 },
-  // Z is already the longest raw-bbox dimension (unlike cargo_ship/star_wing), matching the
-  // -Z forward convention by default — no yaw correction applied yet. Report back if it
-  // turns out sideways or backwards once actually flown, same as the other two needed.
-  // No single mesh here is hull-sized (largest is ~2.7 units), but re-checked more
-  // carefully: the ~280 small tile/fixture pieces (shelves, ladders, railings, floor/
-  // ceiling panels, a door) collectively span a real room-sized volume (~11×14×20 units at
-  // this scale) — it's a modular tile-built interior (matches the actual Lethal Company
-  // ship), not a single continuous shell. A grid raycast across it found two real stacked
-  // floor levels; interiorSpawn below is a point directly verified (via raycast, not
-  // guessed) to land on the main lower floor rather than in a gap between tiles.
-  // interiorSpawn sits right against the back wall (z close to the room's -10 edge) — yaw 0
-  // (the default facing) points further into that wall, so without interiorYaw here you'd
-  // take one step forward and be stuck, even though the rest of the ~20-unit room is open.
-  // Facing it 180 degrees points you into the room instead.
-  shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0.53, -1.72, 0.62), interiorYaw: Math.PI },
   // Raw bbox: 25.2 x 10.8 x 56.6 (x/y/z) — Z is already by far the longest dimension,
   // matching the -Z-forward convention by default like shuttle.glb, so no yaw correction
   // applied yet. Report back if it turns out sideways or backwards once actually flown.
