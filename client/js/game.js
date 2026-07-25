@@ -70,6 +70,10 @@ const SHIP_DEFS = {
   // take one step forward and be stuck, even though the rest of the ~20-unit room is open.
   // Facing it 180 degrees points you into the room instead.
   shuttle:   { name: 'Shuttle',    asset: 'assets/ships/shuttle.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0.53, -1.72, 0.62), interiorYaw: Math.PI },
+  // Raw bbox: 25.2 x 10.8 x 56.6 (x/y/z) — Z is already by far the longest dimension,
+  // matching the -Z-forward convention by default like shuttle.glb, so no yaw correction
+  // applied yet. Report back if it turns out sideways or backwards once actually flown.
+  starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb' },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
