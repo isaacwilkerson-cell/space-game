@@ -39,7 +39,14 @@ const SHIP_DEFS = {
   // Raw bbox: 25.2 x 10.8 x 56.6 (x/y/z) — Z is already by far the longest dimension,
   // matching the -Z-forward convention by default like shuttle.glb, so no yaw correction
   // applied yet. Report back if it turns out sideways or backwards once actually flown.
-  starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb' },
+  // Only a small chamber near the nose has real interior geometry (checked directly via a
+  // grid of downward raycasts): roughly x -3..3, z -7..10, with a curved floor bottoming out
+  // around y -1.5 at the center. Past z~10 the hull is completely hollow — no floor/wall
+  // geometry at all — so the interior is deliberately scoped to just this front cabin rather
+  // than the full 56-unit hull length. interiorSpawn.y is that floor height (-1.52) plus
+  // standing eye height (1.5). yaw faces +z (the 10-unit-deep side of the chamber) instead of
+  // the default -z, which only has ~7 units before the nose wall.
+  starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0, -0.02, 0), interiorYaw: Math.PI },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -1247,7 +1254,10 @@ function _loadOneRangeBot(p, i) {
     }, undefined, err => console.warn('Flying robot GLB parse failed', err));
   });
 }
-RANGE_BOT_SPAWN_POINTS.forEach(_loadOneRangeBot);
+// Disabled for now (not deleted) — planned for later use elsewhere, not in the shooting
+// range. Everything else in this system (spawn/hit/damage/animation logic) is left intact;
+// re-enable by uncommenting this line.
+// RANGE_BOT_SPAWN_POINTS.forEach(_loadOneRangeBot);
 // Crossfades to a named action. One-shot clips (loop:false) auto-advance to `next` (looping)
 // when they finish, via the mixer's 'finished' event — e.g. attack -> Hover.
 function _rangeBotPlay(bot, name, opts) {
