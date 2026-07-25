@@ -240,7 +240,10 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.domElement.setAttribute('tabindex', '0');
-renderer.shadowMap.enabled = true;
+// Nothing in this game ever sets castShadow/receiveShadow to true (the only two places that
+// touch them explicitly set both false) — shadow mapping was pure dead overhead every frame
+// for zero visual difference.
+renderer.shadowMap.enabled = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.getElementById('canvas-container').appendChild(renderer.domElement);
