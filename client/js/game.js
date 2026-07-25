@@ -1193,44 +1193,73 @@ shootingRangeScene.add(_rangeLight);
 let _rangeCollidables = [];
 let _rangeBBox = null;
 
-// ── Security bot NPCs (shooting range) ───────────────────────────────────────────
+// ── Security drone NPCs (shooting range) ─────────────────────────────────────────
 // Range mode uses a fixed floor height (_fpFloor = 0 for gameMode === 'range', see the
-// _fpFloor assignment further down), not a raycast — bots are placed at y=0 feet to match
-// that same convention rather than trying to raycast a floor that isn't there in this mode.
+// _fpFloor assignment further down), not a raycast — bots are placed at y (below) to match
+// a hovering drone rather than something planted on the ground.
+// Switched from the static p.u.c._security_bot_7.glb to fnsd-500_-_security_drone.glb, which
+// ships 7 real baked AnimationClips (Power On/Off, Idle, Fly Forward/Backward, Take Damage
+// Light/Heavy) — this is the first AnimationMixer usage anywhere in this file; everywhere
+// else drives motion procedurally because nothing else had real clips to play.
 let _rangeBotTemplate = null;
+let _rangeBotClips = null;
 let _rangeBots = [];
 const RANGE_BOT_MAX_HEALTH = 100;
 const RANGE_BOT_RESPAWN_FRAMES = 240; // ~4s at 60fps
+const RANGE_BOT_HOVER_Y = 6;
+// The previous spawn points (x 45-85, z -165/-178) were flat-out wrong: the player's own
+// spawn faces +z (confirmed via camera.getWorldDirection right after enterShootingRange()),
+// so anything at z < -142 sits BEHIND the player, never in view. Checked directly with
+// raycasts from the real spawn point (63, 2, -142): the range is a row of individual lanes
+// separated by dividers, and the player's own lane's clear window is only x 40-75 at every
+// depth checked (-110, -80, -40) — outside that, the neighboring lane's divider blocks line
+// of sight. baseX=57 (window center) with the patrol swing narrowed to +-10 (was +-6 already
+// fine, but confirming margin explicitly) keeps the whole patrol safely inside that window.
+const RANGE_BOT_SWING = 10;
 const RANGE_BOT_SPAWN_POINTS = [
-  { x: 45, z: -165 },
-  { x: 63, z: -178 },
-  { x: 85, z: -165 },
+  { x: 57, z: -110 },
+  { x: 57, z: -80 },
+  { x: 57, z: -40 },
 ];
-loadModel('assets/p.u.c._security_bot_7.glb', 16, m => {
-  if (!m) { console.warn('Security bot GLB failed'); return; }
-  _fixFeetToOrigin(m);
-  _rangeBotTemplate = m;
-  _spawnRangeBots();
-});
+const _rangeBotClock = new THREE.Clock();
+(function loadRangeBotDrone() {
+  fetch('assets/fnsd-500_-_security_drone.glb').then(r => r.ok ? r.blob() : null).then(blob => {
+    if (!blob) { console.warn('Security drone GLB failed'); return; }
+    const url = URL.createObjectURL(blob);
+    new THREE.GLTFLoader().load(url, gltf => {
+      URL.revokeObjectURL(url);
+      // Same scale-to-targetSize + recenter-to-origin behavior as loadModel(), just also
+      // keeping gltf.animations (which loadModel's own model-only return value drops).
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const targetSize = 10;
+      if (maxDim > 0) {
+        const s = targetSize / maxDim;
+        model.scale.setScalar(s);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.set(-center.x * s, -center.y * s, -center.z * s);
+      }
+      _rangeBotTemplate = model;
+      _rangeBotClips = gltf.animations;
+      _spawnRangeBots();
+    }, undefined, err => console.warn('Security drone GLB parse failed', err));
+  });
+})();
 function _spawnRangeBots() {
   if (!_rangeBotTemplate || _rangeBots.length) return;
   RANGE_BOT_SPAWN_POINTS.forEach((p, i) => {
     const mesh = _rangeBotTemplate.clone(true);
-    mesh.position.set(p.x, 0, p.z);
+    mesh.position.set(p.x, RANGE_BOT_HOVER_Y, p.z);
     const bot = {
       mesh, health: RANGE_BOT_MAX_HEALTH, alive: true,
       baseX: p.x, baseZ: p.z, patrolPhase: i * 2.1, flashTimer: 0, deadTimer: 0,
+      facing: 1, // +1 = flying toward +x, -1 = toward -x
+      actions: {}, mixer: null, currentAction: null,
     };
     mesh.traverse(c => {
       if (!c.isMesh) return;
-      // This asset has a real body (several small ~1-2 unit cube pieces) plus one long thin
-      // outlier (a ~43-unit-long cylinder, almost certainly a sensor-beam/scanner effect
-      // sticking out of it, not the robot itself) — checked directly via bounding-sphere
-      // radius per mesh. Excluding anything that oversized from hit-detection so shots on
-      // the actual visible robot body register instead of the beam eating them (or the
-      // beam's huge radius silently dominating collision checks).
-      c.geometry.computeBoundingSphere();
-      if (c.geometry.boundingSphere && c.geometry.boundingSphere.radius > 5) return;
       // Independent materials per instance — clone(true) shares materials by reference,
       // which would make a hit-flash tint on one bot bleed onto every other clone.
       c.material = Array.isArray(c.material) ? c.material.map(mt => mt.clone()) : c.material.clone();
@@ -1238,11 +1267,45 @@ function _spawnRangeBots() {
       mats.forEach(mt => { mt.transparent = true; if (!mt.emissive) mt.emissive = new THREE.Color(0); });
       c.userData.isRangeBot = true;
       c.userData.botRef = bot;
-      _rangeCollidables.push(c);
+      // NOT pushed into _rangeCollidables: this asset carries skinIndex/skinWeight
+      // attributes but GLTFLoader/clone(true) didn't produce a real THREE.SkinnedMesh, so
+      // Mesh.raycast()'s per-triangle test silently misses on every single shot no matter
+      // where you aim (confirmed directly — bounding-sphere/box pre-checks both pass, but
+      // the triangle intersection stage never registers a hit). Hit-testing for bots uses
+      // a bounding-sphere check in _firePellet instead, the same fallback this file already
+      // uses for remote-player hits when their mesh raycast doesn't connect.
     });
+    if (_rangeBotClips && _rangeBotClips.length) {
+      bot.mixer = new THREE.AnimationMixer(mesh);
+      _rangeBotClips.forEach(clip => { bot.actions[clip.name] = bot.mixer.clipAction(clip); });
+      _rangeBotPlay(bot, 'Power On', { loop: false, next: 'Idle' });
+    }
     shootingRangeScene.add(mesh);
     _rangeBots.push(bot);
   });
+}
+// Crossfades to a named action. One-shot clips (loop:false) auto-advance to `next` (looping)
+// when they finish, via the mixer's 'finished' event — e.g. Power On -> Idle, Take Damage -> Fly.
+function _rangeBotPlay(bot, name, opts) {
+  opts = opts || {};
+  const action = bot.actions[name];
+  if (!action || bot.currentAction === action) return;
+  action.reset();
+  action.setLoop(opts.loop === false ? THREE.LoopOnce : THREE.LoopRepeat);
+  action.clampWhenFinished = opts.loop === false;
+  action.fadeIn(0.25).play();
+  if (bot.currentAction) bot.currentAction.fadeOut(0.25);
+  bot.currentAction = action;
+  bot.currentActionName = name;
+  if (opts.loop === false && opts.next) {
+    const mixer = bot.mixer;
+    const onFinished = e => {
+      if (e.action !== action) return;
+      mixer.removeEventListener('finished', onFinished);
+      if (bot.alive || name === 'Power Off') _rangeBotPlay(bot, opts.next, opts.nextOpts);
+    };
+    mixer.addEventListener('finished', onFinished);
+  }
 }
 function _setRangeBotMat(bot, fn) {
   bot.mesh.traverse(c => {
@@ -1253,27 +1316,44 @@ function _setRangeBotMat(bot, fn) {
 function _killRangeBot(bot) {
   bot.alive = false;
   bot.deadTimer = RANGE_BOT_RESPAWN_FRAMES;
+  if (bot.mixer) _rangeBotPlay(bot, 'Power Off', { loop: false });
 }
 function _reviveRangeBot(bot) {
   bot.alive = true;
   bot.health = RANGE_BOT_MAX_HEALTH;
   bot.mesh.visible = true;
+  bot.mesh.position.set(bot.baseX, RANGE_BOT_HOVER_Y, bot.baseZ);
   _setRangeBotMat(bot, mt => { mt.opacity = 1; mt.emissive.setRGB(0, 0, 0); });
+  if (bot.mixer) _rangeBotPlay(bot, 'Power On', { loop: false, next: 'Idle' });
 }
 function _updateRangeBots() {
   if (gameMode !== 'range') return;
+  const dt = Math.min(_rangeBotClock.getDelta(), 0.1);
   const t = performance.now() / 1000;
   for (const bot of _rangeBots) {
+    if (bot.mixer) bot.mixer.update(dt);
     if (bot.alive) {
-      // Simple side-to-side patrol + idle bob — matches the sine-driven procedural motion
-      // style already used for avatar limb animation elsewhere in this file, rather than
-      // introducing a first-ever AnimationMixer for baked clips this asset may not have.
-      const swing = Math.sin(t * 0.6 + bot.patrolPhase) * 6;
+      // Side-to-side patrol, driven by the real Fly Forward/Backward clips instead of a
+      // procedural sine-bob — reverses direction at the ends of its patrol range.
+      const swing = Math.sin(t * 0.5 + bot.patrolPhase);
       const prevX = bot.mesh.position.x;
-      bot.mesh.position.x = bot.baseX + swing;
+      bot.mesh.position.x = bot.baseX + swing * RANGE_BOT_SWING;
       const dx = bot.mesh.position.x - prevX;
-      if (Math.abs(dx) > 0.0001) bot.mesh.rotation.y = dx > 0 ? Math.PI / 2 : -Math.PI / 2;
-      bot.mesh.position.y = Math.sin(t * 2.5 + bot.patrolPhase) * 0.15;
+      const takingDamage = bot.currentActionName === 'Take Damage Light' || bot.currentActionName === 'Take Damage Heavy';
+      if (Math.abs(dx) > 0.0001) {
+        const newFacing = dx > 0 ? 1 : -1;
+        const flyClip = newFacing > 0 ? 'Fly Forward' : 'Fly Backward';
+        if (newFacing !== bot.facing) {
+          bot.facing = newFacing;
+          bot.mesh.rotation.y = newFacing > 0 ? Math.PI / 2 : -Math.PI / 2;
+        }
+        if (bot.currentActionName !== flyClip && bot.actions[flyClip] && !takingDamage) {
+          _rangeBotPlay(bot, flyClip);
+        }
+      } else if (bot.actions['Idle'] && !takingDamage && bot.currentActionName !== 'Idle') {
+        _rangeBotPlay(bot, 'Idle');
+      }
+      bot.mesh.position.y = RANGE_BOT_HOVER_Y + Math.sin(t * 2.2 + bot.patrolPhase) * 0.3;
       if (bot.flashTimer > 0) {
         bot.flashTimer--;
         const on = bot.flashTimer > 0;
@@ -3452,12 +3532,40 @@ function _firePellet(dir, activeScene) {
     bestIsPlayer = true;
   }
 
+  // Range bot hits: bounding-sphere test only, same fallback the player-hit pass above uses
+  // when a mesh raycast doesn't connect — this asset's meshes carry skinIndex/skinWeight
+  // attributes but weren't instantiated as real THREE.SkinnedMesh objects, so a precise
+  // per-triangle raycast against them silently misses no matter where you aim (confirmed
+  // directly: the bounding-sphere and local bounding-box pre-checks both pass, but the
+  // triangle stage never registers). Recomputed fresh each shot since bots patrol.
+  let bestBotHit = null;
+  if (gameMode === 'range') {
+    try {
+      for (const bot of _rangeBots) {
+        if (!bot.alive) continue;
+        const box = new THREE.Box3().setFromObject(bot.mesh);
+        const center = box.getCenter(new THREE.Vector3());
+        const radius = box.getSize(new THREE.Vector3()).length() / 2;
+        const spherePoint = new THREE.Vector3();
+        if (!raycaster.ray.intersectSphere(new THREE.Sphere(center, radius), spherePoint)) continue;
+        const distance = camera.position.distanceTo(spherePoint);
+        if (!bestBotHit || distance < bestBotHit.distance) {
+          bestBotHit = { point: spherePoint.clone(), normal: spherePoint.clone().sub(center).normalize(), distance, bot };
+        }
+      }
+    } catch (err) {
+      console.warn('[fire] range bot hit-detection error (bullet still fired fine):', err);
+    }
+  }
+  let bestIsRangeBot = false;
+  if (bestBotHit && (!bestHit || bestBotHit.distance < bestHit.distance)) {
+    bestHit = bestBotHit;
+    bestIsRangeBot = true;
+  }
+
   if (bestHit) {
-    // Security bots are local-only (practice range, no server sync needed) — they hang off
-    // userData directly on the hit mesh, same tagging approach _rangeCollidables already
-    // uses for isTarget, checked here before the plain range-target branch below.
-    const isRangeBotHit = !bestIsPlayer && bestHit.object.userData && bestHit.object.userData.isRangeBot;
-    const normal = bestIsPlayer ? bestHit.normal
+    const isRangeBotHit = bestIsRangeBot;
+    const normal = (bestIsPlayer || isRangeBotHit) ? bestHit.normal
       : bestHit.face ? bestHit.face.normal.clone().transformDirection(bestHit.object.matrixWorld).normalize()
       : dir.clone().negate();
     const hitColor = (bestIsPlayer || isRangeBotHit) ? 'red' : _sampleHitColor(bestHit);
@@ -3472,12 +3580,19 @@ function _firePellet(dir, activeScene) {
       }
     } else if (isRangeBotHit) {
       _hitMarker = { color: 'red', life: HIT_MARKER_LIFE };
-      const bot = bestHit.object.userData.botRef;
+      const bot = bestHit.bot;
       if (bot && bot.alive) {
         const dmg = (WEAPON_DEFS[_equippedWeaponId] && WEAPON_DEFS[_equippedWeaponId].damage) || 10;
         bot.health -= dmg;
         bot.flashTimer = 6;
-        if (bot.health <= 0) _killRangeBot(bot);
+        if (bot.health <= 0) {
+          _killRangeBot(bot);
+        } else if (bot.mixer) {
+          // Heavy reaction for a big chunk of health in one hit (sniper/shotgun), light
+          // otherwise — resumes patrol (Fly Forward/Idle) automatically once it finishes.
+          const heavy = dmg >= RANGE_BOT_MAX_HEALTH * 0.4;
+          _rangeBotPlay(bot, heavy ? 'Take Damage Heavy' : 'Take Damage Light', { loop: false, next: 'Idle' });
+        }
       }
     } else if (gameMode === 'range') {
       // Only show hit marker if the hit surface faces roughly toward the player (Z-axis) = target face
