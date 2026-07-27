@@ -39,14 +39,15 @@ const SHIP_DEFS = {
   // Raw bbox: 25.2 x 10.8 x 56.6 (x/y/z) — Z is already by far the longest dimension,
   // matching the -Z-forward convention by default like shuttle.glb, so no yaw correction
   // applied yet. Report back if it turns out sideways or backwards once actually flown.
-  // Only a small chamber near the nose has real interior geometry (checked directly via a
-  // grid of downward raycasts): roughly x -3..3, z -7..10, with a curved floor bottoming out
-  // around y -1.5 at the center. Past z~10 the hull is completely hollow — no floor/wall
-  // geometry at all — so the interior is deliberately scoped to just this front cabin rather
-  // than the full 56-unit hull length. interiorSpawn.y is that floor height (-1.52) plus
-  // standing eye height (1.5). yaw faces +z (the 10-unit-deep side of the chamber) instead of
-  // the default -z, which only has ~7 units before the nose wall.
-  starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb', walkableInterior: true, interiorSpawn: new THREE.Vector3(0, -0.02, 0), interiorYaw: Math.PI },
+  // At 2x size (sizeMul below), only a chamber near the nose has real interior geometry
+  // (checked directly via a grid of downward raycasts): roughly x -6..6, z -14..18, floor
+  // bottoming out around y -3.04 at the center. Past that the hull is completely hollow — no
+  // floor/wall geometry at all — the rear half is covered instead by a synthetic corridor
+  // floor (see _ensureStarfreighterCorridorExt) since the asset itself doesn't model it.
+  // interiorSpawn.y is the real floor height (-3.04) plus standing eye height (1.5). yaw
+  // faces +z (the deeper side of the chamber, and toward the added corridor) instead of the
+  // default -z, which only has ~14 units before the nose wall.
+  starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb', sizeMul: 2, walkableInterior: true, interiorSpawn: new THREE.Vector3(0, -1.54, 0), interiorYaw: Math.PI },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
 let _selectedShipId = (localStorage.getItem(SHIP_STORAGE_KEY) in SHIP_DEFS) ? localStorage.getItem(SHIP_STORAGE_KEY) : 'spaceship';
@@ -5744,31 +5745,14 @@ let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) �
                         // big rise can be detected and blocked instead of auto-climbed
 const SHIP_INT_GRAVITY = 0.018;
 const SHIP_INT_JUMP_V = 0.3;
-// Auto-climb (instant snap onto any rise, no matter how tall) is OFF everywhere except
-// inside these zones — a rise past SHIP_INT_MAX_STEP elsewhere blocks the move, same as a
-// real wall/ledge you'd need to jump instead of just walking up onto. The catwalk zone is
-// generous on purpose: its grating/railing/pipe geometry is made of many small modular
-// pieces at slightly different heights, and the raycast sometimes catches a rail or pipe
-// above the real walkway instead of the grating itself, reading as a tall "step" — that's
-// what was making catwalk movement get stuck in some spots and not others. Auto-climbing
-// unconditionally anywhere on the catwalk sidesteps that false-positive entirely. Bounds
-// found by sampling the real floor heights across the whole ship (anything above the main
-// floor's ~-3.2 level): x -4.4 to 3, z -8.6 to 8.4; padded slightly for margin.
+// Auto-climb is unconditional (any rise, any XZ) — this used to be restricted to specific
+// zones tuned for the shuttle's catwalk/main-floor split, but the shuttle has since been
+// removed from SHIP_DEFS entirely, leaving no ship that actually needs that restriction.
+// Left in place as a function (rather than inlining `true`) so a future ship needing the
+// same real-ledge-requires-a-jump behavior has an obvious place to reintroduce it.
 const SHIP_INT_MAX_STEP = 0.4;
-const SHIP_INT_AUTOCLIMB_ZONES = [
-  { xMin: -4.6, xMax: 3.2, zMin: -8.8, zMax: 8.6 }, // catwalk
-  { xMin: 3.2, xMax: 4.6, zMin: -2.8, zMax: 0.2 }, // small connecting ledge on the catwalk's east side
-];
-// The catwalk/ledge zones only describe an XZ footprint, but that footprint sits directly
-// above the main floor (they're stacked levels) — so an XZ-only check would also exempt
-// standing on the MAIN FLOOR under the catwalk, letting you walk straight up onto it with no
-// jump at all. Requiring the CURRENT foot height already be above the main floor keeps that
-// climb blocked (real ledge, needs a jump) while still freely auto-climbing once you're
-// already up on the catwalk itself, where this exists to smooth over its grating/rail seams.
-const SHIP_INT_MAIN_FLOOR_Y = -3.22;
 function _shipIntAutoClimbAllowed(x, z) {
-  if (_shipIntFeetY < SHIP_INT_MAIN_FLOOR_Y + 0.5) return false;
-  return SHIP_INT_AUTOCLIMB_ZONES.some(zn => x >= zn.xMin && x <= zn.xMax && z >= zn.zMin && z <= zn.zMax);
+  return true;
 }
 // Sliding door between the main-floor cabin and the catwalk stairway, at the real transition
 // point (x -3.5, the same spot the jump-bridge climb happens at). Slides up into a ceiling
@@ -5846,6 +5830,29 @@ function _ensureShipIntCoordHud() {
   }
   return el;
 }
+// Star Freighter's real modeled interior floor only reaches ~half its length (checked
+// directly with a dense grid of raycasts — no floor anywhere past roughly z10). There IS a
+// stray higher surface further back — part of the exterior hull shell itself, forced
+// double-sided so the real chamber's walls render from inside — and with auto-climb
+// unconditional, walking back there already climbs onto and rides that surface all the way
+// to the tail on its own (verified live: reaches z~19.9 with no stalls). This box is a safety
+// net underneath that surface in case a hole or gap in the hull mesh ever drops through it,
+// not the primary floor for that stretch — added as a child of selfMesh (like the shuttle's
+// door) rather than nested inside the loaded GLB, so these already-in-selfMesh-space
+// measured coordinates don't need an extra, error-prone re-transform.
+let _starfreighterCorridorMesh = null;
+function _ensureStarfreighterCorridorExt() {
+  if (_starfreighterCorridorMesh) return _starfreighterCorridorMesh;
+  // Spans z 9 to 19.8 — from just before the real chamber's floor ends to just inside the
+  // hull's tail cap at z=20.
+  const geo = new THREE.BoxGeometry(8, 0.4, 10.8);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.85, metalness: 0.2 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, -1.6, 14.4);
+  selfMesh.add(mesh);
+  _starfreighterCorridorMesh = mesh;
+  return mesh;
+}
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5862,6 +5869,7 @@ function _enterShipInteriorWalk() {
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
     }
   });
+  if (_selectedShipId === 'starfreighter') _shipIntCollidables.push(_ensureStarfreighterCorridorExt());
   if (!_shipIntCollidables.length) return;
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
@@ -5872,6 +5880,7 @@ function _enterShipInteriorWalk() {
   // consistently local.
   selfMesh.updateMatrixWorld(true);
   const _worldBox = new THREE.Box3().setFromObject(root);
+  if (_selectedShipId === 'starfreighter') _worldBox.expandByObject(_starfreighterCorridorMesh);
   const _localMin = selfMesh.worldToLocal(_worldBox.min.clone());
   const _localMax = selfMesh.worldToLocal(_worldBox.max.clone());
   _shipIntBBox = new THREE.Box3().setFromPoints([_localMin, _localMax]);
