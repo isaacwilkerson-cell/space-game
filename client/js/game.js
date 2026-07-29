@@ -5739,6 +5739,7 @@ const _shipIntEyeHeightStand  = 1.5;
 const _shipIntEyeHeightCrouch = 0.85;
 const _shipIntSpeedStand  = 0.07;
 const _shipIntSpeedCrouch = 0.04;
+let _shipIntCrouchAmount = 0; // 0 = standing, 1 = fully crouched (eased, same 0.2 pattern as _crouchAmount elsewhere)
 let _shipIntJumpVel = 0;
 let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
 let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) — tracked so a
@@ -5903,6 +5904,7 @@ function _enterShipInteriorWalk() {
   camera.position.copy(spawn);
   _shipIntYaw = def.interiorYaw || 0; _shipIntPitch = 0;
   _shipIntJumpVel = 0; _shipIntJumpOffset = 0;
+  _shipIntCrouchAmount = 0;
   _shipIntFeetY = spawn.y - _shipIntEyeHeightStand;
   camera.quaternion.setFromEuler(new THREE.Euler(0, _shipIntYaw, 0, 'YXZ'));
   document.body.style.cursor = 'none';
@@ -5928,10 +5930,13 @@ function _updateShipInteriorWalk() {
   _fpMouseDX = 0; _fpMouseDY = 0;
 
   // Crouch — 'c'/'C' is taken (enter/exit), so ctrl or alt crouches instead, same dual-key
-  // convention the on-foot FP movement elsewhere in the game already uses for it.
+  // convention the on-foot FP movement elsewhere in the game already uses for it. Eased the
+  // same way _crouchAmount is everywhere else in the game (0.2 lerp toward the target each
+  // frame) instead of snapping the camera height straight to the crouched value.
   const crouching = !!(keys['control'] || keys['alt']);
-  const eyeHeight = crouching ? _shipIntEyeHeightCrouch : _shipIntEyeHeightStand;
-  const speed = crouching ? _shipIntSpeedCrouch : _shipIntSpeedStand;
+  _shipIntCrouchAmount += ((crouching ? 1 : 0) - _shipIntCrouchAmount) * 0.2;
+  const eyeHeight = _shipIntEyeHeightStand - (_shipIntEyeHeightStand - _shipIntEyeHeightCrouch) * _shipIntCrouchAmount;
+  const speed = _shipIntSpeedStand - (_shipIntSpeedStand - _shipIntSpeedCrouch) * _shipIntCrouchAmount;
 
   const cosY = Math.cos(_shipIntYaw), sinY = Math.sin(_shipIntYaw);
   const fwd   = new THREE.Vector3(-sinY, 0, -cosY);
@@ -5949,6 +5954,26 @@ function _updateShipInteriorWalk() {
   _shipIntJumpVel -= SHIP_INT_GRAVITY;
   _shipIntJumpOffset += _shipIntJumpVel;
   if (_shipIntJumpOffset < 0) { _shipIntJumpOffset = 0; _shipIntJumpVel = 0; }
+  // Ceiling check — jump had no upward collision at all, so a big enough hop clipped straight
+  // through the roof. Cast up from the current head position and, if there's a real ceiling
+  // within reach, cap the jump offset just underneath it and zero the upward velocity (same
+  // as landing, just against the ceiling instead of the floor).
+  {
+    selfMesh.updateMatrixWorld(true);
+    const headWorld = selfMesh.localToWorld(new THREE.Vector3(camera.position.x, _shipIntFeetY + eyeHeight + _shipIntJumpOffset, camera.position.z));
+    const upWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(selfMesh.quaternion);
+    const ceilRc = new THREE.Raycaster(headWorld, upWorld, 0, 20);
+    const ceilHits = ceilRc.intersectObjects(_shipIntCollidables, true);
+    if (ceilHits.length > 0) {
+      const ceilY = selfMesh.worldToLocal(ceilHits[0].point.clone()).y;
+      const headMargin = 0.3;
+      const maxOffset = ceilY - headMargin - (_shipIntFeetY + eyeHeight);
+      if (_shipIntJumpOffset > maxOffset) {
+        _shipIntJumpOffset = Math.max(0, maxOffset);
+        if (_shipIntJumpVel > 0) _shipIntJumpVel = 0;
+      }
+    }
+  }
 
   // No inward margin here — real floor existence (below) is what actually bounds movement
   // now, and this room's real footprint reaches all the way to the bounding box edge in
