@@ -6027,13 +6027,24 @@ function _updateShipInteriorWalk() {
     // takeoff level keeps "matching" and permanently vetoes ever reaching the real ledge
     // you're trying to jump onto, even mid-arc.
     const zoneExempt = _shipIntAutoClimbAllowed(x, z);
-    const reachTop = zoneExempt ? Infinity : Math.max(_shipIntFeetY + SHIP_INT_MAX_STEP, jumpTop);
     let floorY = null;
     if (_shipIntJumpOffset <= 0.02) {
       for (const y of hitYs) { if (Math.abs(y - _shipIntFeetY) <= 0.15) { floorY = y; break; } }
     }
-    if (floorY === null) { for (const y of hitYs) { if (y <= reachTop + 0.05) { floorY = y; break; } } }
-    if (floorY === null) floorY = hitYs[hitYs.length - 1];
+    if (floorY === null) {
+      // Prefer the LOWEST hit in the column (the real ground) over a higher one. A downward
+      // ray through a closed/hollow shell mesh (like this ship's hull) crosses it twice: once
+      // entering from above (the exterior roof) and once at the real interior floor further
+      // down. With auto-climb unconditional, always taking the first/topmost hit here meant
+      // walking under such a shell put you ON TOP of it (the exterior roof, visibly "outside"
+      // the ship) instead of on the real floor beneath — only pick a higher hit if it's
+      // actually reachable by an active jump right now.
+      const lowest = hitYs[hitYs.length - 1];
+      floorY = lowest;
+      for (const y of hitYs) {
+        if (y > lowest + 0.01 && jumpTop >= y - 0.05) { floorY = y; break; }
+      }
+    }
     const rise = floorY - _shipIntFeetY;
     const reachableByJump = jumpTop >= floorY - 0.05;
     if (rise > SHIP_INT_MAX_STEP && !zoneExempt && !reachableByJump) continue;
