@@ -5988,13 +5988,14 @@ function _updateShipInteriorWalk() {
   // that clears the candidate floor now counts as a legitimate way up a real ledge, same as
   // in any platformer. Try the full diagonal move first, then each axis alone — walking
   // straight into a wall at a slight angle should slide along it instead of stopping dead.
-  // General raycast-based wall collision was tried here and reverted: a BFS reachability
-  // check across the whole cabin floor found it blocked 884 of 1571 real floor cells (56%)
-  // that are otherwise fully connected — this model is covered in the same kind of chest-
-  // height decorative clutter (pipes, shelves, brackets) the catwalk's auto-climb zone
-  // already has to work around, and there's no reliable way to tell that apart from a real
-  // wall via raycast alone. The door below still gets its own dedicated, deliberate block
-  // via its AABB (not a clutter-prone raycast), so that stays.
+  // General raycast-based wall collision was tried once before and reverted — a BFS
+  // reachability check on the shuttle's cabin found it blocked 56% of real floor that was
+  // otherwise connected, because that ship was covered in chest-height decorative clutter
+  // (pipes, shelves, brackets) a raycast can't reliably tell apart from a real wall. The
+  // shuttle has since been removed from SHIP_DEFS entirely — the only ship with a walkable
+  // interior now is the Star Freighter, whose real geometry is just a plain smooth hull with
+  // no clutter, so re-enabling it here (verified via the same kind of BFS check, this time
+  // finding zero cells lost) fixes walking straight through its walls.
   const wallClear = (dx, dz) => {
     const len = Math.hypot(dx, dz);
     if (len < 1e-6) return true;
@@ -6002,7 +6003,8 @@ function _updateShipInteriorWalk() {
     const originLocal = new THREE.Vector3(camera.position.x, _shipIntFeetY + eyeHeight * 0.5, camera.position.z);
     const originWorld = selfMesh.localToWorld(originLocal);
     const dirWorld = dirLocal.applyQuaternion(selfMesh.quaternion);
-    return _shipIntDoorClear(dirWorld, originWorld, len + 0.2);
+    const rc = new THREE.Raycaster(originWorld, dirWorld, 0, len + 0.2);
+    return rc.intersectObjects(_shipIntCollidables, false).length === 0 && _shipIntDoorClear(dirWorld, originWorld, len + 0.2);
   };
 
   const jumpTop = _shipIntFeetY + _shipIntJumpOffset;
