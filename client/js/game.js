@@ -5849,6 +5849,12 @@ function _ensureStarfreighterCorridorExt() {
   const mat = new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.85, metalness: 0.2 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(0, -1.6, 14.4);
+  // Hidden by default — it's a child of selfMesh, not the loaded ship model, so it stayed
+  // visible poking out of the hull during ordinary flight (the "grey slab" bug) since nothing
+  // was toggling it off outside the walkable-interior view. Raycaster.intersectObject skips
+  // invisible objects entirely, so this can't just stay invisible all the time though —
+  // _enterShipInteriorWalk/_exitShipInteriorWalk flip it on/off around actually being inside.
+  mesh.visible = false;
   selfMesh.add(mesh);
   _starfreighterCorridorMesh = mesh;
   return mesh;
@@ -5869,7 +5875,11 @@ function _enterShipInteriorWalk() {
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
     }
   });
-  if (_selectedShipId === 'starfreighter') _shipIntCollidables.push(_ensureStarfreighterCorridorExt());
+  if (_selectedShipId === 'starfreighter') {
+    const corridorMesh = _ensureStarfreighterCorridorExt();
+    corridorMesh.visible = true;
+    _shipIntCollidables.push(corridorMesh);
+  }
   if (!_shipIntCollidables.length) return;
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
@@ -5907,6 +5917,7 @@ function _exitShipInteriorWalk() {
   scene.add(camera);
   camera.position.copy(selfMesh.position).add(new THREE.Vector3(0, 8, 35).applyQuaternion(selfMesh.quaternion));
   camera.quaternion.copy(selfMesh.quaternion);
+  if (_starfreighterCorridorMesh) _starfreighterCorridorMesh.visible = false;
   const hud = document.getElementById('ship-int-coords');
   if (hud) hud.style.display = 'none';
 }
