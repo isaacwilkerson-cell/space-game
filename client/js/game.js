@@ -5741,6 +5741,12 @@ const _shipIntEyeHeightCrouch = 0.85;
 const _shipIntSpeedStand  = 0.07;
 const _shipIntSpeedCrouch = 0.04;
 let _shipIntCrouchAmount = 0; // 0 = standing, 1 = fully crouched (eased, same 0.2 pattern as _crouchAmount elsewhere)
+// The floor height itself (_shipIntFeetY) snaps instantly to whatever the raycast returns
+// each frame, which it needs to for collision/rise-blocking to stay exact — but displaying
+// that raw value directly made the camera visibly jitter walking over this ship's curved,
+// modular-tile hull (small per-frame noise between adjacent raycast samples). This eases
+// toward the real target instead, smoothing only what's actually shown on screen.
+let _shipIntDisplayFeetY = 0;
 let _shipIntJumpVel = 0;
 let _shipIntJumpOffset = 0; // height above the raycast floor, from jumping
 let _shipIntFeetY = 0; // current standing floor height (excludes jump offset) — tracked so a
@@ -5882,6 +5888,7 @@ function _enterShipInteriorWalk() {
   _shipIntJumpVel = 0; _shipIntJumpOffset = 0;
   _shipIntCrouchAmount = 0;
   _shipIntFeetY = spawn.y - _shipIntEyeHeightStand;
+  _shipIntDisplayFeetY = _shipIntFeetY;
   camera.quaternion.setFromEuler(new THREE.Euler(0, _shipIntYaw, 0, 'YXZ'));
   document.body.style.cursor = 'none';
   renderer.domElement.requestPointerLock();
@@ -6061,7 +6068,8 @@ function _updateShipInteriorWalk() {
     _shipIntFeetY = floorY;
     break;
   }
-  camera.position.y = _shipIntFeetY + eyeHeight + _shipIntJumpOffset;
+  _shipIntDisplayFeetY += (_shipIntFeetY - _shipIntDisplayFeetY) * 0.4;
+  camera.position.y = _shipIntDisplayFeetY + eyeHeight + _shipIntJumpOffset;
 
   camera.quaternion.setFromEuler(new THREE.Euler(_shipIntPitch, _shipIntYaw, 0, 'YXZ'));
 
