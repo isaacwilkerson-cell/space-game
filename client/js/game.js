@@ -39,14 +39,15 @@ const SHIP_DEFS = {
   // Raw bbox: 25.2 x 10.8 x 56.6 (x/y/z) — Z is already by far the longest dimension,
   // matching the -Z-forward convention by default like shuttle.glb, so no yaw correction
   // applied yet. Report back if it turns out sideways or backwards once actually flown.
-  // At 2x size (sizeMul below), only a chamber near the nose has real interior geometry
+  // At 2x size (sizeMul below), only a chamber near the nose has real modeled floor geometry
   // (checked directly via a grid of downward raycasts): roughly x -6..6, z -14..18, floor
-  // bottoming out around y -3.04 at the center. Past that the hull is completely hollow — no
-  // floor/wall geometry at all — the rear half is covered instead by a synthetic corridor
-  // floor (see _ensureStarfreighterCorridorExt) since the asset itself doesn't model it.
-  // interiorSpawn.y is the real floor height (-3.04) plus standing eye height (1.5). yaw
-  // faces +z (the deeper side of the chamber, and toward the added corridor) instead of the
-  // default -z, which only has ~14 units before the nose wall.
+  // bottoming out around y -3.04 at the center. Past that there's no floor mesh, but the
+  // exterior hull shell itself (forced double-sided so its inside renders) still gives a real,
+  // continuous lower surface the whole way to the tail once the floor-selection logic prefers
+  // the lowest hit in a column over a higher one — see _updateShipInteriorWalk. interiorSpawn.y
+  // is the real floor height (-3.04) plus standing eye height (1.5). yaw faces +z (the deeper
+  // side of the chamber) instead of the default -z, which only has ~14 units before the nose
+  // wall.
   starfreighter: { name: 'Star Freighter', asset: 'assets/ships/star_freighter.glb', sizeMul: 2, walkableInterior: true, interiorSpawn: new THREE.Vector3(0, -1.54, 0), interiorYaw: Math.PI },
 };
 const SHIP_STORAGE_KEY = 'sn_selected_ship';
@@ -5834,32 +5835,13 @@ function _ensureShipIntCoordHud() {
 // Star Freighter's real modeled interior floor only reaches ~half its length (checked
 // directly with a dense grid of raycasts — no floor anywhere past roughly z10). There IS a
 // stray higher surface further back — part of the exterior hull shell itself, forced
-// double-sided so the real chamber's walls render from inside — and with auto-climb
-// unconditional, walking back there already climbs onto and rides that surface all the way
-// to the tail on its own (verified live: reaches z~19.9 with no stalls). This box is a safety
-// net underneath that surface in case a hole or gap in the hull mesh ever drops through it,
-// not the primary floor for that stretch — added as a child of selfMesh (like the shuttle's
-// door) rather than nested inside the loaded GLB, so these already-in-selfMesh-space
-// measured coordinates don't need an extra, error-prone re-transform.
-let _starfreighterCorridorMesh = null;
-function _ensureStarfreighterCorridorExt() {
-  if (_starfreighterCorridorMesh) return _starfreighterCorridorMesh;
-  // Spans z 9 to 19.8 — from just before the real chamber's floor ends to just inside the
-  // hull's tail cap at z=20.
-  const geo = new THREE.BoxGeometry(8, 0.4, 10.8);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.85, metalness: 0.2 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, -1.6, 14.4);
-  // Hidden by default — it's a child of selfMesh, not the loaded ship model, so it stayed
-  // visible poking out of the hull during ordinary flight (the "grey slab" bug) since nothing
-  // was toggling it off outside the walkable-interior view. Raycaster.intersectObject skips
-  // invisible objects entirely, so this can't just stay invisible all the time though —
-  // _enterShipInteriorWalk/_exitShipInteriorWalk flip it on/off around actually being inside.
-  mesh.visible = false;
-  selfMesh.add(mesh);
-  _starfreighterCorridorMesh = mesh;
-  return mesh;
-}
+// double-sided so the real chamber's walls render from inside — and with the floor-selection
+// fix that prefers the lowest hit in a column (see the "Prefer the LOWEST hit" comment in
+// _updateShipInteriorWalk), walking back there rides the real hull surface all the way to the
+// tail on its own (verified live: reaches z~19.9 with no stalls). A synthetic safety-net floor
+// was added here at one point in case of a gap, but it showed up as a visibly out-of-place
+// slab (not part of the actual asset) even with visibility toggled around interior use, and
+// turned out to be unnecessary — removed.
 function _enterShipInteriorWalk() {
   const def = SHIP_DEFS[_selectedShipId];
   const ext = _exteriorShipModel();
@@ -5876,11 +5858,6 @@ function _enterShipInteriorWalk() {
       mats.forEach(m => { if (m) m.side = THREE.DoubleSide; });
     }
   });
-  if (_selectedShipId === 'starfreighter') {
-    const corridorMesh = _ensureStarfreighterCorridorExt();
-    corridorMesh.visible = true;
-    _shipIntCollidables.push(corridorMesh);
-  }
   if (!_shipIntCollidables.length) return;
   // Box3().setFromObject() always returns WORLD-space bounds, but camera.position is about
   // to become LOCAL (selfMesh space, once reparented below) — comparing/clamping a local
@@ -5891,7 +5868,6 @@ function _enterShipInteriorWalk() {
   // consistently local.
   selfMesh.updateMatrixWorld(true);
   const _worldBox = new THREE.Box3().setFromObject(root);
-  if (_selectedShipId === 'starfreighter') _worldBox.expandByObject(_starfreighterCorridorMesh);
   const _localMin = selfMesh.worldToLocal(_worldBox.min.clone());
   const _localMax = selfMesh.worldToLocal(_worldBox.max.clone());
   _shipIntBBox = new THREE.Box3().setFromPoints([_localMin, _localMax]);
@@ -5919,7 +5895,6 @@ function _exitShipInteriorWalk() {
   scene.add(camera);
   camera.position.copy(selfMesh.position).add(new THREE.Vector3(0, 8, 35).applyQuaternion(selfMesh.quaternion));
   camera.quaternion.copy(selfMesh.quaternion);
-  if (_starfreighterCorridorMesh) _starfreighterCorridorMesh.visible = false;
   const hud = document.getElementById('ship-int-coords');
   if (hud) hud.style.display = 'none';
 }
