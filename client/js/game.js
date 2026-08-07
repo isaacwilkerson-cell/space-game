@@ -6041,17 +6041,23 @@ function _updateShipInteriorWalk() {
       for (const y of hitYs) { if (Math.abs(y - _shipIntFeetY) <= 0.15) { floorY = y; break; } }
     }
     if (floorY === null) {
-      // Prefer the LOWEST hit in the column (the real ground) over a higher one. A downward
-      // ray through a closed/hollow shell mesh (like this ship's hull) crosses it twice: once
-      // entering from above (the exterior roof) and once at the real interior floor further
-      // down. With auto-climb unconditional, always taking the first/topmost hit here meant
-      // walking under such a shell put you ON TOP of it (the exterior roof, visibly "outside"
-      // the ship) instead of on the real floor beneath — only pick a higher hit if it's
-      // actually reachable by an active jump right now.
-      const lowest = hitYs[hitYs.length - 1];
-      floorY = lowest;
+      // Prefer whichever hit is CLOSEST to the height we're already standing at. This hull
+      // isn't just a single shell — some columns near the outer walls cross it up to 6 times
+      // (an inner fixture/wall cluster, the real floor deck, AND the exterior shell), so
+      // "always take the topmost hit" put you on the exterior roof (the original bug), and
+      // "always take the lowest hit" (tried next) just as easily put you on the exterior
+      // UNDERSIDE instead of the real floor deck — both systematically favor one wrong
+      // extreme. Closest-to-current doesn't, since the real floor you're walking across is,
+      // by definition, wherever you already are. A jump in progress can still reach a
+      // genuinely higher hit specifically, if its arc actually gets you there.
+      let best = hitYs[0], bestDist = Math.abs(hitYs[0] - _shipIntFeetY);
       for (const y of hitYs) {
-        if (y > lowest + 0.01 && jumpTop >= y - 0.05) { floorY = y; break; }
+        const d = Math.abs(y - _shipIntFeetY);
+        if (d < bestDist) { bestDist = d; best = y; }
+      }
+      floorY = best;
+      for (const y of hitYs) {
+        if (y > floorY + 0.01 && jumpTop >= y - 0.05) { floorY = y; break; }
       }
     }
     const rise = floorY - _shipIntFeetY;
